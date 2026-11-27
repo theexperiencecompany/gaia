@@ -21,15 +21,15 @@ export const useOnboardingGuard = () => {
   // before redirecting. Replaces (not pushes), like every guard — a pushed
   // redirect leaves Back bouncing right back out.
 
-  // A never-paid account finishes on the wizard's paywall step; a lapsed one
-  // stays in the app, where the UpgradeModal stands.
-  const needsOnboarding =
-    !user.onboarding.completed || entitlement === "never_subscribed";
+  // A never-paid account stays on the wizard's paywall step while it is there;
+  // anywhere else in the app the UpgradeModal stands, as for a lapsed one.
+  const onboardingIncomplete = !user.onboarding.completed;
+  const onPaywallStep = entitlement === "never_subscribed";
 
   if (pathname === "/onboarding") {
     // Submitting the answers IS completion now — nothing is generated
     // afterwards, so there is no processing phase to hold the user here.
-    if (!needsOnboarding && entitlement !== "unknown") {
+    if (!onboardingIncomplete && !onPaywallStep && entitlement !== "unknown") {
       // Completion seeds GAIA's "Getting started" conversation, so land the
       // user inside it rather than on an empty composer. A seed that failed is
       // never a reason to strand them — fall back to the chat home.
@@ -44,7 +44,7 @@ export const useOnboardingGuard = () => {
     // The self-host wizard REPLACES hosted onboarding: a local instance has no
     // onboarding pipeline (the API reports completed=True for it), so the branch
     // below would fire here and bounce the admin off their own setup wizard.
-  } else if (needsOnboarding) {
+  } else if (onboardingIncomplete) {
     redirect("/onboarding", RedirectType.replace);
   }
 };

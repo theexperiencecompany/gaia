@@ -7,16 +7,33 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 
-Routes = dict[str, tuple[int, dict[str, str], str]]
+Response = tuple[int, dict[str, str], str]
+#: A path answers one response every time, or a list of them in turn, the last one repeating.
+Routes = dict[str, Response | list[Response]]
 
 
 @contextmanager
-def serve(routes: Routes, posts: list[tuple[str, bytes]] | None = None) -> Iterator[str]:
-    """Answer each path (query string included) from routes for the block; record POST and PUT bodies in posts."""
+def serve(
+    routes: Routes,
+    posts: list[tuple[str, bytes]] | None = None,
+    gets: list[str] | None = None,
+) -> Iterator[str]:
+    """Answer each path (query string included) from routes for the block; record POST and PUT bodies in posts, GET paths in gets."""
+    served: dict[str, int] = {}
+    lock = threading.Lock()
+
+    def answer(path: str) -> Response:
+        route = routes.get(path, (404, {}, ""))
+        if not isinstance(route, list):
+            return route
+        with lock:
+            index = served.get(path, 0)
+            served[path] = index + 1
+        return route[min(index, len(route) - 1)]
 
     class Handler(BaseHTTPRequestHandler):
         def _reply(self) -> None:
-            status, headers, body = routes.get(self.path, (404, {}, ""))
+            status, headers, body = answer(self.path)
             self.send_response(status)
             for key, value in headers.items():
                 self.send_header(key, value)
@@ -24,6 +41,8 @@ def serve(routes: Routes, posts: list[tuple[str, bytes]] | None = None) -> Itera
             self.wfile.write(body.encode())
 
         def do_GET(self) -> None:
+            if gets is not None:
+                gets.append(self.path)
             self._reply()
 
         def do_POST(self) -> None:

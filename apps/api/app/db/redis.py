@@ -5,7 +5,7 @@ Redis is unavailable.
 """
 
 from collections.abc import AsyncIterator, Mapping, Set as AbstractSet
-from typing import Any, Literal, Protocol, TypeVar, cast, overload
+from typing import Any, Literal, Protocol, TypedDict, TypeVar, cast, overload
 
 from pydantic import JsonValue, TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
@@ -51,6 +51,13 @@ def deserialize_any(json_str: str, model: type[T] | None = None) -> T | JsonValu
     """Deserialize a JSON string, validating against model if provided."""
     adapter: TypeAdapterType[T | JsonValue] = TypeAdapter(model or Any)
     return adapter.validate_json(json_str)
+
+
+class PubSubMessage(TypedDict):
+    """A redis-py pub/sub message; data is the published payload when type is "message"."""
+
+    type: str
+    data: str | bytes
 
 
 class AsyncRedisCommands(Protocol):
@@ -206,6 +213,16 @@ class AsyncRedisCommands(Protocol):
         approximate: bool = True,
     ) -> str:
         """XADD — returns the new entry's stream id."""
+        ...
+
+    async def xrange(self, name: str, start: str, end: str, /) -> list[tuple[str, dict[str, str]]]:
+        """XRANGE — [(entry_id, fields)] oldest first, from start to end inclusive."""
+        ...
+
+    async def xrevrange(
+        self, name: str, *, count: int | None = None
+    ) -> list[tuple[str, dict[str, str]]]:
+        """XREVRANGE — [(entry_id, fields)] newest first."""
         ...
 
     async def xread(

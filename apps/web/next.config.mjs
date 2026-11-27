@@ -9,8 +9,10 @@ import {
   expandCanonicalRedirects,
   RETIRED_PAGE_PAIRS,
 } from "./canonical-redirects.mjs";
+import { STATIC_PAGE_GENERATION_TIMEOUT_SECONDS } from "./build-rate-limit.mjs";
 import { IMAGE_QUALITIES } from "./image-qualities.mjs";
 import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
+import { settingsRedirects } from "./settings-redirects.mjs";
 import { POSTHOG_HOST } from "./third-party-origins.mjs";
 import { vanityRedirects } from "./vanity-redirects.mjs";
 
@@ -79,6 +81,7 @@ const nextConfig = {
   // human dev server runs) lifts that without touching the default build.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   productionBrowserSourceMaps: true,
+  staticPageGenerationTimeout: STATIC_PAGE_GENERATION_TIMEOUT_SECONDS,
   // OpenNext file-traces every public/*.wasm into the Worker (even in unrelated
   // routes' .nft.json), collecting the desktop-only ~12MiB wake-word WASM past
   // Cloudflare's 10MiB limit. Exclude it on the Cloudflare build; Electron's standalone build copies public/ wholesale, unaffected.
@@ -93,7 +96,12 @@ const nextConfig = {
           }
         : false,
   },
+  // next dev otherwise rewrites the tracked CLAUDE.md (AGENTS.md symlink) whenever its
+  // managed block's text differs; the docs pointer lives there as plain text instead.
+  agentRules: false,
   reactStrictMode: true,
+  // next dev otherwise writes a managed block into the tracked CLAUDE.md (AGENTS.md links to it).
+  agentRules: false,
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies
   output: "standalone",
@@ -154,6 +162,9 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   experimental: {
+    // Under an agent, next dev otherwise exits on its first start to show an upgrade
+    // nudge, which half-boots a stack whose API keeps serving.
+    agentUpgrade: false,
     // prefetchInlining stays OFF until OpenNext serves Next's segment-prefetch
     // protocol (as of @opennextjs/cloudflare 1.20.2 it doesn't — /_tree gets the
     // full build-time RSC payload, no x-nextjs-postponed header). With inlining on, the client marks the route cache stale and refetches at ~5 req/s per visible <Link> (observed heygaia.io /signup, 2026-08-18).
@@ -324,6 +335,7 @@ const nextConfig = {
       ...expandCanonicalRedirects(),
       ...expandCanonicalRedirects(RETIRED_PAGE_PAIRS),
       ...vanityRedirects(),
+      ...settingsRedirects(),
     ];
   },
 };

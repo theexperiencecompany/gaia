@@ -6,12 +6,14 @@ import {
   ConnectIcon,
   DiscordIcon,
   MessageMultiple02Icon,
+  News01Icon,
   PencilEdit01Icon,
   Settings01Icon,
   WhatsappIcon,
   ZapIcon,
 } from "@icons";
 import type { ReactNode } from "react";
+import { DEFAULT_SETTINGS_PATH } from "@/features/settings/config/sectionKeys";
 
 // Menu item configuration
 export interface MenuItemConfig {
@@ -64,6 +66,12 @@ const PAGE_ITEMS: MenuItemConfig[] = [
     path: "/workflows",
   },
   {
+    id: "briefings",
+    label: "Briefings",
+    icon: <News01Icon width={18} height={18} />,
+    path: "/briefings",
+  },
+  {
     id: "chats",
     label: "Chats",
     icon: <MessageMultiple02Icon width={18} height={18} />,
@@ -113,7 +121,7 @@ const USER_ITEMS: MenuItemConfig[] = [
     id: "settings",
     label: "Settings",
     icon: <Settings01Icon width={18} height={18} />,
-    path: "/settings",
+    path: DEFAULT_SETTINGS_PATH,
     shortcut: "⌘,",
   },
 ];

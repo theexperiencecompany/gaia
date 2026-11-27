@@ -1,6 +1,6 @@
 /**
  * Ink screen for `gaia up`: the shared run screen under one header (the
- * installer's, when it ran this), the one prompt it may ask, and a single
+ * installer's, when it ran this), the prompts it may ask, and a single
  * card once GAIA is ready.
  * @module commands/up/screen
  */
@@ -9,6 +9,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { useState } from "react";
 import { releaseSourceNotes } from "../../lib/selfhost-bundle.js";
+import { SHARE_DOMAIN_INPUT } from "../../lib/share-domains.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { ResultCard } from "../../ui/components/ResultCard.js";
 import { NoticeRow, RunScreen } from "../../ui/components/RunScreen.js";
@@ -17,6 +18,7 @@ import { THEME_COLOR } from "../../ui/constants.js";
 import type { CLIState, CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
 import { UP_NOTICE_KEY } from "./flow.js";
+import { ShareDomainPrompt } from "./share-domain-prompt.js";
 import { buildUpSummary, NEXT_COMMANDS } from "./summary.js";
 import type { UpOutcome } from "./summary.types.js";
 
@@ -53,11 +55,22 @@ const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
   );
 };
 
-/** The install prompt, the only input gaia up asks for: a taken port is moved, never asked about. */
+/** The install prompt, or a share domain on a run that sets a domain: a taken port is moved, never asked about. */
 const UpPrompt: React.FC<{ state: CLIState; store: CLIStore }> = ({
   state,
   store,
 }) => {
+  const request = state.inputRequest;
+  if (request?.id === SHARE_DOMAIN_INPUT) {
+    // Remount per question and per refusal, so each starts empty.
+    return (
+      <ShareDomainPrompt
+        key={`${request.meta.kind}:${request.meta.retry ?? ""}`}
+        store={store}
+        request={request.meta}
+      />
+    );
+  }
   return <InstallConfirmStep store={store} state={state} />;
 };
 

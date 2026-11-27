@@ -6,6 +6,7 @@ import { useElectron } from "@/hooks/useElectron";
 import { resetUser } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { authApi } from "../api/authApi";
+import { loginHref } from "../utils/loginHref";
 
 export const useLogout = () => {
   const queryClient = useQueryClient();
@@ -79,25 +80,30 @@ export const useLogout = () => {
     }
   }, [queryClient]);
 
-  const logout = useCallback(async () => {
-    try {
-      await authApi.logout();
-    } catch (error) {
-      console.error("Logout API error:", error);
-    }
+  /** Sign out; with returnUrl (switching accounts), sign in again and come back to it. */
+  const logout = useCallback(
+    async (returnUrl?: string) => {
+      try {
+        await authApi.logout(returnUrl);
+      } catch (error) {
+        console.error("Logout API error:", error);
+      }
 
-    await clearAllStorage();
+      await clearAllStorage();
 
-    // Logout is tracked server-side (POST /user/logout emits
-    // user:logged_out with the stable distinct_id). Emitting here too would
-    // double-count every logout, so just reset the client identity.
-    resetUser();
+      // Logout is tracked server-side (POST /user/logout emits
+      // user:logged_out with the stable distinct_id). Emitting here too would
+      // double-count every logout, so just reset the client identity.
+      resetUser();
 
-    // Fallback redirect if authApi.logout doesn't (no logout_url) — in
-    // Electron, (landing) has no ElectronRouteGuard to bounce logged-out
-    // users, so desktop goes to the desktop login screen instead of "/".
-    router.push(isElectron ? "/desktop-login" : "/");
-  }, [clearAllStorage, router, isElectron]);
+      // Fallback redirect if authApi.logout doesn't (no logout_url) — in
+      // Electron, (landing) has no ElectronRouteGuard to bounce logged-out
+      // users, so desktop goes to the desktop login screen instead of "/".
+      if (returnUrl) router.push(loginHref(returnUrl));
+      else router.push(isElectron ? "/desktop-login" : "/");
+    },
+    [clearAllStorage, router, isElectron],
+  );
 
   return { logout };
 };

@@ -5,7 +5,7 @@
 # never takes its patchright path) and the browser host's default Chromium
 # (resolve_chromium_path) launch Playwright's, so only Playwright's revision is
 # downloaded, and patchright is excluded from the lock (root pyproject.toml
-# exclude-dependencies). Fortress, the host's opt-in engine, is installed below.
+# exclude-dependencies). Fortress, the host's opt-in engine, is the fortress target's alone.
 #
 # --only-shell: both launchers run headless and take Playwright's headless shell,
 # so the full ~620 MB Chromium build was never started.
@@ -22,6 +22,9 @@
 # them and tools/lints/check_tool_pins.py fails when one disagrees.
 ARG PYTHON_VERSION=3.12.15
 ARG RUST_VERSION=1.99.1
+# Node version is declared once in .node-version; this default mirrors it and
+# tools/lints/check_tool_pins.py fails if the two disagree.
+ARG NODE_VERSION=24.22.1
 
 FROM python:${PYTHON_VERSION}-slim AS browsers
 ARG PLAYWRIGHT_VERSION=1.60.0
@@ -160,6 +163,23 @@ FROM scratch AS obscura-bin
 COPY --from=obscura-builder /obscura/target/release/obscura /obscura
 COPY --from=obscura-builder /obscura/target/release/obscura-worker /obscura-worker
 
+# ---- Artifact validator: @gaia/artifacts' validator as one Node script ----
+# create_artifact checks every generated program with it (app/services/openui_artifacts/
+# validate.py). Only the validator's and the library's runtime dependencies are installed,
+# and only the bundle and the node binary reach the runtime.
+FROM node:${NODE_VERSION}-slim AS artifact-validator
+WORKDIR /src
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
+COPY tools/artifact-validate/package.json ./tools/artifact-validate/
+COPY libs/artifacts/package.json ./libs/artifacts/
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts --prod --filter "@gaia/artifact-validate..."
+COPY tools/artifact-validate ./tools/artifact-validate
+COPY libs/artifacts/src ./libs/artifacts/src
+RUN node tools/artifact-validate/build.mjs
+
 # ---- Runtime: minimal production image ----
 FROM python:${PYTHON_VERSION}-slim AS runtime
 WORKDIR /app
@@ -177,30 +197,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Early in the stage so code and dependency changes never re-key this ~1.5 GB layer.
 COPY --from=models /opt/models /opt/models
 
-# Fortress — the browser host's opt-in Chromium (BROWSER_HOST_FORTRESS, off by
-# default): a Chromium fork that sets the fingerprint in C++, driven over CDP like
-# Chrome. Pinned to a release and its SHA-256 per arch (the release's SHA256SUMS);
-# scripts/ci/browser.sh reads these ARGs, so CI's browser stack runs this exact
-# build. The host launches /opt/fortress/tilion (FORTRESS_IMAGE_BIN), its launcher,
-# which sets up the fonts; its runtime libraries are Chromium's, installed by
-# playwright install-deps below. TILION_LICENSE_KEY (browser_host_settings) selects
-# the licensed v3 engine; unset, the public v1 engine.
-ARG TARGETARCH
-ARG FORTRESS_VERSION=156.0.8078.47
-ARG FORTRESS_SHA256_AMD64=fa56589c44765627447be075afa9675b06b09befdb8b62347391b9a83e4812b2
-ARG FORTRESS_SHA256_ARM64=2fead923de56b92fad78940bde373c07d38a925f229b710353e601b07d13af87
-RUN case "${TARGETARCH:-amd64}" in \
-      amd64) platform=linux-x64 sha256="${FORTRESS_SHA256_AMD64}" ;; \
-      arm64) platform=linux-arm64 sha256="${FORTRESS_SHA256_ARM64}" ;; \
-      *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
-    esac \
-    && curl --proto "=https" --tlsv1.2 -fsSL -o /tmp/fortress.tar.gz \
-       "https://github.com/tiliondev/fortress/releases/download/v${FORTRESS_VERSION}/fortress-v${FORTRESS_VERSION%%.*}-${platform}.tar.gz" \
-    && echo "${sha256}  /tmp/fortress.tar.gz" | sha256sum -c - \
-    && mkdir -p /opt/fortress \
-    && tar -xzf /tmp/fortress.tar.gz -C /opt/fortress --strip-components=1 \
-    && rm -f /tmp/fortress.tar.gz
-
 # JuiceFS client — needed by the host-side sidecar mount that the API writes
 # skills + migration data through. Sandboxes have their own copy baked into
 # the E2B template.
@@ -208,6 +204,7 @@ RUN case "${TARGETARCH:-amd64}" in \
 # native binary matters — the amd64 build crashes (Go runtime abort in the PG
 # meta client) under Rosetta/QEMU emulation on arm64 hosts (Apple Silicon
 # dev, Graviton prod).
+ARG TARGETARCH
 ARG JUICEFS_VERSION=1.3.0
 RUN curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEFS_VERSION}/juicefs-${JUICEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
     | tar -xz -C /tmp \
@@ -312,6 +309,10 @@ RUN adduser --disabled-password --gecos '' appuser \
 RUN HOME=/home/appuser python -c "from crawl4ai.install import setup_home_directory, run_migration; setup_home_directory(); run_migration()" \
     && chown -R appuser:appuser /home/appuser/.crawl4ai /home/appuser/global.yml
 
+# The artifact validator: node itself and the one-file bundle validate.py runs.
+COPY --from=artifact-validator /usr/local/bin/node /usr/local/bin/node
+COPY --from=artifact-validator /src/tools/artifact-validate/dist ./tools/artifact-validate/dist
+
 # Copy API application code (root-owned, readable by appuser)
 COPY apps/api/app ./apps/api/app
 COPY apps/api/scripts ./apps/api/scripts
@@ -330,3 +331,42 @@ ENV BROWSER_HOST_BIND_ADDRESS=0.0.0.0
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]
+
+# ---- Fortress: the API image plus the browser host's opt-in Chromium ----
+# Published as gaia-fortress, for a browser host that sets BROWSER_HOST_FORTRESS
+# (off by default). The default `api` target never builds these two stages, so
+# the API, worker and self-host images do not depend on an optional binary.
+# Fortress is a Chromium fork that sets the fingerprint in C++, driven over CDP like
+# Chrome. Pinned to a release and its SHA-256 per arch (the release's SHA256SUMS);
+# scripts/ci/browser.sh reads these ARGs, so CI's browser stack runs this exact
+# build. Downloaded in its own stage, keyed only on these ARGs, so a code change
+# never re-fetches it. The slim base has no curl: Python's urllib fetches it.
+FROM python:${PYTHON_VERSION}-slim AS fortress-dist
+ARG TARGETARCH
+ARG FORTRESS_VERSION=156.0.8078.47
+ARG FORTRESS_SHA256_AMD64=fa56589c44765627447be075afa9675b06b09befdb8b62347391b9a83e4812b2
+ARG FORTRESS_SHA256_ARM64=2fead923de56b92fad78940bde373c07d38a925f229b710353e601b07d13af87
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) platform=linux-x64 sha256="${FORTRESS_SHA256_AMD64}" ;; \
+      arm64) platform=linux-arm64 sha256="${FORTRESS_SHA256_ARM64}" ;; \
+      *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && python -c 'import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' \
+       "https://github.com/tiliondev/fortress/releases/download/v${FORTRESS_VERSION}/fortress-v${FORTRESS_VERSION%%.*}-${platform}.tar.gz" \
+       /tmp/fortress.tar.gz \
+    && echo "${sha256}  /tmp/fortress.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/fortress \
+    && tar -xzf /tmp/fortress.tar.gz -C /opt/fortress --strip-components=1 \
+    && rm -f /tmp/fortress.tar.gz
+
+# The host launches /opt/fortress/tilion (FORTRESS_IMAGE_BIN), its launcher, which
+# sets up the fonts; its runtime libraries are Chromium's, installed by the runtime
+# stage's playwright install-deps. TILION_LICENSE_KEY (browser_host_settings)
+# selects the licensed v3 engine; unset, the public v1 engine.
+FROM runtime AS fortress
+COPY --from=fortress-dist /opt/fortress /opt/fortress
+
+# ---- The default target: the API image, without Fortress ----
+# Last, so a plain `docker build` (nx docker:build, compose, the self-host build)
+# builds the API image.
+FROM runtime AS api

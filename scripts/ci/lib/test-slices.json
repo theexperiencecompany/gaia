@@ -11,7 +11,8 @@
       "serial": "false",
       "after": [],
       "timeout_minutes": "45",
-      "engines": "false"
+      "engines": "false",
+      "chromium": "false"
     },
     {
       "name": "unit-b",
@@ -24,20 +25,36 @@
       "serial": "false",
       "after": ["shared-suite"],
       "timeout_minutes": "45",
-      "engines": "false"
+      "engines": "false",
+      "chromium": "false"
     },
     {
       "name": "integration",
       "tier": "full",
       "paths": "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts",
-      "ignore": "--ignore=tests/integration/real/test_device_bridge_e2e.py --ignore=tests/integration/real/browser",
-      "node": "false",
+      "ignore": "--ignore=tests/integration/real/test_device_bridge_e2e.py --ignore=tests/integration/real/browser --ignore=tests/integration/render",
+      "node": "true",
       "services": "true",
       "workers": "4",
       "serial": "false",
       "after": ["contract-fuzz"],
       "timeout_minutes": "45",
-      "engines": "false"
+      "engines": "false",
+      "chromium": "true"
+    },
+    {
+      "name": "render",
+      "tier": "full",
+      "paths": "tests/integration/render",
+      "ignore": "",
+      "node": "false",
+      "services": "true",
+      "workers": "4",
+      "serial": "false",
+      "after": [],
+      "timeout_minutes": "30",
+      "engines": "false",
+      "chromium": "true"
     },
     {
       "name": "bridge",
@@ -50,7 +67,8 @@
       "serial": "true",
       "after": [],
       "timeout_minutes": "45",
-      "engines": "false"
+      "engines": "false",
+      "chromium": "false"
     },
     {
       "name": "browser",
@@ -63,7 +81,8 @@
       "serial": "false",
       "timeout_minutes": "15",
       "after": [],
-      "engines": "true"
+      "engines": "true",
+      "chromium": "false"
     }
   ]
 }

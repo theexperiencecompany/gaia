@@ -19,6 +19,8 @@ from app.config.settings import settings
 from app.config.workos import get_async_workos_client
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import (
+    AGENT_TOKEN_PATHS,
+    BOT_API_KEY_HEADER,
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
     SESSION_HINT_COOKIE,
@@ -109,17 +111,19 @@ _SESSION_ID: TypeAdapter[str] = TypeAdapter(Identifier)
 
 
 class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
-    """Bind the request's analytics context and PostHog identity around every capture in it.
+    """Bind the request's analytics context and PostHog identity.
 
     Runs inside WorkOS and bot authentication, so the user is the stable Mongo
     id whichever way the request authenticated, and the context knows which
-    client the request came from.
+    client the request came from. Only a request the user made counts as
+    activity; a client's automatic request is the agent's.
     """
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        with analytics_context(request_analytics_context(request)):
+        context = request_analytics_context(request)
+        with analytics_context(context):
             user = get_current_user(request)
             user_id = user.user_id if user else None
             # An unconfigured provider resolves to None (SILENT strategy), so this one
@@ -163,8 +167,8 @@ def _sync_session_hint(
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     """Authenticate WorkOS session cookies; populate request.state.user.
 
-    Handles cookie refresh and an agent-token fallback for the chat-stream
-    endpoint. Unauthenticated requests still pass through — route handlers
+    Handles cookie refresh and an agent-token fallback for the voice worker's
+    conversation routes. Unauthenticated requests still pass through — route handlers
     are responsible for enforcing auth via :func:get_current_user.
     """
 
@@ -254,9 +258,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         self._exclude_prefix: list[str] = [
             p for p in self.exclude_paths if p not in self._exclude_exact
         ]
-        # Routes that also accept an "Authorization: Bearer <agent JWT>" in
-        # addition to a WorkOS session cookie.
-        self.agent_only_paths = ["/api/v1/chat-stream"]
         self.user_cache_expiry = 3600
         self.dev_bypass_email = (
             settings.DEV_AUTH_BYPASS_EMAIL if settings.deployment.dev_tools else None
@@ -282,7 +283,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             self._publish_user(request)
             return await call_next(request)
 
-        if self.dev_bypass_email:
+        # A bot names its user with its own token, so it authenticates exactly as in production.
+        if self.dev_bypass_email and BOT_API_KEY_HEADER not in request.headers:
             return await self._dispatch_dev_bypass(request, call_next)
 
         # Self-host mode: authenticate via the local session JWT instead of
@@ -330,7 +332,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     async def _authenticate_wos_session(self, request: Request, wos_session: str) -> None:
         """Resolve a WorkOS session cookie/bearer onto request.state."""
         try:
-            user_info, new_session = await self._authenticate_session(wos_session)
+            user_info, new_session = await authenticate_workos_session(
+                session_token=wos_session, workos_client=self.workos
+            )
         except Exception as e:
             log.error(
                 f"{LogTag.API} auth_middleware_error",
@@ -356,12 +360,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     async def _authenticate_agent_token(self, request: Request, *, auth_provider: str) -> None:
         """Resolve an agent bearer token onto request.state, if it carries one.
 
-        One implementation serves both dispatch branches: voice and desktop
-        clients present an AGENT_SECRET-signed JWT instead of a browser cookie,
-        but only on the agent-only paths. auth_provider names which session
+        One implementation serves both dispatch branches: the voice worker
+        presents an AGENT_SECRET-signed JWT instead of a browser cookie, honoured
+        only on AGENT_TOKEN_PATHS. auth_provider names which session
         system the request would otherwise have used.
         """
-        if request.state.authenticated or request.url.path not in self.agent_only_paths:
+        if request.state.authenticated or not AGENT_TOKEN_PATHS.fullmatch(request.url.path):
             return
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
@@ -476,23 +480,3 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         the task inherits the context as it stands at that moment.
         """
         set_authenticated_user(get_current_user(request))
-
-    async def _authenticate_session(
-        self, wos_session: str
-    ) -> tuple[AuthenticatedUser | None, str | None]:
-        """Authenticate a WorkOS sealed session and bump last_active_at.
-
-        Returns (user_info, new_session) where new_session is the
-        refreshed token when WorkOS rotates the cookie. Either field may be
-        None on failure; raises if WorkOS itself errors.
-        """
-        user_info, new_session = await authenticate_workos_session(
-            session_token=wos_session, workos_client=self.workos
-        )
-        if user_info is None:
-            return None, new_session
-        # Fire-and-forget: touch_last_active is debounced and never raises, so a
-        # failed last-active write can no longer turn a valid session into a
-        # failed authentication (the previous try/except returned None here).
-        await user_repository.touch_last_active(user_info.email or "")
-        return user_info, new_session

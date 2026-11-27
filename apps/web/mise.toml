@@ -16,7 +16,7 @@ run = "pnpm build"
 
 [tasks.deploy]
 description = "Build + deploy to Cloudflare Workers (bakes the production API URL)"
-# Task env beats apps/web/.env, so the production build points at the real API.
+# Task env beats .env.worktree and apps/web/.env, so the production build points at the real API.
 env = { NEXT_PUBLIC_API_BASE_URL = "https://api.heygaia.io/api/v1/" }
 run = "pnpm run deploy"
 

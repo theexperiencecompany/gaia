@@ -1,0 +1,70 @@
+{
+  "held": {
+    "status": "running",
+    "timeline": {
+      "steps": [
+        { "key": "tc-a", "data": { "id": "a", "output": "first" } },
+        { "key": "tc-b", "data": { "id": "b", "reasoning": "think" } }
+      ],
+      "progress": null
+    }
+  },
+  "refused": [
+    {
+      "name": "an index past the end",
+      "change": {
+        "op": "set",
+        "path": ["timeline", "steps", 5, "data"],
+        "value": 1
+      }
+    },
+    {
+      "name": "a set two past the end",
+      "change": { "op": "set", "path": ["timeline", "steps", 3], "value": 1 }
+    },
+    {
+      "name": "an append to a list",
+      "change": { "op": "append", "path": ["timeline", "steps"], "value": "x" }
+    },
+    {
+      "name": "a removal that is not the last element",
+      "change": {
+        "op": "remove",
+        "path": ["timeline", "steps", 0],
+        "value": null
+      }
+    },
+    {
+      "name": "a key into a list",
+      "change": {
+        "op": "set",
+        "path": ["timeline", "steps", "key", "x"],
+        "value": 1
+      }
+    },
+    {
+      "name": "a key set on a list",
+      "change": {
+        "op": "set",
+        "path": ["timeline", "steps", "key"],
+        "value": 1
+      }
+    },
+    {
+      "name": "an index into a record",
+      "change": { "op": "set", "path": ["timeline", 0, "x"], "value": 1 }
+    },
+    {
+      "name": "a change under a key it lacks",
+      "change": { "op": "set", "path": ["added_later", "inner"], "value": 1 }
+    },
+    {
+      "name": "an append to a key it lacks",
+      "change": { "op": "append", "path": ["added_later"], "value": "text" }
+    },
+    {
+      "name": "a removal of the whole value",
+      "change": { "op": "remove", "path": [], "value": null }
+    }
+  ]
+}

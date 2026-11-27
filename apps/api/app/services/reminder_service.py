@@ -4,8 +4,6 @@ from datetime import UTC, datetime
 import hashlib
 import json
 
-from arq.connections import RedisSettings
-
 from app.constants.reminders import (
     REMINDER_CREATE_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     REMINDER_CREATE_LOCK_LEASE_SECONDS,
@@ -33,6 +31,7 @@ from app.models.scheduler_models import (
     TaskRearm,
 )
 from app.services.analytics_service import capture
+from app.services.scheduler_metrics import ScheduledTaskKind
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
@@ -67,9 +66,7 @@ def _creation_lease(
 class ReminderScheduler(BaseSchedulerService):
     """Manage reminder scheduling and execution."""
 
-    def __init__(self, redis_settings: RedisSettings | None = None):
-        """Initialize the reminder scheduler."""
-        super().__init__(redis_settings)
+    kind = ScheduledTaskKind.REMINDER
 
     def get_job_name(self) -> str:
         """Get the ARQ job name for reminder processing."""

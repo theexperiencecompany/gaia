@@ -9,13 +9,19 @@ this repo is public and prod topology is not.
 
 Grafana provisioning is **baked into an image** (`grafana/Dockerfile`, in
 gaia-infra), not bind-mounted — so any change ships only via a rebuild of
-`ghcr.io/theexperiencecompany/gaia-grafana`.
+`ghcr.io/theexperiencecompany/gaia-grafana`. The `docker-grafana` job in
+`build.yml` copies `alert-rules.yaml` from this repo into the gaia-infra build
+context before building, and `deploy.sh verify-alert-rules` fails the deploy
+when the rules file in the running Grafana task carries different uids than this
+one. File provisioning never deletes a rule whose entry left the file: to remove
+a rule, delete its entry and add its uid under a top-level `deleteRules:` (`- orgId: 1`,
+`uid: <uid>`) for one release.
 
 ## Layout
 
 | Path | What it is | Where |
 |---|---|---|
-| `grafana/provisioning/alerting/alert-rules.yaml` | All alert rules | here |
+| `grafana/provisioning/alerting/alert-rules.yaml` | All alert rules (copied into the image build by `build.yml: docker-grafana`) | here |
 | `prometheus.yml` | Scrape jobs. Adding a target here is a prerequisite for alerting on it. | gaia-infra |
 | `blackbox.yml` | Blackbox exporter modules (`http_2xx`: 5s timeout, only 200 counts as success) | gaia-infra |
 | `grafana/provisioning/alerting/contact-points.yaml` | Slack + email receivers | gaia-infra |
@@ -34,6 +40,13 @@ because it reads as coverage. Run that exporter locally and scrape it with a
 local Prometheus (or read the exporter's docs for the exact version), then prove
 the rule's selector matches mechanically with pint's `promql/series` check
 before you open the PR — see "Linting rules with pint" below.
+
+For a metric GAIA's own code emits (the API, the worker, the voice agent, the
+bots), CI holds this for you: the `alert-rules` check fails when a rule queries
+a metric that is not registered and recorded by production code
+(`tools/lints/README.md` → alert-metric-contract). An exporter's metric has no
+such proof, so its exact name goes in that check's `EXPORTER_METRIC_ALLOWLIST`,
+a ratchet that grows only with the founder's approval.
 
 Watch for two specific traps that have already bitten us here:
 
@@ -67,8 +80,9 @@ threshold. `condition: C`.
     __dashboardUid__: gaia-overview
     __panelId__: "3"
   labels:
-    severity: critical             # critical | warning — drives routing
+    severity: critical             # critical | warning — drives Slack cadence, never email
     service: api                   # api | arq_worker | postgres | redis | ...
+    # notify: email                # opt-in, only when users are fully blocked or money is lost
 ```
 
 `title` is the Slack message title and the first thing on-call reads. Name the
@@ -124,6 +138,13 @@ target vanished); a counter going NoData usually just means no traffic. Setting
 `noDataState: Alerting` on the wrong rule produces false pages; setting it to
 `OK` on the wrong rule produces a silent blind spot.
 
+**A log rule** (`gaia-error-repeating` is the only one) queries Loki instead of
+Prometheus: `datasourceUid: loki` and `queryType: instant` on node `A`, the same
+`B` and `C`. It has no promtool test, because promtool cannot run LogQL;
+`extract_promql.py` validates its shape and names it as a log rule. Verify its
+query against Loki by hand before shipping it, and prefer a metric: a counter
+has a test, a log query does not.
+
 ### 5. Write the runbook
 
 Every rule links to `https://internal.lab.heygaia.io/production/runbooks/<uid>`,
@@ -144,7 +165,7 @@ series, honouring the real `for` duration. The extractor's `--test-dir` check
 rejects any rule without one, so a rule "that provisions cleanly and never
 fires" can no longer ship. Run the whole verification pipeline — extract +
 coverage check, pint offline, `promtool check rules`, `promtool test rules` —
-in one command, and it is the same pipeline CI runs:
+and the metric contract — in one command, and it is the same pipeline CI runs:
 
 ```bash
 tools/alert-rules/verify.sh
@@ -193,11 +214,12 @@ translation is thrown away after each run. The extractor aborts on any rule it
 cannot translate rather than skipping it, because a rule that silently drops out
 of linting is the failure mode all of this exists to prevent.
 
-The `alert-rules` CI lane (and `tools/alert-rules/verify.sh`) runs four stages:
+The `alert-rules` CI lane (and `tools/alert-rules/verify.sh`) runs five stages:
 extraction with a `--test-dir` coverage check, `pint --offline`, `promtool
-check rules`, and `promtool test rules` against the per-rule fixtures in
-`tools/alert-rules/tests/`. The last one is what proves a rule can actually
-fire; the fixtures are required for every rule.
+check rules`, `promtool test rules` against the per-rule fixtures in
+`tools/alert-rules/tests/`, and the metric contract. The fixtures prove a rule
+can fire and are required for every rule; the contract proves the metric it
+watches is one our code still records.
 
 ```bash
 uv run tools/alert-rules/extract_promql.py -o /tmp/gaia-rules.yaml
@@ -276,14 +298,19 @@ that in mind when adding a rule that will fire alongside existing ones.
 Routing and repeat cadence (see `notification-policies.yaml` — the first
 matching route wins):
 
-- DatasourceError / DatasourceNoData → `critical-slack-email`, grouped by
-  `alertname`, repeats 6h. One "monitoring is broken" thread, whatever the
-  severity of the affected rules.
-- `incident: availability` → `critical-slack-email`, grouped by `incident`,
-  group_wait 90s so one outage batches into a single thread, repeats 1h.
-- Remaining `severity: critical` → `critical-slack-email` (Slack **and** email),
-  repeats 12h.
-- Everything else (root) → `slack-alerts` (Slack only), repeats 24h.
+- `notify: email` on a rule → `urgent-email`: one email per incident, repeating
+  every 12h, with no resolve email, then on to the Slack routes below. **This is
+  the only route that emails.** A rule opts in with the label, never by its
+  severity, and only when users are fully blocked or money is lost (the public
+  API, the API's databases, the web app, chat turns, payments, sign-in). A new
+  rule goes to Slack only unless the founder asks for the email.
+- DatasourceError / DatasourceNoData → `slack-alerts`, grouped by `alertname`,
+  repeats 6h. One "monitoring is broken" thread, whatever the severity of the
+  affected rules.
+- `incident: availability` → `slack-alerts`, grouped by `incident`, group_wait
+  90s so one outage batches into a single thread, repeats 1h.
+- Remaining `severity: critical` → `slack-alerts`, repeats 12h.
+- Everything else (root) → `slack-alerts`, repeats 24h.
 
 The cadences are deliberately slow: warnings and criticals describe states that
 move over days, and the availability route's faster 1h repeat is the "act now"

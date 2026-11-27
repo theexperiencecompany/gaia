@@ -526,6 +526,24 @@
   .modal__dialog.gaia-modal-5xl {
     max-width: var(--gaia-modal-5xl);
   }
+  /* modalVariants({ surface: "bare" }) on Backdrop, Container and Dialog: a letter is its
+     own surface and runs its own enter and exit, so the dialog draws nothing and the overlay never animates. */
+  .modal__dialog.gaia-modal-bare {
+    width: auto;
+    max-width: none;
+    overflow: visible;
+    padding: 0;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+  }
+  .modal__container.gaia-modal-bare {
+    padding: 2rem 0.75rem;
+  }
+  .modal__backdrop.gaia-modal-bare,
+  .modal__container.gaia-modal-bare {
+    animation: none;
+  }
 
   .slider.gaia-slider-indigo .slider__fill {
     background-color: var(--gaia-slider-indigo-fill);
@@ -698,6 +716,14 @@
     border-radius: 0;
     background-color: transparent;
   }
+  /* tableVariants({ stickyFirstColumn: true }): the first column stays put over
+     the page background while a wide table scrolls under it. */
+  .table-root.gaia-table-sticky-first :is(.table__column, .table__cell):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background-color: var(--background);
+  }
 
   /* separatorVariants({ surface: "raised" }): v2's zinc-700/50 divider on a zinc-800 card. */
   .separator.gaia-separator-raised {
@@ -808,6 +834,15 @@
   .tooltip [data-slot="overlay-arrow"],
   .popover [data-slot="popover-overlay-arrow"] {
     stroke: transparent;
+  }
+  /* overlayVariants({ surface: "bare" }): an overlay whose content is its own
+     card, so it draws no body, padding or shadow of its own. */
+  .tooltip.gaia-overlay-bare,
+  .popover.gaia-overlay-bare {
+    --overlay: transparent;
+    background-color: transparent;
+    padding: 0;
+    box-shadow: none;
   }
   /* overlayVariants({ surface: accent | foreground | danger }): v2's coloured
      tooltips, body and arrow alike. */

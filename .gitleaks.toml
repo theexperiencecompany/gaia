@@ -53,8 +53,13 @@ paths = [
 # real key anywhere still fails (a squash merge gives every finding a new commit
 # id, so commit allowlists do not hold): the IndexNow tests' sequential key
 # (scripts/ci/tests/test_indexnow.py) and the WorkOS settings test's made-up
-# sk_test_ key, which the stripe-access-token rule reads as a Stripe key.
+# sk_test_ key, which the stripe-access-token rule reads as a Stripe key; and the
+# fake Fernet MCP_ENCRYPTION_KEY the sim stack (scripts/ci/sim-stack.sh) shares
+# with sandbox-env.sh, which settings validation needs to be a well-formed key.
 regexes = [
   '''^0123456789abcdef0123456789abcdef$''',
   '''sk_test_configured''',
+  '''^dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==$''',
+  # gitleaks also reports the key's base64-decoded text
+  '''^test_encryption_key_32_bytes$''',
 ]

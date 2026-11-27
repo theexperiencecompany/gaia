@@ -9,12 +9,13 @@ retry/skip logic.
 import asyncio
 import base64
 from collections.abc import Iterator
+import contextlib
 from contextlib import asynccontextmanager, contextmanager
 import copy
 from datetime import UTC, datetime, timedelta
 import json
 from typing import Any, ClassVar
-from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
+from unittest.mock import AsyncMock, MagicMock, call, create_autospec, patch
 from urllib.parse import parse_qs, urlparse
 
 from langchain_core.tools import BaseTool
@@ -38,9 +39,11 @@ import time_machine
 
 from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.integrations import IntegrationStatus, ToolsSetup
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE, MCP_UNLISTED_CONNECT_MAX
 from app.db.repositories.integrations import IntegrationsRepository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.device import Device
 from app.models.integration_models import (
@@ -48,7 +51,6 @@ from app.models.integration_models import (
     IntegrationToolsRecord,
     StoredIntegrationTool,
     UserIntegrationDocument,
-    UserIntegrationStatus,
 )
 from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
 from app.services.mcp import mcp_client, mcp_oauth, server_routing, tool_naming
@@ -60,11 +62,13 @@ from app.services.mcp.mcp_client import (
     _spawn_background,
     drop_local_sessions,
     get_mcp_client,
+    mcp_tool_owner,
 )
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_errors import (
     DCRNotSupportedError,
     MCPAuthorizationRequiredError,
+    MCPIntegrationNotFoundError,
     StepUpAuthRequiredError,
     _extract_response_signal,
     is_terminal_auth_failure,
@@ -200,9 +204,7 @@ def _custom_doc(name: str, description: str) -> dict[str, object]:
     ).model_dump()
 
 
-def _user_integration(
-    integration_id: str, status: UserIntegrationStatus
-) -> UserIntegrationDocument:
+def _user_integration(integration_id: str, status: IntegrationStatus) -> UserIntegrationDocument:
     return UserIntegrationDocument(user_id=USER_ID, integration_id=integration_id, status=status)
 
 
@@ -545,8 +547,10 @@ class TestMCPClientDoConnect:
     async def test_raises_when_integration_not_found(self, mock_resolver):
         mock_resolver.resolve = AsyncMock(return_value=None)
         client = MCPClient(user_id=USER_ID)
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(MCPIntegrationNotFoundError) as raised:
             await client._do_connect(INTEGRATION_ID)
+        assert raised.value.integration_id == INTEGRATION_ID
+        assert str(raised.value) == f"MCP integration {INTEGRATION_ID} not found"
 
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
     async def test_raises_when_no_mcp_config(self, mock_resolver):
@@ -554,8 +558,10 @@ class TestMCPClientDoConnect:
         resolved.mcp_config = None
         mock_resolver.resolve = AsyncMock(return_value=resolved)
         client = MCPClient(user_id=USER_ID)
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(MCPIntegrationNotFoundError) as raised:
             await client._do_connect(INTEGRATION_ID)
+        assert raised.value.integration_id == INTEGRATION_ID
+        assert str(raised.value) == f"MCP integration {INTEGRATION_ID} not found"
 
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
     @patch("app.services.mcp.mcp_client.BaseMCPClient")
@@ -829,6 +835,31 @@ class TestMCPClientDisconnect:
             client.token_store.delete_credentials = AsyncMock()
 
             await client.disconnect(INTEGRATION_ID)
+
+
+class TestTearingDownADeadIntegration:
+    @pytest.mark.parametrize(("given", "status"), [(None, "created"), ("expired", "expired")])
+    async def test_the_record_reads_never_set_up_unless_the_sign_in_expired(
+        self, given: IntegrationStatus | None, status: IntegrationStatus
+    ) -> None:
+        """A disconnect reads as never set up; a dead sign-in reads expired, so settings offers Reconnect."""
+        client = MCPClient(user_id=USER_ID)
+        with (
+            patch.object(client.token_store, "delete_credentials", AsyncMock()) as deleted,
+            patch.object(client.token_store, "delete_dcr_client", AsyncMock()),
+            patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ) as update_status,
+        ):
+            if given is None:
+                await client._reset_to_disconnected(INTEGRATION_ID)
+            else:
+                await client._reset_to_disconnected(INTEGRATION_ID, status=given)
+
+        update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, status)
+        deleted.assert_awaited_once_with(INTEGRATION_ID)
 
 
 class TestMCPClientGetTools:
@@ -1432,13 +1463,17 @@ class TestMCPTokenStoreStoreBearerToken:
         assert existing.status == MCPCredentialStatus.CONNECTED
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestMCPTokenStoreOAuthState:
     async def test_create_and_verify_state(self):
         store = MCPTokenStore(user_id=USER_ID)
         stored_data: dict[str, Any] = {}
 
-        async def fake_set_cache(key: str, data: Any, ttl: int = 0) -> None:
+        async def fake_set_cache(
+            key: str, data: Any, ttl: int = 0, model: type[object] | None = None
+        ) -> bool:
             stored_data[key] = data
+            return True
 
         async def fake_get_and_delete(key: str) -> Any:
             return stored_data.pop(key, None)
@@ -4834,13 +4869,21 @@ class TestRecordConnectionExact:
 
 
 class TestPersistAndIndexToolsExact:
+    @pytest.fixture(autouse=True)
+    def no_running_setup(self) -> Iterator[None]:
+        """Run each test as a connect outside OAuth: no tools setup is running, so storing only re-announces."""
+        with patch(
+            "app.services.mcp.mcp_client.publish_tools_setup", AsyncMock(return_value=False)
+        ):
+            yield
+
     def _resolved(self) -> MagicMock:
         resolved = MagicMock()
         resolved.source = "platform"
         resolved.custom_doc = None
         return resolved
 
-    async def test_stores_server_names_indexes_then_busts_the_user_caches_last(self):
+    async def test_stores_server_names_indexes_busts_the_user_caches_then_announces(self):
         """Mongo is shared by every user, so it holds the server's names, never one user's prefixed ones."""
         client = MCPClient(user_id=USER_ID)
         order: list[str] = []
@@ -4859,6 +4902,11 @@ class TestPersistAndIndexToolsExact:
                 new_callable=AsyncMock,
                 side_effect=lambda *_: order.append("invalidate"),
             ) as mock_invalidate,
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed",
+                new_callable=AsyncMock,
+                side_effect=lambda *_: order.append("announce"),
+            ) as mock_announce,
             patch("app.services.mcp.mcp_client.log"),
         ):
             await client._persist_and_index_tools(
@@ -4870,7 +4918,33 @@ class TestPersistAndIndexToolsExact:
         )
         client._index_platform_mcp_tools.assert_awaited_once_with(INTEGRATION_ID, [tool])
         mock_invalidate.assert_awaited_once_with(USER_ID)
-        assert order[-1] == "invalidate"
+        mock_announce.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
+        assert order[-2:] == ["invalidate", "announce"]
+
+    async def test_a_connect_after_oauth_ends_its_running_setup_instead_of_re_announcing(self):
+        client = MCPClient(user_id=USER_ID)
+        client._index_platform_mcp_tools = AsyncMock()
+        publish = AsyncMock(return_value=True)
+        with (
+            patch("app.services.mcp.mcp_client.publish_tools_setup", publish),
+            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
+            patch(
+                "app.services.mcp.mcp_client.invalidate_user_integration_caches",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed", new_callable=AsyncMock
+            ) as mock_announce,
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            await client._persist_and_index_tools(
+                self._resolved(), _make_mcp_config(), INTEGRATION_ID, []
+            )
+
+        publish.assert_awaited_once_with(
+            USER_ID, INTEGRATION_ID, ToolsSetup.READY, only_from=ToolsSetup.RUNNING
+        )
+        mock_announce.assert_not_awaited()
 
     async def test_custom_integration_routes_to_custom_handler_with_doc_fields(self):
         resolved = MagicMock()
@@ -4885,6 +4959,10 @@ class TestPersistAndIndexToolsExact:
             patch(
                 "app.services.mcp.mcp_client.invalidate_user_integration_caches",
                 new_callable=AsyncMock,
+            ),
+            # The announce publishes on the real websocket bus, bound to another test's loop.
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed", new_callable=AsyncMock
             ),
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
@@ -4926,6 +5004,9 @@ class TestPersistAndIndexToolsExact:
                 "app.services.mcp.mcp_client.invalidate_user_integration_caches",
                 new_callable=AsyncMock,
             ),
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed", new_callable=AsyncMock
+            ),
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
             await client._persist_and_index_tools(
@@ -4941,10 +5022,17 @@ class TestPersistAndIndexToolsExact:
 
 
 class TestHandleConnectFailureExact:
-    @pytest.mark.regression
-    async def test_missing_oauth_token_marks_the_integration_unconnected_without_deleting_credentials(
+    @pytest.fixture(autouse=True)
+    def _connected_before(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+        """Say the integration had connected, so a credential that stops working reads as expired."""
+        connected_before = AsyncMock(return_value=True)
+        monkeypatch.setattr(user_integration_repository, "has_connected_before", connected_before)
+        return connected_before
+
+    async def test_missing_oauth_token_marks_the_sign_in_expired_without_deleting_credentials(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        _connected_before: AsyncMock,
     ) -> None:
         client = MCPClient(user_id=USER_ID)
         monkeypatch.setattr(client.token_store, "get_bearer_token", AsyncMock(return_value=None))
@@ -4972,7 +5060,8 @@ class TestHandleConnectFailureExact:
             f"No valid token for {INTEGRATION_ID}. "
             "OAuth authorization required - user must complete the OAuth flow."
         )
-        update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
+        update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "expired")
+        _connected_before.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
         reset.assert_not_awaited()
         mock_log.warning.assert_any_call(
             f"{LogTag.MCP} OAuth authorization required for",
@@ -5052,16 +5141,38 @@ class TestHandleConnectFailureExact:
             error_type="RuntimeError",
         )
 
-    async def test_terminal_auth_failure_resets_to_disconnected(self):
+    async def test_terminal_auth_failure_expires_the_sign_in_and_says_so(self):
+        """A dead credential reaches every caller as a sign-in error, so the brief says reconnect."""
         client = MCPClient(user_id=USER_ID)
         client._reset_to_disconnected = AsyncMock()
         err = RuntimeError("invalid_grant: token revoked")
-        with patch("app.services.mcp.mcp_client.log") as mock_log:
-            result = await client._handle_connect_failure(err, INTEGRATION_ID, _make_mcp_config())
+        with (
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+            pytest.raises(MCPAuthorizationRequiredError) as raised,
+        ):
+            await client._handle_connect_failure(err, INTEGRATION_ID, _make_mcp_config())
 
-        assert result is None
-        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+        assert raised.value.__cause__ is err
+        assert str(raised.value) == str(MCPAuthorizationRequiredError(INTEGRATION_ID))
+        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID, status="expired")
         mock_log.warning.assert_not_called()
+
+    async def test_a_dead_credential_that_never_connected_reads_as_never_set_up(
+        self, _connected_before: AsyncMock
+    ):
+        _connected_before.return_value = False
+        client = MCPClient(user_id=USER_ID)
+        with (
+            patch.object(client, "_reset_to_disconnected", AsyncMock()) as reset,
+            patch("app.services.mcp.mcp_client.log"),
+            pytest.raises(MCPAuthorizationRequiredError),
+        ):
+            await client._handle_connect_failure(
+                RuntimeError("invalid_grant"), INTEGRATION_ID, _make_mcp_config()
+            )
+
+        _connected_before.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
+        reset.assert_awaited_once_with(INTEGRATION_ID, status="created")
 
     async def test_auth_error_refreshes_token_and_retries_connect_once(self):
         client = MCPClient(user_id=USER_ID)
@@ -5086,17 +5197,19 @@ class TestHandleConnectFailureExact:
         client._reset_to_disconnected = AsyncMock()
         err = RuntimeError("401 invalid_grant")
 
-        with patch("app.services.mcp.mcp_client.log") as mock_log:
-            result = await client._handle_connect_failure(err, INTEGRATION_ID, mcp_config)
+        with (
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+            pytest.raises(MCPAuthorizationRequiredError),
+        ):
+            await client._handle_connect_failure(err, INTEGRATION_ID, mcp_config)
 
-        assert result is None
         mock_log.warning.assert_any_call(
             f"{LogTag.MCP} Token refresh failed, user may need to re-authorize",
             integration_id=INTEGRATION_ID,
             error="401 invalid_grant",
             error_type="RuntimeError",
         )
-        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID, status="expired")
 
 
 class TestSmallOauthHelpersExact:
@@ -5171,6 +5284,13 @@ class TestSmallOauthHelpersExact:
 class TestConnectFailureClassification:
     """Both decisions string-match the provider's error text; a marker that stops matching turns a recoverable 401 into a dead integration, or vice versa."""
 
+    @pytest.fixture(autouse=True)
+    def _connected_before(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+        """Say the integration had connected, so a credential that stops working reads as expired."""
+        connected_before = AsyncMock(return_value=True)
+        monkeypatch.setattr(user_integration_repository, "has_connected_before", connected_before)
+        return connected_before
+
     @staticmethod
     def _client(
         monkeypatch: pytest.MonkeyPatch, *, refresh_succeeds: bool = False
@@ -5200,7 +5320,10 @@ class TestConnectFailureClassification:
         self, monkeypatch: pytest.MonkeyPatch, message: str
     ) -> None:
         client, try_refresh, _ = self._client(monkeypatch)
-        with patch("app.services.mcp.mcp_client.log"):
+        with (
+            patch("app.services.mcp.mcp_client.log"),
+            contextlib.suppress(MCPAuthorizationRequiredError),
+        ):
             await client._handle_connect_failure(
                 RuntimeError(message), INTEGRATION_ID, _make_mcp_config(requires_auth=True)
             )
@@ -5249,7 +5372,10 @@ class TestConnectFailureClassification:
 
         monkeypatch.setattr(client, "_do_connect", AsyncMock(side_effect=_reconnect_and_fail_again))
 
-        with patch("app.services.mcp.mcp_client.log"):
+        with (
+            patch("app.services.mcp.mcp_client.log"),
+            pytest.raises(MCPAuthorizationRequiredError),
+        ):
             await client._handle_connect_failure(
                 RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
             )
@@ -5266,9 +5392,10 @@ class TestConnectFailureClassification:
 
         with patch("app.services.mcp.mcp_client.log"):
             for _ in range(2):
-                await client._handle_connect_failure(
-                    RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
-                )
+                with pytest.raises(MCPAuthorizationRequiredError):
+                    await client._handle_connect_failure(
+                        RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
+                    )
 
         assert try_refresh.await_count == 2
 
@@ -5287,7 +5414,10 @@ class TestConnectFailureClassification:
             client, "_do_connect", AsyncMock(side_effect=_fail_a_different_integration)
         )
 
-        with patch("app.services.mcp.mcp_client.log"):
+        with (
+            patch("app.services.mcp.mcp_client.log"),
+            pytest.raises(MCPAuthorizationRequiredError),
+        ):
             await client._handle_connect_failure(
                 RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
             )
@@ -5308,12 +5438,15 @@ class TestConnectFailureClassification:
         without_refresh_reset.assert_not_awaited()
 
         after_refresh, after_refresh_try_refresh, after_refresh_reset = self._client(monkeypatch)
-        with patch("app.services.mcp.mcp_client.log") as mock_log:
+        with (
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+            pytest.raises(MCPAuthorizationRequiredError),
+        ):
             await after_refresh._handle_connect_failure(
                 err, INTEGRATION_ID, _make_mcp_config(requires_auth=True)
             )
         after_refresh_try_refresh.assert_awaited_once()
-        after_refresh_reset.assert_awaited_once_with(INTEGRATION_ID)
+        after_refresh_reset.assert_awaited_once_with(INTEGRATION_ID, status="expired")
         assert [
             c
             for c in mock_log.warning.call_args_list
@@ -5326,7 +5459,10 @@ class TestConnectFailureClassification:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         client, try_refresh, reset = self._client(monkeypatch)
-        with patch("app.services.mcp.mcp_client.log") as mock_log:
+        with (
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+            pytest.raises(MCPAuthorizationRequiredError),
+        ):
             await client._handle_connect_failure(
                 RuntimeError("401 Unauthorized from PostHog"),
                 INTEGRATION_ID,
@@ -5334,7 +5470,7 @@ class TestConnectFailureClassification:
             )
 
         try_refresh.assert_awaited_once()
-        reset.assert_awaited_once_with(INTEGRATION_ID)
+        reset.assert_awaited_once_with(INTEGRATION_ID, status="expired")
         mock_log.warning.assert_any_call(
             f"{LogTag.MCP} Resetting on message-only status signal after refresh",
             integration_id=INTEGRATION_ID,
@@ -7083,7 +7219,10 @@ class TestConnectAfterOauth:
         def _no_loop(coro: Any, label: str) -> None:
             coro.close()
 
-        with patch("app.services.mcp.mcp_client._spawn_background", side_effect=_no_loop):
+        with (
+            patch("app.services.mcp.mcp_client._spawn_background", side_effect=_no_loop),
+            patch("app.services.mcp.mcp_client.publish_tools_setup", AsyncMock(return_value=True)),
+        ):
             yield
 
     async def test_connects_the_authorized_integration(
@@ -7099,6 +7238,22 @@ class TestConnectAfterOauth:
 
         connect.assert_awaited_once_with(INTEGRATION_ID)
         reset_to_disconnected.assert_not_awaited()
+
+    async def test_tools_already_in_memory_end_the_running_setup_as_ready(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = MCPClient(user_id=USER_ID)
+        client._tools[INTEGRATION_ID] = []
+        monkeypatch.setattr(client, "connect", AsyncMock(return_value=[]))
+        publish = AsyncMock(return_value=True)
+        monkeypatch.setattr(mcp_client, "publish_tools_setup", publish)
+
+        await client.connect_after_oauth(INTEGRATION_ID)
+
+        assert publish.await_args_list == [
+            call(USER_ID, INTEGRATION_ID, ToolsSetup.RUNNING),
+            call(USER_ID, INTEGRATION_ID, ToolsSetup.READY, only_from=ToolsSetup.RUNNING),
+        ]
 
     @pytest.mark.parametrize(
         "error", [RuntimeError("401 Unauthorized"), RuntimeError("authentication rejected")]
@@ -7175,3 +7330,21 @@ class TestSpawnBackground:
 
         assert task.get_name() == "mcp:reconnect"
         assert seen["task"] == "mcp:reconnect"
+
+
+async def test_a_tool_owner_lookup_without_an_mcp_client_logs_the_tool_and_finds_none() -> None:
+    with (
+        patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            AsyncMock(side_effect=ConnectionError("pool down")),
+        ),
+        patch("app.services.mcp.mcp_client.log") as mock_log,
+    ):
+        assert await mcp_tool_owner(USER_ID, "posthog_search") is None
+
+    mock_log.warning.assert_called_once_with(
+        f"{LogTag.MCP} MCP client unavailable for a tool owner lookup",
+        user_id=USER_ID,
+        tool_name="posthog_search",
+        error_type="ConnectionError",
+    )

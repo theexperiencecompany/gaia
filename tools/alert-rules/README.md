@@ -21,6 +21,7 @@ The `verify.sh` pipeline, which is exactly what the `alert-rules` CI lane runs:
 2. `pint --offline` — PromQL validity and sanity (see the check split below).
 3. `promtool check rules` — validates the derived rule file (pint embeds Prometheus's own parser, so this is a deliberately redundant cross-check).
 4. `promtool test rules tools/alert-rules/tests/*.yaml` — **proves every rule fires** under its trigger fixture and **stays quiet** under its quiet fixture, honouring each rule's real `for` duration.
+5. `tools/lints/check_alert_metric_contract.py` — **proves every metric a rule queries exists in our code and is recorded by production code**, or is a listed exporter series. A fixture invents its series, so stages 1 to 4 pass on a rule whose metric nothing emits; this one does not. See `tools/lints/README.md` → alert-metric-contract.
 
 ## The test suite (`tools/alert-rules/tests/`)
 
@@ -90,6 +91,24 @@ literal annotations (`runbook_url`, `__dashboardUid__`, `__panelId__`) survive.
 The templated ones are Grafana's to validate; `infra/docker/observability/CLAUDE.md`
 covers how.
 
+## Log rules
+
+A rule whose query node reads Loki (`datasourceUid: loki`) is LogQL, which pint
+and promtool cannot read. The extractor does not translate it and does not drop
+it: it holds the rule to the same three-node shape, `for`, annotation-template
+and uid checks as every other rule, requires its `runbook_url` (no fixture
+asserts it), leaves it out of the derived Prometheus file, and prints
+
+```
+log rule, no promtool test: <uid> (shape, for, annotations and runbook checked; LogQL not syntax-checked)
+```
+
+A promtool test file named after a log rule fails the coverage check as an
+orphan. The LogQL itself is not syntax-checked offline, because no parser is
+available here: run the query against Loki once when writing the rule, with the
+threshold appended, and keep the instances it returns in the PR. The metric
+contract check reads the derived file, so it ignores log rules.
+
 ## Fail-loud
 
 A rule that quietly drops out of verification is the exact failure mode this
@@ -109,11 +128,13 @@ shape deliberately. Do not make it tolerant.
 
 ## What CI does and does not catch
 
-CI proves a rule is valid PromQL **and** that it fires and stays quiet against
-synthetic data (`promtool test rules`). It cannot prove the metric exists with
-matching labels, or that the threshold is reachable — those answers only live in
-Prometheus, so they need the online pint pass against a LOCAL Prometheus holding
-the relevant series before merging a new rule (no prod access needed):
+CI proves a rule is valid PromQL, that it fires and stays quiet against
+synthetic data (`promtool test rules`), and that a metric GAIA's own code owns
+is registered and recorded (the metric contract). It cannot prove an exporter's
+metric exists, that the label values a rule matches are the ones emitted, or
+that the threshold is reachable — those answers only live in Prometheus, so
+they need the online pint pass against a LOCAL Prometheus holding the relevant
+series before merging a new rule (no prod access needed):
 
 ```bash
 # The checks that find a metric nothing exports — needs a local Prometheus on

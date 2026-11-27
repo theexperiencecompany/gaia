@@ -6,11 +6,15 @@ from dataclasses import dataclass
 import posixpath
 from typing import Annotated
 
-from e2b import AsyncSandbox, NotFoundException
+from e2b import NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.coding._artifacts import publish_artifact_write
+from app.agents.tools.coding._artifacts import (
+    WrittenFile,
+    artifact_links_note,
+    publish_artifact_write,
+)
 from app.agents.tools.coding._context import (
     atomic_write,
     canonical_path,
@@ -22,7 +26,7 @@ from app.agents.workspace.paths import WORKSPACE_ROOT, MountRole
 from app.constants.account import account_mutation_refusal
 from app.decorators import with_doc, with_rate_limiting
 from app.services import gaia_task_files
-from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
+from app.services.sandbox import CodingSandbox, SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, fs_timer
 from app.services.storage.gaia_tasks_vfs import GAIA_TASKS_DIRNAME
 from app.templates.docstrings.coding_tools_docs import EDIT_TOOL
@@ -120,7 +124,7 @@ async def edit(
         return f"Error editing file: {e}"
 
 
-async def _read_editable_content(sbx: AsyncSandbox, abs_path: str) -> tuple[str | None, str]:
+async def _read_editable_content(sbx: CodingSandbox, abs_path: str) -> tuple[str | None, str]:
     """Read a workspace file's UTF-8 content. Returns ``(content, error)``.
 
     On success ``error`` is empty; on failure ``content`` is ``None`` and
@@ -225,7 +229,7 @@ async def _edit_task_file(
     )
 
 
-async def _do_edit(sbx: AsyncSandbox, target: EditTarget, patch: EditPatch) -> str:
+async def _do_edit(sbx: CodingSandbox, target: EditTarget, patch: EditPatch) -> str:
     content, error = await _read_editable_content(sbx, target.abs_path)
     if content is None:
         return error
@@ -240,14 +244,13 @@ async def _do_edit(sbx: AsyncSandbox, target: EditTarget, patch: EditPatch) -> s
 
     # Surface the edit live in chat when it lands under artifacts/ — same path
     # the write tool takes, so an edited artifact card updates during the turn.
-    await publish_artifact_write(
-        target.user_id,
-        target.role,
-        target.role_conv,
-        target.abs_path,
-        new_content,
+    placeholder = await publish_artifact_write(
+        WrittenFile(target.user_id, target.role, target.role_conv, target.abs_path),
         len(new_bytes),
         real_mtime,
     )
 
-    return _emit_edit(target.abs_path, len(new_bytes), replaced, target.session_id)
+    links = {posixpath.basename(target.abs_path): placeholder} if placeholder else {}
+    return _emit_edit(target.abs_path, len(new_bytes), replaced, target.session_id) + (
+        artifact_links_note(links)
+    )

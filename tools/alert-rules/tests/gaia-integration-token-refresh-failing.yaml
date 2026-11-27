@@ -1,0 +1,35 @@
+# gaia-integration-token-refresh-failing: fires when an account a minute goes dead; quiet when three accounts go dead in the hour.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-integration-token-refresh-failing fires when an account a minute goes dead
+    interval: 1m
+    input_series:
+      - series: 'gaia_integration_token_refresh_total{job="gaia-api",outcome="failed"}'
+        values: '0+1x90'
+      - series: 'gaia_integration_token_refresh_total{job="gaia-api",outcome="ok"}'
+        values: '0x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: gaia-integration-token-refresh-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                Users' connected apps are being disconnected in number, so their workflows, triggers and briefs lose that app until they reconnect. The API's composio_connection wide events carry the toolkit and status_reason: one toolkit dominating is that provider revoking our OAuth app or a changed scope; every toolkit is Composio.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-integration-token-refresh-failing
+
+  - name: gaia-integration-token-refresh-failing stays quiet when three accounts go dead in the hour
+    interval: 1m
+    input_series:
+      - series: 'gaia_integration_token_refresh_total{job="gaia-api",outcome="failed"}'
+        values: '0x30 3x60'
+      - series: 'gaia_integration_token_refresh_total{job="gaia-api",outcome="ok"}'
+        values: '0x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: gaia-integration-token-refresh-failing
+        exp_alerts: []

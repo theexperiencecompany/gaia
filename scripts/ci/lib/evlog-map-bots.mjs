@@ -98,13 +98,13 @@ const SHARED_ENTRY_POINTS = [
     kind: "lifecycle",
   },
   {
-    file: "libs/shared/ts/src/bots/adapter/base.ts",
+    file: "libs/shared/ts/src/bots/adapter/incoming-media.ts",
     name: "resolveIncomingMedia",
     kind: "dispatch",
   },
   {
-    file: "libs/shared/ts/src/bots/utils/streaming.ts",
-    name: "handleStreamingChat",
+    file: "libs/shared/ts/src/bots/adapter/base.ts",
+    name: "postAndFollow",
     kind: "dispatch",
   },
 ];
@@ -155,10 +155,11 @@ const PROCESS_EVENT_KINDS = new Map([
 
 /**
  * Routes with nothing to observe. `/health` answers a liveness probe with a
- * constant; a wide event per probe would be one event every few seconds per
- * bot, for a handler that cannot fail in an interesting way.
+ * constant and `/metrics` a Prometheus scrape; a wide event per probe would be
+ * one event every few seconds per bot. Matches `_INFRA_ROUTE_PATHS` in
+ * tools/evlog_map/scan.py.
  */
-const EXEMPT_ROUTES = new Set(["/health"]);
+const EXEMPT_ROUTES = new Set(["/health", "/metrics"]);
 
 // ---------------------------------------------------------------------------
 // Rules — evlog's ids and weights

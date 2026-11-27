@@ -36,6 +36,7 @@ from app.models.playbook_models import (
     ToolStep,
     is_time_slot,
     walk_ask_slots,
+    walk_time_slots,
 )
 from app.models.workflow_execution_models import carries_no_data
 from app.services.workflow.playbook.evaluator import (
@@ -125,17 +126,23 @@ def dump_playbook(body: PlaybookBody) -> str:
 
 
 async def validate_playbook(
-    body: PlaybookBody, sources: Sequence[RecordedResult] | None = None
+    body: PlaybookBody,
+    sources: Sequence[RecordedResult] | None = None,
+    *,
+    space: ToolSpace | None = None,
+    empty_is_data: bool = False,
 ) -> PlaybookValidation:
     """Check a parsed playbook against the tools it would actually reach.
 
-    Fatal always: unknown tool, bad arg, or forward step reference. sources[i]
-    is the recorded call the i-th step was built from; with them, an empty or
-    failed call and a bad $steps shape are refused.
+    Fatal always: unknown tool, bad arg, or forward step reference. space defaults to
+    the executor's registry. sources[i] is the recorded call the i-th step was built
+    from; with them, a failed call, a bad $steps shape and, unless empty_is_data (a
+    watch whose quiet day is a real answer), an empty call are refused.
     """
-    registry = await get_tool_registry()
-    walk = _Walk(sources=None if sources is None else iter(sources))
-    _check_steps(body.steps, "steps", ToolSpace(tools=registry.get_tool_dict()), walk)
+    if space is None:
+        space = ToolSpace(tools=(await get_tool_registry()).get_tool_dict())
+    walk = _Walk(sources=None if sources is None else iter(sources), empty_is_data=empty_is_data)
+    _check_steps(body.steps, "steps", space, walk)
     if walk.sources is not None and next(walk.sources, None) is not None:
         raise ValueError(f"{len(sources or ())} sources for {walk.taken} tool steps")
     return PlaybookValidation(valid=not walk.issues, issues=walk.issues)
@@ -156,6 +163,8 @@ class _Walk:
     #: the step. A ``$steps`` reference is checked against this, so it can only
     #: ever read a step that ran before it — the same rule the replay enforces.
     step_results: dict[str, StepResult] = field(default_factory=dict)
+    #: Whether a frozen call that returned nothing is still worth freezing.
+    empty_is_data: bool = False
 
 
 def _check_steps(
@@ -217,8 +226,10 @@ def _check_tool_step(
             continue
         # The evaluator's own scanner, so a placeholder embedded in text
         # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
+        example = recorded.args.get(key) if recorded is not None else None
+        for slot_path, slot in walk_time_slots(value):
+            _check_time_slot(slot, key, slot_path, example, where, walk)
         if is_time_slot(value):
-            _check_time_slot(value, key, where, recorded, walk)
             continue
         arg_tokens = list(placeholder_tokens(value))
         for token in arg_tokens:
@@ -268,13 +279,15 @@ def _check_source(
     call = _take_source(walk, path)
     if step.id:
         walk.step_results[step.id] = StepResult(value=call.result)
-    refusal = _result_refusal(tool_name, call, path)
+    refusal = _result_refusal(tool_name, call, path, empty_is_data=walk.empty_is_data)
     if refusal is not None:
         walk.issues.append(refusal)
     return call
 
 
-def _result_refusal(tool_name: str, call: RecordedResult, where: str) -> PlaybookIssue | None:
+def _result_refusal(
+    tool_name: str, call: RecordedResult, where: str, *, empty_is_data: bool
+) -> PlaybookIssue | None:
     """Why the call this step froze is not worth freezing, or None.
 
     The error envelope is tested first: a tool that reports its own failure
@@ -292,12 +305,12 @@ def _result_refusal(tool_name: str, call: RecordedResult, where: str) -> Playboo
     # Not a list length: a write tool answers with the record it just made, and
     # that record's own empty attributes are not the call returning nothing.
     # See carries_no_data.
-    if carries_no_data(call.result):
+    if not empty_is_data and carries_no_data(call.result):
         return PlaybookIssue(
             kind=PlaybookRefusal.EMPTY_RESULT,
             where=where,
             problem=f"{tool_name} returned no items in this run (args: "
-            f"{_rendered_args(call.args)}); freeze a call that produced data — widen the args "
+            f"{rendered_args(call.args)}); freeze a call that produced data — widen the args "
             "or decline the playbook",
         )
     return None
@@ -322,7 +335,8 @@ def _envelope_error(result: object) -> str:
     return "the call reported success: false"
 
 
-def _rendered_args(args: Mapping[str, object]) -> str:
+def rendered_args(args: Mapping[str, object]) -> str:
+    """Return a call's args as a message quotes them, cut short past their budget."""
     # ensure_ascii=False and ensure_ascii=None are byte-identical to json (it
     # only tests truthiness), so that mutation is provably equivalent and exempt.
     rendered = json.dumps(dict(args), default=str, ensure_ascii=False)  # pragma: no mutate
@@ -582,9 +596,18 @@ def _time_slot_hint(placeholder: str, layout: str) -> str:
 
 
 def _check_time_slot(
-    value: Mapping[str, object], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
+    value: Mapping[str, object],
+    key: str,
+    path: tuple[str | int, ...],
+    example: object,
+    where: str,
+    walk: _Walk,
 ) -> None:
-    """Check a $time slot is well-formed and its layout is the one the tool took."""
+    """Check a $time slot, at path inside its argument, is well-formed and in the tool's layout."""
+    for part in path:
+        where += f"[{part}]" if isinstance(part, int) else f".{part}"
+        key += f"[{part}]" if isinstance(part, int) else f".{part}"
+        example = _child(example, part)
     try:
         slot = TimeSlot.model_validate(value)
     except ValidationError as error:
@@ -596,7 +619,6 @@ def _check_time_slot(
             )
         )
         return
-    example = recorded.args.get(key) if recorded is not None else None
     layout = detect_layout(example)
     if layout is not None and slot_layout(example, slot.format) != slot.format:
         walk.issues.append(
@@ -610,6 +632,13 @@ def _check_time_slot(
                 ),
             )
         )
+
+
+def _child(value: object, part: str | int) -> object:
+    """Return the item one path step inside a recorded argument, or None when it has none."""
+    if isinstance(part, int):
+        return value[part] if isinstance(value, list) and part < len(value) else None
+    return value.get(part) if isinstance(value, Mapping) else None
 
 
 def _check_time_layout(

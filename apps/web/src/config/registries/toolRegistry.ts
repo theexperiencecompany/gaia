@@ -2,13 +2,16 @@ import type {
   MemoryDocument,
   MemoryEntry,
   MemoryEpisode,
+  ToolDataEntry,
 } from "@shared/api/generated";
 import type {
   ApprovalRequestData,
+  ArtifactCardData,
   RateLimitData as SharedRateLimitData,
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
 } from "@shared/chat";
+import type { BriefCard } from "@/features/briefing";
 import type {
   DeviceApprovalRequiredData,
   DeviceOnboardingRequiredData,
@@ -154,6 +157,7 @@ const TOOL_REGISTRY = {
   todo_data: null as unknown as TodoToolData,
   notification_data: null as unknown as { notifications: NotificationView[] },
   send_notification_data: null as unknown as SendNotificationData,
+  briefing_data: null as unknown as BriefCard,
   integration_connection_required: null as unknown as IntegrationConnectionData,
   connect_options: null as unknown as ConnectOptionsData,
   integration_list_data: null as unknown as IntegrationListStreamData,
@@ -169,6 +173,7 @@ const TOOL_REGISTRY = {
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as SharedRateLimitData,
   artifact_data: null as unknown as ArtifactData[],
+  artifact_done: null as unknown as ArtifactCardData,
   screenshot_data: null as unknown as ScreenshotData,
   browser_task_data: null as unknown as BrowserTaskSnapshot,
   memory_data: null as unknown as MemoryData,
@@ -178,40 +183,8 @@ const TOOL_REGISTRY = {
 export type ToolName = keyof typeof TOOL_REGISTRY;
 export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 
-// Tools Message Schema
-// Derived from TOOL_REGISTRY. Represents the tool-specific portion
-// of a message. Used by the base message registry.
-export interface TypedToolDataEntry {
+/** The API's tool-data entry with its tool name and data typed by TOOL_REGISTRY. */
+export type TypedToolDataEntry = Omit<ToolDataEntry, "tool_name" | "data"> & {
   tool_name: ToolName;
-  tool_category: string;
   data: ToolDataMap[ToolName];
-  timestamp: string | null;
-}
-
-// Optional wrapper for tool data in messages
-type ToolsMessageSchema = {
-  tool_data?: TypedToolDataEntry[] | null;
 };
-
-export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
-  tool_data: undefined,
-};
-export type ToolsMessageData = ToolsMessageSchema;
-
-// Tools that should merge multiple calls into one component
-// Add any tool name here - its data will be accumulated into an array
-export const GROUPED_TOOLS = new Set<ToolName>([
-  "approval_request",
-  "search_results",
-  "reddit_data",
-  "integration_connection_required",
-  "integration_list_data",
-  "device_approval_required",
-  "rate_limit_data",
-  "email_fetch_data",
-  "email_compose_data",
-  "email_sent_data",
-  "artifact_data",
-  "memory_data",
-  "browser_task_data",
-]);

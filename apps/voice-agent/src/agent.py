@@ -9,10 +9,12 @@ from typing import Any
 
 from livekit import rtc
 from livekit.agents import (
-    Agent,
     AgentFalseInterruptionEvent,
     AgentSession,
     AgentStateChangedEvent,
+    CloseEvent,
+    CloseReason,
+    ErrorEvent,
     JobContext,
     JobProcess,
     MetricsCollectedEvent,
@@ -35,15 +37,14 @@ from shared.py.voice import voice_agent_name
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
 from src.config import bootstrap_settings, get_settings
 from src.constants import (
-    BACKEND_REQUEST_TIMEOUT_S,
     MIN_ENDPOINTING_DELAY_S,
     PROMETHEUS_METRICS_PORT,
     PROMETHEUS_MULTIPROC_DIR,
     VOICE_SESSION_ANALYTICS,
-    VOICE_SYSTEM_PROMPT,
     LogTag,
 )
-from src.llm import CustomLLM
+from src.conversation import VoiceConversation, VoiceTurnAgent
+from src.metrics import VOICE_SESSION_TOTAL, VoiceSessionOutcome, create_voice_session_series
 from src.utils import extract_meta_data, ms_since, user_id_from_room
 
 # Absolute path so logs land in the right place regardless of CWD. A no-op
@@ -77,6 +78,7 @@ def prewarm(proc: JobProcess) -> None:
     # LiveKit forks a fresh interpreter per process, and a per-room client would
     # spawn a consumer thread per call. No-ops when the project token is absent.
     proc.userdata["analytics"] = PostHogAnalytics()
+    create_voice_session_series()
 
     t_vad = time.monotonic()
     proc.userdata["vad"] = silero.VAD.load()
@@ -202,6 +204,24 @@ def _register_session_logging(
             **identity,
         )
 
+    @session.on("error")
+    def _on_error(ev: ErrorEvent) -> None:
+        log.error(
+            f"{LogTag.AGENT} session error",
+            phase="session_error",
+            error_type=type(ev.error).__name__,
+            recoverable=getattr(ev.error, "recoverable", None),
+            **identity,
+        )
+
+    # close fires once per session, so it is the one place a session is counted.
+    @session.on("close")
+    def _on_close(ev: CloseEvent) -> None:
+        failed = ev.reason is CloseReason.ERROR
+        VOICE_SESSION_TOTAL.labels(
+            (VoiceSessionOutcome.ERROR if failed else VoiceSessionOutcome.OK).value
+        ).inc()
+
     usage_collector = metrics.UsageCollector()
 
     @session.on("metrics_collected")
@@ -267,7 +287,7 @@ def _register_session_logging(
 class _ParticipantCredentials:
     """Apply one session's agent token, backend URL, TTS voice and conversation id from metadata."""
 
-    custom_llm: CustomLLM
+    conversation: VoiceConversation
     tts: elevenlabs.TTS
     identity: dict[str, Any]
     trace_id: str
@@ -280,7 +300,7 @@ class _ParticipantCredentials:
         meta = extract_meta_data(md)
         token, conv_id, voice_id = meta.agent_token, meta.conversation_id, meta.voice_id
         if token:
-            self.custom_llm.set_agent_token(token)
+            self.conversation.agent_token = token
             log.debug(
                 f"{LogTag.AGENT} token set",
                 phase="token_set",
@@ -288,10 +308,10 @@ class _ParticipantCredentials:
                 origin=origin,
                 **self.identity,
             )
-        if meta.backend_url and meta.backend_url != self.custom_llm.base_url:
+        if meta.backend_url and meta.backend_url != self.conversation.base_url:
             # Multi-backend deployments (staging previews) run ONE shared agent;
             # each session's metadata names the API that minted it.
-            self.custom_llm.set_backend_url(meta.backend_url)
+            self.conversation.set_backend_url(meta.backend_url)
             log.info(
                 f"{LogTag.AGENT} backend url set",
                 phase="backend_url_set",
@@ -313,7 +333,7 @@ class _ParticipantCredentials:
                 **self.identity,
             )
         if conv_id:
-            await self.custom_llm.set_conversation_id(conv_id)
+            await self.conversation.set_conversation_id(conv_id)
             log.debug(
                 f"{LogTag.AGENT} conversation id set",
                 phase="conv_id_set",
@@ -409,12 +429,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
         room_start = time.monotonic()
 
-        custom_llm = CustomLLM(
-            base_url=settings.GAIA_BACKEND_URL,
-            room=ctx.room,
-            request_timeout_s=BACKEND_REQUEST_TIMEOUT_S,
-        )
-        custom_llm.user_id = user.value
+        conversation = VoiceConversation(settings.GAIA_BACKEND_URL, ctx.room, user.value)
 
         tts = elevenlabs.TTS(
             api_key=settings.ELEVENLABS_API_KEY,
@@ -422,25 +437,24 @@ async def entrypoint(ctx: JobContext) -> None:
             model=settings.ELEVENLABS_TTS_MODEL,
         )
 
+        # No LLM: each finished user turn is sent to the conversation, whose replies the
+        # conversation speaks as they arrive. A send is durable, so nothing is generated
+        # speculatively before the user's turn ends.
         session: AgentSession = AgentSession(
-            llm=custom_llm,
             stt=deepgram.STT(model="nova-3", language="multi"),
             tts=tts,
             turn_detection=MultilingualModel(),
             vad=ctx.proc.userdata["vad"],
             min_endpointing_delay=MIN_ENDPOINTING_DELAY_S,
-            preemptive_generation=True,
             use_tts_aligned_transcript=True,
         )
-
-        # The drain speaks each delegated executor answer as its own utterance
-        # once the comms turn has ended.
-        custom_llm.session = session
+        conversation.speaker = session
+        ctx.add_shutdown_callback(lambda _reason: conversation.aclose())
 
         _register_session_logging(ctx, session, identity, session_trace_id, analytics, user)
 
         credentials = _ParticipantCredentials(
-            custom_llm=custom_llm, tts=tts, identity=identity, trace_id=session_trace_id
+            conversation=conversation, tts=tts, identity=identity, trace_id=session_trace_id
         )
 
         @ctx.room.on("participant_connected")
@@ -463,7 +477,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # room event handlers are registered above, before any connection exists,
         # so no participant events are missed.
         await session.start(
-            agent=Agent(instructions=VOICE_SYSTEM_PROMPT),
+            agent=VoiceTurnAgent(conversation),
             room=ctx.room,
             room_input_options=RoomInputOptions(
                 noise_cancellation=noise_cancellation.BVC(),

@@ -1,0 +1,198 @@
+# gaia-chat-reply-critically-slow: fires when over 30% of answered turns had a reply over 5 minutes, with at least 5 such turns.
+# The le labels mirror _TURN_BUCKETS in apps/api/app/services/latency_metrics.py as
+# prometheus_client renders them; the rule reads le="300.0", so a renamed edge fails the
+# trigger test. Failed turns are not counted: gaia-chat-turns-failing owns them.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-chat-reply-critically-slow fires when every answered turn had a reply over 5 minutes
+    interval: 1m
+    input_series:
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.05"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.25"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="1.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="2.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="5.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="10.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="30.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="60.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="120.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="300.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="600.0"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="+Inf"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_count{job="gaia-api",source="web",status="ok"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: gaia-chat-reply-critically-slow
+        exp_alerts:
+          - exp_labels:
+              severity: 'critical'
+              service: 'api'
+            exp_annotations:
+              description: >-
+                Same signal as the warning-tier rule, at the point where replies hang rather than lag. Treat it as an incident: look for a wedged executor lock (executor_queue_wait_seconds climbing), a model provider outage (gaia-llm-provider-failing) or a runaway tool (tool_call_seconds).
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-chat-reply-critically-slow'
+              __dashboardUid__: 'gaia-latency'
+              __panelId__: '2'
+
+  - name: gaia-chat-reply-critically-slow stays quiet when every answered turn was faster
+    interval: 1m
+    input_series:
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.05"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.25"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="1.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="2.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="5.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="10.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="30.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="60.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="120.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="300.0"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="600.0"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="+Inf"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_count{job="gaia-api",source="web",status="ok"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: gaia-chat-reply-critically-slow
+        exp_alerts: []
+
+  - name: gaia-chat-reply-critically-slow stays quiet when four turns were that slow
+    interval: 1m
+    input_series:
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.05"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.25"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="1.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="2.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="5.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="10.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="30.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="60.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="120.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="300.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="600.0"}'
+        values: '0x20 4x40'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="+Inf"}'
+        values: '0x20 4x40'
+      - series: 'chat_e2e_full_seconds_count{job="gaia-api",source="web",status="ok"}'
+        values: '0x20 4x40'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: gaia-chat-reply-critically-slow
+        exp_alerts: []
+
+  - name: gaia-chat-reply-critically-slow stays quiet when only failed turns were that slow
+    interval: 1m
+    input_series:
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.05"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.25"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="1.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="2.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="5.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="10.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="30.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="60.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="120.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="300.0"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="600.0"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="ok",le="+Inf"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_count{job="gaia-api",source="web",status="ok"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="0.05"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="0.1"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="0.25"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="0.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="1.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="2.5"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="5.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="10.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="30.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="60.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="120.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="300.0"}'
+        values: '0x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="600.0"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_bucket{job="gaia-api",source="web",status="error",le="+Inf"}'
+        values: '0+1x60'
+      - series: 'chat_e2e_full_seconds_count{job="gaia-api",source="web",status="error"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: gaia-chat-reply-critically-slow
+        exp_alerts: []

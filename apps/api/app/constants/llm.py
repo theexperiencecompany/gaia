@@ -148,6 +148,11 @@ PROVIDER_NAME_METADATA_KEY = "provider_name"
 # The response_metadata flag on the reply the budget wall writes in place of a
 # model call; the accounting middleware meters nothing for a reply carrying it.
 BUDGET_STOP_METADATA_KEY = "budget_stop"
+# What a ledger run's last call is told: its tools are gone, so it answers from what it read.
+LEDGER_WRAPUP_NOTICE = (
+    "[System notice: this run has spent its budget and its tools are gone. Give your "
+    "final answer now, from what you have already read.]"
+)
 # The response_metadata keys marking a reply a fallback provider served, and the
 # model it served: read by the SSE downgrade notice and priced by accounting.
 FELL_BACK_METADATA_KEY = "gaia_fell_back"
@@ -177,9 +182,6 @@ WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
-# When this few supersteps remain before the limit, acall_model injects a
-# wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
-RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
 # starts showing the wrap-up notice, so the model answers before GraphRecursionError.
 # Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
@@ -265,6 +267,9 @@ LLM_LABEL_METADATA_KEY: Final = "llm_label"
 # Attempts for the model-level transient-error retry before the caller falls back
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
+
+# OpenAI's error type on every quota 429 (spend limit, unpaid plan); a short-lived 429 carries another.
+OPENAI_QUOTA_ERROR_TYPE: Final = "insufficient_quota"
 
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).
@@ -357,6 +362,12 @@ COMMS_MODEL_NAME = "gpt-5.6-luna"
 # Chat completions reject function tools with any other effort, and comms always binds tools.
 COMMS_REASONING_EFFORT = "none"
 OPENAI_MAX_OUTPUT_TOKENS = 16_000
+# create_artifact's own lane, direct to OpenAI: no reasoning keeps the first component on
+# screen in about 2.6 s (prototype bench, .agents/plans/artifacts-openui.md).
+ARTIFACT_MODEL_NAME: Final = "gpt-6-luna"
+ARTIFACT_REASONING_EFFORT: Final = "none"
+# OpenAI rejects a longer prompt_cache_key with a 400 (string_above_max_length).
+OPENAI_PROMPT_CACHE_KEY_MAX_CHARS = 64
 
 # Per-plan model policy (hardcoded; not user-selectable). Both tiers run the SAME
 # model today, so the pro monthly-budget degrade in resolve_lane has nothing to
@@ -540,7 +551,7 @@ LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
 # "Repeat" counts identical calls issued this run, consecutive or not, regardless of
 # success or failure: a successful call whose result won't change is as much a loop
-# as a failing one (the failure counters above only see status="error").
+# as a failing one (the failure counters above only see failed calls).
 LOOP_GUARD_WARN_REPEAT = 3
 LOOP_GUARD_STOP_REPEAT = 6
 # The middleware is a per-process singleton, so counters are keyed by the run

@@ -6,6 +6,7 @@ URL flows through the resolved provider config into init_openrouter_llm;
 production is protected by the boot guard, not by a silent client-side drop.
 """
 
+import re
 from types import SimpleNamespace
 
 from pydantic import SecretStr, ValidationError
@@ -14,8 +15,8 @@ import pytest
 from app.agents.llm import client, dev_lane
 from app.config.browser_host_settings import BrowserHostSettings
 from app.config.capability_requirements import required_keys
-from app.config.deployment import DeploymentKind, baseline_profile, deployment_profile
-from app.config.settings import Settings, get_settings
+from app.config.deployment import AuthMode, DeploymentKind, baseline_profile, deployment_profile
+from app.config.settings import MIN_LINK_CONTENT_SIGNING_KEY_LENGTH, Settings, get_settings
 from app.config.settings_validator import settings_validator
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.llm import (
@@ -30,8 +31,10 @@ from app.constants.llm import (
     DevLLMApi,
     LLMProviderName,
 )
+from app.constants.log_tags import LogTag
 from app.constants.providers import LLM_MODEL_PROFILES
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
+from shared.py.wide_events import log
 
 
 @pytest.fixture(autouse=True)
@@ -239,7 +242,21 @@ def _prod_settings(**overrides):
     for name in required_keys(baseline_profile(DeploymentKind.PRODUCTION)):
         dummies[name] = 0 if Settings.model_fields[name].annotation == int | None else "x"
     dummies.update(overrides)
-    return Settings(_env_file=None, **dummies)
+    return Settings(**dummies)
+
+
+def test_the_web_server_is_reached_at_the_frontend_url_by_default():
+    settings_obj = _prod_settings(FRONTEND_URL="https://gaia.example.com/")
+
+    assert settings_obj.WEB_INTERNAL_URL == "https://gaia.example.com"
+
+
+def test_an_explicit_web_internal_url_is_kept_without_its_trailing_slash():
+    settings_obj = _prod_settings(
+        FRONTEND_URL="https://gaia.example.com", WEB_INTERNAL_URL="http://gaia-web:3000/"
+    )
+
+    assert settings_obj.WEB_INTERNAL_URL == "http://gaia-web:3000"
 
 
 def test_production_rejects_http_dodo_base_url():
@@ -273,6 +290,75 @@ def test_development_allows_http_dodo_base_url(monkeypatch):
     settings_obj = get_settings()
 
     assert settings_obj.DODO_PAYMENTS_BASE_URL == "http://localhost:8899"
+
+
+def test_development_short_links_point_at_the_configured_web_app(monkeypatch):
+    """A worktree's web app runs on its own port, so dev links follow FRONTEND_URL."""
+    monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:3412/")
+
+    assert Settings(ENV=DeploymentKind.DEVELOPMENT).SHORTLINK_BASE_URL == "http://localhost:3412/l"
+
+
+def test_an_explicit_development_short_link_base_wins(monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:3412")
+    monkeypatch.setenv("SHORTLINK_BASE_URL", "https://links.example.test/")
+
+    assert (
+        Settings(ENV=DeploymentKind.DEVELOPMENT).SHORTLINK_BASE_URL == "https://links.example.test"
+    )
+
+
+def test_production_short_links_use_the_heygaia_link_domain(monkeypatch):
+    monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
+
+    assert _prod_settings().SHORTLINK_BASE_URL == "https://heygaia.link"
+
+
+def test_selfhost_short_links_live_on_the_instances_own_domain(monkeypatch) -> None:
+    """heygaia.link resolves on GAIA Cloud only, so a self-host link there would 404."""
+    monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
+
+    settings_obj = _selfhost_settings("local", FRONTEND_URL="https://gaia.example.org/")
+
+    assert settings_obj.SHORTLINK_BASE_URL == "https://gaia.example.org/l"
+
+
+def test_an_explicit_selfhost_short_link_base_wins(monkeypatch) -> None:
+    monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
+
+    settings_obj = _selfhost_settings(
+        "local",
+        FRONTEND_URL="https://gaia.example.org",
+        SHORTLINK_BASE_URL="https://go.example.org",
+    )
+
+    assert settings_obj.SHORTLINK_BASE_URL == "https://go.example.org"
+
+
+def test_production_sends_brief_email_from_the_heygaia_domain(monkeypatch) -> None:
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+
+    assert _prod_settings().EMAIL_FROM == "brief@heygaia.io"
+
+
+def test_selfhost_sends_brief_email_from_the_instances_own_domain(monkeypatch) -> None:
+    """Only GAIA Cloud's Resend account verifies heygaia.io, so a self-host sending from it is refused."""
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+
+    settings_obj = _selfhost_settings("local", FRONTEND_URL="https://gaia.example.org:8443/")
+
+    assert settings_obj.EMAIL_FROM == "brief@gaia.example.org"
+
+
+def test_an_explicit_selfhost_sender_wins(monkeypatch) -> None:
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+
+    settings_obj = _selfhost_settings(
+        "local", FRONTEND_URL="https://gaia.example.org", EMAIL_FROM="GAIA <gaia@mail.example.org>"
+    )
+
+    assert settings_obj.EMAIL_FROM == "GAIA <gaia@mail.example.org>"
 
 
 def test_short_sandbox_execute_secret_refuses_to_boot():
@@ -414,18 +500,13 @@ def test_the_custom_endpoint_defaults_to_chat_completions(monkeypatch):
     """Nous-style endpoints predate the setting and speak chat completions only."""
     monkeypatch.delenv("DEV_LLM_API", raising=False)
 
-    assert (
-        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API
-        is DevLLMApi.CHAT_COMPLETIONS
-    )
+    assert Settings(ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API is DevLLMApi.CHAT_COMPLETIONS
 
 
 def test_the_custom_endpoint_can_be_switched_to_the_responses_api(monkeypatch):
     monkeypatch.setenv("DEV_LLM_API", "responses")
 
-    assert (
-        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API is DevLLMApi.RESPONSES
-    )
+    assert Settings(ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API is DevLLMApi.RESPONSES
 
 
 def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
@@ -433,7 +514,7 @@ def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
     monkeypatch.setenv("DEV_LLM_API", "response")
 
     with pytest.raises(ValidationError, match="DEV_LLM_API"):
-        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT)
+        Settings(ENV=DeploymentKind.DEVELOPMENT)
 
 
 def _clear_required_env(monkeypatch: pytest.MonkeyPatch, kind: DeploymentKind) -> None:
@@ -449,8 +530,7 @@ def test_production_boots_with_only_the_datastores_set(
     _clear_required_env(monkeypatch, DeploymentKind.PRODUCTION)
 
     settings_obj = Settings(
-        _env_file=None,
-        ENV="production",
+        ENV=DeploymentKind.PRODUCTION,
         AUTH_MODE="workos",
         MONGO_DB="mongodb://mongo:27017",
         REDIS_URL="redis://redis:6379",
@@ -467,8 +547,7 @@ def test_selfhost_refuses_to_boot_without_its_infrastructure(
 
     with pytest.raises(RuntimeError, match="POSTGRES_URL"):
         Settings(
-            _env_file=None,
-            ENV="selfhost",
+            ENV=DeploymentKind.SELFHOST,
             MONGO_DB="mongodb://mongo:27017",
             REDIS_URL="redis://redis:6379",
         )
@@ -485,11 +564,11 @@ def test_an_env_with_no_deployment_kind_is_refused_by_name_at_boot() -> None:
     assert "'production', 'development' or 'selfhost'" in error["msg"]
 
 
-def _selfhost_settings(auth_mode: str, **overrides: object) -> Settings:
+def _selfhost_settings(auth_mode: AuthMode, **overrides: object) -> Settings:
     """Build self-host settings with every key the profile requires stubbed."""
     profile = deployment_profile(
         DeploymentKind.SELFHOST,
-        "workos" if auth_mode == "workos" else "local",
+        auth_mode,
         unlimited_usage=False,
         local_code_sandbox=False,
         blob_store=None,
@@ -498,8 +577,8 @@ def _selfhost_settings(auth_mode: str, **overrides: object) -> Settings:
         name: 0 if Settings.model_fields[name].annotation == int | None else "x"
         for name in required_keys(profile)
     }
-    return Settings(
-        _env_file=None, ENV=DeploymentKind.SELFHOST, AUTH_MODE=auth_mode, **{**dummies, **overrides}
+    return Settings.model_validate(
+        {**dummies, **overrides, "ENV": DeploymentKind.SELFHOST, "AUTH_MODE": auth_mode}
     )
 
 
@@ -541,7 +620,12 @@ def test_only_development_routes_slack_through_the_localhost_proxy(
     if env is DeploymentKind.SELFHOST:
         settings_obj = _selfhost_settings("local", HOST="https://gaia.example.com")
     else:
-        settings_obj = Settings(_env_file=None, ENV=env, HOST="https://gaia.example.com")
+        settings_obj = Settings(
+            ENV=env,
+            HOST="https://gaia.example.com",
+            MONGO_DB="mongodb://mongo:27017",
+            REDIS_URL="redis://redis:6379",
+        )
 
     assert redirect == settings_obj.SLACK_OAUTH_REDIRECT_URI
 
@@ -558,3 +642,89 @@ def test_boot_judges_the_configuration_against_its_own_deployment(monkeypatch) -
     assert "MongoDB Connection" not in {
         group.name for group, _ in settings_validator.missing_groups
     }
+
+
+_ORIGIN = "https://{content_id}.u.heygaia.test"
+
+
+def test_a_content_origin_with_its_signing_key_is_kept() -> None:
+    key = "k" * 32
+    settings_obj = _prod_settings(LINK_CONTENT_URL_TEMPLATE=_ORIGIN, LINK_CONTENT_SIGNING_KEY=key)
+    assert settings_obj.LINK_CONTENT_URL_TEMPLATE == _ORIGIN
+
+
+@pytest.mark.parametrize(
+    ("template", "key"),
+    [(_ORIGIN, None), (_ORIGIN, "short"), ("https://u.heygaia.test", "k" * 32)],
+)
+def test_gaia_cloud_turns_off_a_content_origin_it_cannot_use(
+    template: str, key: str | None
+) -> None:
+    """One feature's misconfig must not take the API down; files fall back to text and downloads."""
+    settings_obj = _prod_settings(LINK_CONTENT_URL_TEMPLATE=template, LINK_CONTENT_SIGNING_KEY=key)
+    assert settings_obj.LINK_CONTENT_URL_TEMPLATE is None
+
+
+_NO_PLACEHOLDER = "LINK_CONTENT_URL_TEMPLATE must contain {content_id}"
+_COOKIE_HOST = "LINK_CONTENT_URL_TEMPLATE must name a host other than HOST and FRONTEND_URL"
+_NO_KEY = (
+    "LINK_CONTENT_URL_TEMPLATE is set but LINK_CONTENT_SIGNING_KEY is missing or "
+    f"shorter than {MIN_LINK_CONTENT_SIGNING_KEY_LENGTH} characters"
+)
+_UNUSABLE_ORIGINS = [
+    ("https://u.heygaia.test", "k" * 32, _NO_PLACEHOLDER),
+    ("https://heygaia.io/u/{content_id}", "k" * 32, _COOKIE_HOST),
+    (_ORIGIN, None, _NO_KEY),
+]
+
+
+@pytest.mark.parametrize(("template", "key", "problem"), _UNUSABLE_ORIGINS)
+def test_a_selfhost_refuses_to_boot_naming_what_is_wrong_with_its_content_origin(
+    template: str, key: str | None, problem: str
+) -> None:
+    with pytest.raises(RuntimeError, match=f"^{re.escape(problem)}$"):
+        _selfhost_settings(
+            "local",
+            LINK_CONTENT_URL_TEMPLATE=template,
+            LINK_CONTENT_SIGNING_KEY=key,
+            FRONTEND_URL="https://heygaia.io",
+        )
+
+
+@pytest.mark.parametrize(("template", "key", "problem"), _UNUSABLE_ORIGINS)
+def test_gaia_cloud_logs_why_it_turned_off_its_content_origin(
+    template: str, key: str | None, problem: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    errors: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(log, "error", lambda msg, **kw: errors.append((msg, kw)))
+
+    _prod_settings(
+        LINK_CONTENT_URL_TEMPLATE=template,
+        LINK_CONTENT_SIGNING_KEY=key,
+        FRONTEND_URL="https://heygaia.io",
+    )
+
+    assert (f"{LogTag.STARTUP} link content origin turned off", {"problem": problem}) in errors
+
+
+def test_a_blank_content_origin_reads_as_unset() -> None:
+    settings_obj = _prod_settings(LINK_CONTENT_URL_TEMPLATE="", LINK_CONTENT_SIGNING_KEY="")
+    assert settings_obj.LINK_CONTENT_URL_TEMPLATE is None
+    assert settings_obj.LINK_CONTENT_SIGNING_KEY is None
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "https://api.heygaia.io/api/v1/usercontent/{content_id}",
+        "https://heygaia.io/u/{content_id}",
+    ],
+)
+def test_a_content_origin_on_a_cookie_host_is_refused(template: str) -> None:
+    settings_obj = _prod_settings(
+        LINK_CONTENT_URL_TEMPLATE=template,
+        LINK_CONTENT_SIGNING_KEY="k" * 32,
+        HOST="https://api.heygaia.io",
+        FRONTEND_URL="https://heygaia.io",
+    )
+    assert settings_obj.LINK_CONTENT_URL_TEMPLATE is None

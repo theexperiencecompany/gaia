@@ -37,7 +37,7 @@ export type IntegrationCategory =
 /**
  * Connection state of one integration for one user. `expired` means it was
  * connected and the upstream grant died — the UI must offer Reconnect, not a
- * first-time Connect. Synced with the backend `UserIntegrationStatus` plus the
+ * first-time Connect. Synced with the backend `IntegrationStatus` plus the
  * derived `not_connected` (no record at all).
  */
 export type IntegrationStatusValue =
@@ -72,7 +72,7 @@ export interface IntegrationConnectionData {
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";
 
-export type IntegrationManagedBy = "composio" | "mcp" | "internal" | "self";
+export type IntegrationManagedBy = "composio" | "mcp" | "internal";
 
 export type IntegrationCreator = CommunityIntegrationCreator;
 

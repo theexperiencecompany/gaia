@@ -139,7 +139,7 @@ def test_a_handed_over_first_attempt_is_rerun_in_full(github: FakeGitHub) -> Non
 
 
 def test_a_lane_queued_on_github_hosted_is_not_stranded(github: FakeGitHub) -> None:
-    sweep(github, Scenario(jobs=[queued_job("lint", ["ubuntu-latest"], 900)]))
+    sweep(github, Scenario(jobs=[queued_job("lint", ["ubuntu-24.04"], 900)]))
 
     assert github.posts() == []
 

@@ -6,7 +6,13 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.constants.briefing import BriefingKind, EditionFamily
+from app.constants.notifications import NOTIFICATION_RETENTION, NotificationKind
+from app.db.mongodb import indexes
 from app.db.repositories.notifications import NotificationRepository
+from app.models.brief_document_models import BriefingModel, EditionRender
+from app.models.brief_view_models import BriefEditionNotification, BriefNoteNotification
+from app.models.notification.details_models import NotificationDetails
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationContent,
@@ -16,6 +22,9 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationStatus,
 )
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.view import briefing_card
+from tests.briefing_factories import make_briefing_payload
 
 
 def _record(**overrides: object) -> NotificationRecord:
@@ -24,13 +33,34 @@ def _record(**overrides: object) -> NotificationRecord:
         "user_id": "u1",
         "created_at": datetime.now(UTC),
         "original_request": NotificationRequest(
+            id="n1",
             user_id="u1",
             source=NotificationSourceEnum.AI_AGENT,
             content=NotificationContent(title="t", body="b"),
         ),
     }
     data.update(overrides)
-    return NotificationRecord(**data)
+    return NotificationRecord.model_validate(data)
+
+
+async def _edition_details(family: EditionFamily) -> BriefEditionNotification:
+    weekly = family is EditionFamily.WEEKLY
+    brief = BriefingModel(
+        id="brief-1",
+        user_id="u1",
+        date="2026-11-08",
+        kind=BriefingKind.WEEKLY if weekly else BriefingKind.DAILY,
+        edition=EditionRender(key="k1"),
+        payload=make_briefing_payload(
+            template_family=family,
+            stamp_city="bogota" if family is EditionFamily.POSTAL else None,
+        ),
+    )
+    return BriefEditionNotification(
+        kind=NotificationKind.BRIEFING_WEEKLY if weekly else NotificationKind.BRIEFING_DAILY,
+        brief_url="https://heygaia.link/b1",
+        card=await briefing_card(brief),
+    )
 
 
 @pytest.fixture
@@ -49,6 +79,33 @@ class TestNotificationRepository:
         assert fetched is not None and fetched.id == "uuid-1"
         assert await repo.get_for_user("uuid-1", "attacker") is None  # user isolation
         assert (await repo.get_for_user("uuid-1", None)).id == "uuid-1"
+
+    async def test_insert_if_absent_stores_a_notification_once(self, repo, raw_collection):
+        assert await repo.insert_if_absent(_record(id="once")) is True
+        assert (
+            await repo.insert_if_absent(_record(id="once", status=NotificationStatus.READ)) is False
+        )
+        (stored,) = await raw_collection.find({"id": "once"}).to_list(None)
+        assert stored["status"] == NotificationStatus.PENDING.value
+        # Only the record's own set fields are written: no unset field lands as null.
+        assert set(stored) - {"_id"} <= set(NotificationRecord.model_fields)
+        assert None not in stored.values()
+
+    async def test_a_channel_is_claimed_once_and_its_outcome_replaces_the_claim(self, repo):
+        await repo.insert_if_absent(_record(id="claimed"))
+        assert await repo.claim_channel("claimed", "telegram") is True
+        assert await repo.claim_channel("claimed", "telegram") is False
+        assert await repo.claim_channel("claimed", "push") is True
+        await repo.record_channel(
+            "claimed",
+            ChannelDeliveryStatus(channel_type="telegram", status=NotificationStatus.DELIVERED),
+        )
+        stored = await repo.get_for_user("claimed", "u1")
+        assert stored is not None
+        assert [(c.channel_type, c.status) for c in stored.channels] == [
+            ("telegram", NotificationStatus.DELIVERED),
+            ("push", NotificationStatus.PENDING),
+        ]
 
     async def test_update_fields_applies_free_form_patch(self, repo):
         await repo.create(_record(id="uuid-2"))
@@ -151,3 +208,49 @@ class TestMarkAllReadForUser:
         email_notification = await repo.get_for_user("email", "channels")
         assert email_notification is not None
         assert email_notification.status == NotificationStatus.DELIVERED
+
+
+class TestBriefNotificationsRoundTrip:
+    """Regression: every brief but Air Mail's failed to save, its card's None fields dropped then required."""
+
+    @pytest.mark.parametrize("family", [*DAILY_FAMILY_WEIGHTS, EditionFamily.WEEKLY])
+    async def test_an_edition_notification_reads_back_as_saved(self, repo, family):
+        await self._assert_round_trips(repo, await _edition_details(family))
+
+    async def test_a_quiet_note_notification_reads_back_as_saved(self, repo):
+        await self._assert_round_trips(
+            repo, BriefNoteNotification(kind=NotificationKind.BRIEFING_NOTE)
+        )
+
+    @pytest.mark.parametrize("family", [*DAILY_FAMILY_WEIGHTS, EditionFamily.WEEKLY])
+    async def test_an_edition_notification_stored_once_reads_back_as_saved(self, repo, family):
+        """Regression: notify stores through insert_if_absent, whose own dump dropped the card's None fields."""
+        details = await _edition_details(family)
+        request = _record().original_request.model_copy(update={"details": details})
+        assert await repo.insert_if_absent(_record(id="brief-once", original_request=request))
+
+        fetched = await repo.get_for_user("brief-once", "u1")
+
+        assert fetched is not None and fetched.original_request.details == details
+
+    async def _assert_round_trips(self, repo, details: NotificationDetails) -> None:
+        request = _record().original_request.model_copy(update={"details": details})
+        await repo.create(_record(id="brief-note", original_request=request))
+
+        fetched = await repo.get_for_user("brief-note", "u1")
+
+        assert fetched is not None and fetched.original_request.details == details
+
+
+async def test_a_notification_expires_90_days_after_it_was_created(
+    raw_collection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(indexes, "get_async_collection", lambda name: raw_collection)
+
+    await indexes.create_notification_indexes()
+
+    ttl = {
+        tuple(index["key"]): index.get("expireAfterSeconds")
+        async for index in raw_collection.list_indexes()
+    }
+    assert ttl[("created_at",)] == NOTIFICATION_RETENTION.total_seconds() == 90 * 24 * 60 * 60

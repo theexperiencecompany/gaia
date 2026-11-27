@@ -19,3 +19,15 @@ export const setupKeys = {
   composioToolkit: (slug: string | null) =>
     ["setup", "composio", "toolkits", "detail", slug] as const,
 };
+
+/** Canonical React Query keys for the user's own notification preferences and linked accounts. */
+export const preferenceKeys = {
+  /** GET /platform-links. */
+  platformLinks: ["user", "platform-links"] as const,
+  /** GET /notifications/preferences/channels. */
+  channels: ["user", "notification-channels"] as const,
+  /** GET /user/chat-channel-priority. */
+  chatChannelPriority: ["user", "chat-channel-priority"] as const,
+  /** GET /user/quiet-hours. */
+  quietHours: ["user", "quiet-hours"] as const,
+};

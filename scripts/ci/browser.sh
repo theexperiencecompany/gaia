@@ -6,16 +6,23 @@
 #                   binary the obscura-bin build stage exported to
 #                   $RUNNER_TEMP/obscura, install the Caddy self-host ships (the
 #                   proxy a user's live view goes through) and the Fortress build
-#                   the gaia image pins (its opt-in Chromium, which only Fortress's
+#                   the gaia-fortress image pins (its opt-in Chromium, which only Fortress's
 #                   own identity test launches), and publish CHROMIUM_BIN /
 #                   OBSCURA_BIN / CADDY_BIN / FORTRESS_BIN to $GITHUB_ENV. Any one
-#                   missing fails: the browser slice never skips a scenario.
+#                   missing fails: the browser slice never skips a scenario. A
+#                   pinned release is fetched up to DOWNLOAD_ATTEMPTS times until
+#                   it matches its digest, and never used unverified.
 #   chrome-host     Start a Chrome browser host (python -m app.browser_host) in the
 #                   background on BROWSER_HOST_PORT with a fresh host key, publish
 #                   the key and a login-encryption key to $GITHUB_ENV, and wait for
 #                   its healthz. Used by the on-demand browser eval.
 #   eval [ids]      Run the browser quality eval suite, all cases or the
 #                   comma-separated ids given.
+#   install-playwright
+#                   Install Playwright's Chromium and its apt dependencies, up to
+#                   INSTALL_ATTEMPTS times, INSTALL_RETRY_SECONDS apart: an Ubuntu
+#                   mirror that 404s a package its index still names clears itself
+#                   within seconds. The last attempt's error fails the lane.
 #
 # Env contract:
 #   locate        RUNNER_TEMP, GITHUB_ENV; CADDY_RELEASE_URL / CADDY_SHA512 and
@@ -29,19 +36,25 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/pinned-release.sh
+source "$(dirname "$0")/lib/pinned-release.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # How long a host gets to launch its engine and answer healthz.
 HOST_READY_SECONDS=120
+# The Ubuntu mirror 404ed a package its own index named (run 139875169011, web-e2e-screen 2/2).
+INSTALL_ATTEMPTS=3
+INSTALL_RETRY_SECONDS="${INSTALL_RETRY_SECONDS:-5}"
 # The Caddy self-host runs (caddy:2.10.2-alpine in docker-compose.selfhost.yml),
 # and the sha512 of its linux_amd64 release from caddy_2.10.2_checksums.txt.
 CADDY_VERSION=2.10.2
 CADDY_RELEASE_URL="${CADDY_RELEASE_URL:-https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz}"
 CADDY_SHA512="${CADDY_SHA512:-747df7ee74de188485157a383633a1a963fd9233b71fbb4a69ddcbcc589ce4e2cc82dacf5dbbe136cb51d17e14c59daeb5d9bc92487610b0f3b93680b2646546}"
 
-# Fortress is pinned once, in the gaia image (apps/api/Dockerfile's FORTRESS_* ARGs):
-# CI installs the same release, checked against the same SHA-256, that production runs.
+# Fortress is pinned once, in apps/api/Dockerfile's fortress-dist stage (its FORTRESS_*
+# ARGs): CI installs the same release, checked against the same SHA-256, that the
+# gaia-fortress image ships.
 DOCKERFILE="$REPO_ROOT/apps/api/Dockerfile"
 
 dockerfile_arg() {
@@ -64,8 +77,7 @@ install_fortress() {
   local dir="${RUNNER_TEMP:?RUNNER_TEMP required}/fortress"
   local archive="$dir.tar.gz"
   mkdir -p "$dir"
-  curl -fsSL -o "$archive" "$url"
-  echo "$sha256  $archive" | sha256sum -c - > /dev/null || ci_die "fortress ${version} failed its checksum"
+  fetch_verified "fortress ${version}" "$url" sha256 "$sha256" "$archive"
   tar -C "$dir" -xzf "$archive" --strip-components=1
   rm -f "$archive"
   echo "$dir/tilion"
@@ -75,8 +87,7 @@ install_caddy() {
   local dir="${RUNNER_TEMP:?RUNNER_TEMP required}/caddy"
   local archive="$dir/caddy.tar.gz"
   mkdir -p "$dir"
-  curl -fsSL -o "$archive" "$CADDY_RELEASE_URL"
-  echo "$CADDY_SHA512  $archive" | sha512sum -c - > /dev/null || ci_die "caddy ${CADDY_VERSION} failed its checksum"
+  fetch_verified "caddy ${CADDY_VERSION}" "$CADDY_RELEASE_URL" sha512 "$CADDY_SHA512" "$archive"
   tar -C "$dir" -xzf "$archive" caddy
   echo "$dir/caddy"
 }
@@ -133,8 +144,21 @@ cmd_eval() {
   uv run --frozen --group backend python -m scripts.evals "${args[@]}"
 }
 
+cmd_install_playwright() {
+  local attempt
+  for ((attempt = 1; attempt <= INSTALL_ATTEMPTS; attempt++)); do
+    if pnpm --filter ./apps/web exec playwright install --with-deps chromium; then
+      return 0
+    fi
+    [ "$attempt" -lt "$INSTALL_ATTEMPTS" ] || break
+    ci_warn "playwright install ${attempt}/${INSTALL_ATTEMPTS} failed, retrying in ${INSTALL_RETRY_SECONDS}s"
+    sleep "$INSTALL_RETRY_SECONDS"
+  done
+  ci_die "playwright install failed after ${INSTALL_ATTEMPTS} attempts"
+}
+
 usage() {
-  sed -n '2,27p' "$0" >&2
+  sed -n '2,32p' "$0" >&2
 }
 
 main() {
@@ -144,6 +168,7 @@ main() {
     locate) cmd_locate "$@" ;;
     chrome-host) cmd_chrome_host "$@" ;;
     eval) cmd_eval "$@" ;;
+    install-playwright) cmd_install_playwright "$@" ;;
     *)
       echo "browser.sh: unknown subcommand '${sub}'" >&2
       usage

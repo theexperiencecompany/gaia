@@ -1,0 +1,886 @@
+{
+  "frames": [
+    {
+      "frame": {
+        "kind": "screen",
+        "items": [
+          {
+            "id": "u1",
+            "seq": 1,
+            "at": "2026-11-12T09:00:01Z",
+            "kind": "user",
+            "message": {
+              "id": "u1",
+              "kind": "user_message",
+              "text": "text of u1",
+              "surface": "web",
+              "platform_message_id": null,
+              "reply_to": null,
+              "retry_of": null,
+              "file_ids": [],
+              "files": [],
+              "selected_tool": null,
+              "tool_category": null,
+              "selected_workflow": null,
+              "selected_calendar_event": null,
+              "reply_to_message": null,
+              "reaction": null,
+              "posthog_session_id": null,
+              "first_contact": false,
+              "pinned": false,
+              "todo_run_wake": null,
+              "imported": false,
+              "revision": 0
+            }
+          },
+          {
+            "id": "work:t1",
+            "seq": 2,
+            "at": "2026-11-12T09:00:02Z",
+            "kind": "work",
+            "task_id": "t1",
+            "status": "running",
+            "asking": [],
+            "asked_seq": 0,
+            "approvals": [],
+            "handoff": null,
+            "timeline": {
+              "steps": [],
+              "cards": [],
+              "progress": null
+            },
+            "image": null,
+            "retry_target": "u1"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 0,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 0],
+            "value": {
+              "kind": "tool",
+              "key": "head#0",
+              "data": {
+                "tool_name": "reasoning",
+                "tool_category": "reasoning",
+                "message": "",
+                "reasoning": "I should "
+              }
+            }
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 1,
+        "changes": [
+          {
+            "op": "append",
+            "path": ["timeline", "steps", 0, "data", "reasoning"],
+            "value": "look at the inbox."
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 2,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 1],
+            "value": {
+              "kind": "tool",
+              "key": "tc-c1",
+              "data": {
+                "tool_name": "GMAIL_FETCH",
+                "tool_category": "gmail",
+                "message": "Fetching c1",
+                "tool_call_id": "c1",
+                "inputs": {
+                  "query": "c1"
+                }
+              }
+            }
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "progress"],
+            "value": {
+              "message": "Fetching c1",
+              "tool_name": "GMAIL_FETCH",
+              "tool_category": "gmail",
+              "integration_name": null,
+              "icon_url": null,
+              "show_category": true
+            }
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 3,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 1, "data", "output"],
+            "value": "result of c1"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 4,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2],
+            "value": {
+              "kind": "subagent",
+              "key": "sa-s1",
+              "data": {
+                "subagent_id": "s1",
+                "subagent": null,
+                "subagent_name": "Gmail",
+                "agent_type": "spawned",
+                "started_at": "2026-11-12T09:00:02+00:00",
+                "icon_url": null,
+                "tool_category": "gmail",
+                "tool_calls": [],
+                "duration_ms": null,
+                "token_count": null,
+                "completed_at": null,
+                "nested_subagents": [],
+                "step_keys": []
+              }
+            }
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 5,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "tool_calls", 0],
+            "value": {
+              "tool_name": "reasoning",
+              "tool_category": "reasoning",
+              "message": "",
+              "reasoning": "Reading "
+            }
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "step_keys", 0],
+            "value": "head#0"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 6,
+        "changes": [
+          {
+            "op": "append",
+            "path": [
+              "timeline",
+              "steps",
+              2,
+              "data",
+              "tool_calls",
+              0,
+              "reasoning"
+            ],
+            "value": "three threads."
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 7,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "tool_calls", 1],
+            "value": {
+              "tool_name": "GMAIL_FETCH",
+              "tool_category": "gmail",
+              "message": "Fetching c2",
+              "tool_call_id": "c2",
+              "inputs": {
+                "query": "c2"
+              }
+            }
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "step_keys", 1],
+            "value": "s1-tc-c2"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 8,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "tool_calls", 2],
+            "value": {
+              "tool_name": "GMAIL_FETCH",
+              "tool_category": "gmail",
+              "message": "Fetching c3",
+              "tool_call_id": "c3",
+              "inputs": {
+                "query": "c3"
+              }
+            }
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "step_keys", 2],
+            "value": "s1-tc-c3"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 9,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "tool_calls", 1, "output"],
+            "value": "result of c2"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 10,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "tool_calls", 2, "output"],
+            "value": "result of c3"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 11,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "duration_ms"],
+            "value": 1500
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "completed_at"],
+            "value": "2026-11-12T09:00:03.500000+00:00"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 12,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "cards", 0],
+            "value": {
+              "key": "head#0",
+              "card": {
+                "tool_name": "todo_progress",
+                "data": {
+                  "executor": {
+                    "source": "executor",
+                    "todos": [
+                      {
+                        "id": "t",
+                        "done": false
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 13,
+        "changes": [
+          {
+            "op": "set",
+            "path": [
+              "timeline",
+              "cards",
+              0,
+              "card",
+              "data",
+              "executor",
+              "todos",
+              0,
+              "done"
+            ],
+            "value": true
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 14,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "kind"],
+            "value": "tool"
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "key"],
+            "value": "tc-c4"
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "subagent_id"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "subagent"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "subagent_name"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "agent_type"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "started_at"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "icon_url"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "tool_calls"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "duration_ms"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "token_count"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "completed_at"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "nested_subagents"],
+            "value": null
+          },
+          {
+            "op": "remove",
+            "path": ["timeline", "steps", 2, "data", "step_keys"],
+            "value": null
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "tool_name"],
+            "value": "GMAIL_FETCH"
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "message"],
+            "value": "Fetching c4"
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "tool_call_id"],
+            "value": "c4"
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 2, "data", "inputs"],
+            "value": {
+              "query": "c4"
+            }
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "steps", 3],
+            "value": {
+              "kind": "subagent",
+              "key": "sa-s1",
+              "data": {
+                "subagent_id": "s1",
+                "subagent": null,
+                "subagent_name": "Gmail",
+                "agent_type": "spawned",
+                "started_at": "2026-11-12T09:00:02+00:00",
+                "icon_url": null,
+                "tool_category": "gmail",
+                "tool_calls": [
+                  {
+                    "tool_name": "reasoning",
+                    "tool_category": "reasoning",
+                    "message": "",
+                    "reasoning": "Reading three threads."
+                  },
+                  {
+                    "tool_name": "GMAIL_FETCH",
+                    "tool_category": "gmail",
+                    "message": "Fetching c2",
+                    "tool_call_id": "c2",
+                    "inputs": {
+                      "query": "c2"
+                    },
+                    "output": "result of c2"
+                  },
+                  {
+                    "tool_name": "GMAIL_FETCH",
+                    "tool_category": "gmail",
+                    "message": "Fetching c3",
+                    "tool_call_id": "c3",
+                    "inputs": {
+                      "query": "c3"
+                    },
+                    "output": "result of c3"
+                  }
+                ],
+                "duration_ms": 1500,
+                "token_count": null,
+                "completed_at": "2026-11-12T09:00:03.500000+00:00",
+                "nested_subagents": [],
+                "step_keys": ["head#0", "s1-tc-c2", "s1-tc-c3"]
+              }
+            }
+          },
+          {
+            "op": "set",
+            "path": ["timeline", "progress", "message"],
+            "value": "Fetching c4"
+          }
+        ],
+        "head": 2
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "work:t1",
+        "base": 15,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["status"],
+            "value": "done"
+          }
+        ],
+        "head": 3
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_insert",
+        "item": {
+          "id": "r1",
+          "seq": 4,
+          "at": "2026-11-12T09:00:04Z",
+          "kind": "reply",
+          "bubbles": ["Three threads need you."],
+          "timeline": {
+            "steps": [],
+            "cards": [],
+            "progress": null
+          },
+          "follow_up_actions": [],
+          "image": null,
+          "pinned": false,
+          "quote": null,
+          "quote_platform_message_id": null,
+          "outcome": null,
+          "failure": null,
+          "failure_line": null,
+          "narrates": [],
+          "retry_target": null,
+          "files": []
+        },
+        "head": 4
+      }
+    },
+    {
+      "frame": {
+        "kind": "reply_delta",
+        "attempt_id": "a1",
+        "reply_id": "r1",
+        "index": 0,
+        "payload": {
+          "type": "timeline",
+          "changes": [
+            {
+              "op": "set",
+              "path": ["steps", 0],
+              "value": {
+                "kind": "tool",
+                "key": "tc-c5",
+                "data": {
+                  "tool_name": "GMAIL_FETCH",
+                  "tool_category": "gmail",
+                  "message": "Fetching c5",
+                  "tool_call_id": "c5",
+                  "inputs": {
+                    "query": "c5"
+                  }
+                }
+              }
+            },
+            {
+              "op": "set",
+              "path": ["progress"],
+              "value": {
+                "message": "Fetching c5",
+                "tool_name": "GMAIL_FETCH",
+                "tool_category": "gmail",
+                "integration_name": null,
+                "icon_url": null,
+                "show_category": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "frame": {
+        "kind": "reply_delta",
+        "attempt_id": "a1",
+        "reply_id": "r1",
+        "index": 1,
+        "payload": {
+          "type": "timeline",
+          "changes": [
+            {
+              "op": "set",
+              "path": ["steps", 0, "data", "output"],
+              "value": "result of c5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "frame": {
+        "kind": "screen_patch",
+        "id": "r1",
+        "base": 0,
+        "changes": [
+          {
+            "op": "set",
+            "path": ["outcome"],
+            "value": "answered"
+          },
+          {
+            "op": "set",
+            "path": ["retry_target"],
+            "value": "u1"
+          }
+        ],
+        "head": 5
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "u1",
+      "seq": 1,
+      "at": "2026-11-12T09:00:01Z",
+      "kind": "user",
+      "message": {
+        "id": "u1",
+        "kind": "user_message",
+        "text": "text of u1",
+        "surface": "web",
+        "platform_message_id": null,
+        "reply_to": null,
+        "retry_of": null,
+        "file_ids": [],
+        "files": [],
+        "selected_tool": null,
+        "tool_category": null,
+        "selected_workflow": null,
+        "selected_calendar_event": null,
+        "reply_to_message": null,
+        "reaction": null,
+        "posthog_session_id": null,
+        "first_contact": false,
+        "pinned": false,
+        "todo_run_wake": null,
+        "imported": false,
+        "revision": 0
+      }
+    },
+    {
+      "id": "work:t1",
+      "seq": 2,
+      "at": "2026-11-12T09:00:02Z",
+      "kind": "work",
+      "task_id": "t1",
+      "status": "done",
+      "asking": [],
+      "asked_seq": 0,
+      "approvals": [],
+      "handoff": null,
+      "timeline": {
+        "steps": [
+          {
+            "kind": "tool",
+            "key": "head#0",
+            "data": {
+              "tool_name": "reasoning",
+              "tool_category": "reasoning",
+              "message": "",
+              "reasoning": "I should look at the inbox."
+            }
+          },
+          {
+            "kind": "tool",
+            "key": "tc-c1",
+            "data": {
+              "tool_name": "GMAIL_FETCH",
+              "tool_category": "gmail",
+              "message": "Fetching c1",
+              "tool_call_id": "c1",
+              "inputs": {
+                "query": "c1"
+              },
+              "output": "result of c1"
+            }
+          },
+          {
+            "kind": "tool",
+            "key": "tc-c4",
+            "data": {
+              "tool_name": "GMAIL_FETCH",
+              "tool_category": "gmail",
+              "message": "Fetching c4",
+              "tool_call_id": "c4",
+              "inputs": {
+                "query": "c4"
+              }
+            }
+          },
+          {
+            "kind": "subagent",
+            "key": "sa-s1",
+            "data": {
+              "subagent_id": "s1",
+              "subagent": null,
+              "subagent_name": "Gmail",
+              "agent_type": "spawned",
+              "started_at": "2026-11-12T09:00:02+00:00",
+              "icon_url": null,
+              "tool_category": "gmail",
+              "tool_calls": [
+                {
+                  "tool_name": "reasoning",
+                  "tool_category": "reasoning",
+                  "message": "",
+                  "reasoning": "Reading three threads."
+                },
+                {
+                  "tool_name": "GMAIL_FETCH",
+                  "tool_category": "gmail",
+                  "message": "Fetching c2",
+                  "tool_call_id": "c2",
+                  "inputs": {
+                    "query": "c2"
+                  },
+                  "output": "result of c2"
+                },
+                {
+                  "tool_name": "GMAIL_FETCH",
+                  "tool_category": "gmail",
+                  "message": "Fetching c3",
+                  "tool_call_id": "c3",
+                  "inputs": {
+                    "query": "c3"
+                  },
+                  "output": "result of c3"
+                }
+              ],
+              "duration_ms": 1500,
+              "token_count": null,
+              "completed_at": "2026-11-12T09:00:03.500000+00:00",
+              "nested_subagents": [],
+              "step_keys": ["head#0", "s1-tc-c2", "s1-tc-c3"]
+            }
+          }
+        ],
+        "cards": [
+          {
+            "key": "head#0",
+            "card": {
+              "tool_name": "todo_progress",
+              "data": {
+                "executor": {
+                  "source": "executor",
+                  "todos": [
+                    {
+                      "id": "t",
+                      "done": true
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "progress": {
+          "message": "Fetching c4",
+          "tool_name": "GMAIL_FETCH",
+          "tool_category": "gmail",
+          "integration_name": null,
+          "icon_url": null,
+          "show_category": true
+        }
+      },
+      "image": null,
+      "retry_target": "u1"
+    },
+    {
+      "id": "r1",
+      "seq": 4,
+      "at": "2026-11-12T09:00:04Z",
+      "kind": "reply",
+      "bubbles": ["Three threads need you."],
+      "timeline": {
+        "steps": [],
+        "cards": [],
+        "progress": null
+      },
+      "follow_up_actions": [],
+      "image": null,
+      "pinned": false,
+      "quote": null,
+      "quote_platform_message_id": null,
+      "outcome": "answered",
+      "failure": null,
+      "failure_line": null,
+      "narrates": [],
+      "retry_target": "u1",
+      "files": []
+    }
+  ],
+  "reply_timeline": {
+    "steps": [
+      {
+        "kind": "tool",
+        "key": "tc-c5",
+        "data": {
+          "tool_name": "GMAIL_FETCH",
+          "tool_category": "gmail",
+          "message": "Fetching c5",
+          "tool_call_id": "c5",
+          "inputs": {
+            "query": "c5"
+          },
+          "output": "result of c5"
+        }
+      }
+    ],
+    "cards": [],
+    "progress": {
+      "message": "Fetching c5",
+      "tool_name": "GMAIL_FETCH",
+      "tool_category": "gmail",
+      "integration_name": null,
+      "icon_url": null,
+      "show_category": true
+    }
+  }
+}

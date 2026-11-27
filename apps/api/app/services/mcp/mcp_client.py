@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Collection, Iterable
 import re
 import time
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
@@ -13,8 +13,13 @@ from mcp_use.client.session import MCPSession
 from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.integrations import IntegrationStatus, ToolsSetup
 from app.constants.log_tags import LogTag
-from app.constants.mcp import COMPOSIO_MCP_HOST, MCP_UNLISTED_CONNECT_MAX
+from app.constants.mcp import (
+    COMPOSIO_MCP_HOST,
+    MCP_TOOLS_SETUP_TIMEOUT_SECONDS,
+    MCP_UNLISTED_CONNECT_MAX,
+)
 from app.constants.providers import CredentialProviderName
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
@@ -31,6 +36,8 @@ from app.models.mcp_config import (
 )
 from app.services.integrations.integration_resolver import IntegrationResolver, ResolvedIntegration
 from app.services.integrations.user_integration_status import (
+    announce_integration_changed,
+    publish_tools_setup,
     update_user_integration_status,
 )
 from app.services.integrations.user_integrations import (
@@ -46,6 +53,7 @@ from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_errors import (
     MCPAuthorizationRequiredError,
+    MCPIntegrationNotFoundError,
     StepUpAuthRequiredError,
     is_terminal_auth_failure,
 )
@@ -438,7 +446,15 @@ class MCPClient:
         )
         return result
 
-    async def _reset_to_disconnected(self, integration_id: str) -> None:
+    async def _signed_out_status(self, integration_id: str) -> IntegrationStatus:
+        """Say how a credential that no longer works reads: expired once it ever connected, else never set up."""
+        if await user_integration_repository.has_connected_before(self.user_id, integration_id):
+            return IntegrationStatus.EXPIRED
+        return IntegrationStatus.CREATED
+
+    async def _reset_to_disconnected(
+        self, integration_id: str, *, status: IntegrationStatus = IntegrationStatus.CREATED
+    ) -> None:
         """Tear down a dead integration: Mongo status, PG creds, DCR client, Redis cache.
 
         Each step is swallowed so one failure doesn't block the rest.
@@ -457,7 +473,7 @@ class MCPClient:
                 )
 
         await _swallow(
-            update_user_integration_status(self.user_id, integration_id, "created"),
+            update_user_integration_status(self.user_id, integration_id, status),
             "mongo status reset",
         )
         await _swallow(
@@ -685,7 +701,9 @@ class MCPClient:
         labelled.append(
             (
                 "update_status_connected",
-                update_user_integration_status(self.user_id, integration_id, "connected"),
+                update_user_integration_status(
+                    self.user_id, integration_id, IntegrationStatus.CONNECTED
+                ),
             )
         )
         await self._await_logged(integration_id, labelled)
@@ -739,6 +757,11 @@ class MCPClient:
         # store_tools; bust once more now that tools are persisted so a concurrent
         # read can't cache an empty-but-connected catalog for the TTL.
         await invalidate_user_integration_caches(self.user_id)
+        # A connect after OAuth ends its "Setting up tools" here; any other connect re-announces the tools.
+        if not await publish_tools_setup(
+            self.user_id, integration_id, ToolsSetup.READY, only_from=ToolsSetup.RUNNING
+        ):
+            await announce_integration_changed(self.user_id, integration_id)
 
     async def _handle_connect_failure(
         self,
@@ -771,7 +794,9 @@ class MCPClient:
                     user_id=self.user_id,
                 )
                 return None
-            await update_user_integration_status(self.user_id, integration_id, "created")
+            await update_user_integration_status(
+                self.user_id, integration_id, await self._signed_out_status(integration_id)
+            )
             log.warning(
                 f"{LogTag.MCP} OAuth authorization required for",
                 integration_id=integration_id,
@@ -859,15 +884,17 @@ class MCPClient:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
-            await self._reset_to_disconnected(integration_id)
-        else:
-            log.warning(
-                f"{LogTag.MCP} Transient connection failure — keeping "
-                f"connected status so next attempt retries with current tokens",
-                integration_id=integration_id,
-                error=str(e),
-                error_type=type(e).__name__,
+            await self._reset_to_disconnected(
+                integration_id, status=await self._signed_out_status(integration_id)
             )
+            raise MCPAuthorizationRequiredError(integration_id) from e
+        log.warning(
+            f"{LogTag.MCP} Transient connection failure — keeping "
+            f"connected status so next attempt retries with current tokens",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
     async def _do_connect(self, integration_id: str) -> list[BaseTool]:
@@ -875,7 +902,7 @@ class MCPClient:
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
         if not resolved or not resolved.mcp_config:
-            raise ValueError(f"MCP integration {integration_id} not found")
+            raise MCPIntegrationNotFoundError(integration_id)
 
         mcp_config = resolved.mcp_config
         is_custom = resolved.source == "custom"
@@ -1070,16 +1097,17 @@ class MCPClient:
 
         Handshake, tools/list, schema conversion and indexing can take 5-15s for
         servers like posthog (339 tools), and the already-authenticated user
-        shouldn't wait on it.
+        shouldn't wait on it. The integration's tools_setup says when it ends, so
+        the page waiting on its tools stops waiting on a failure or timeout too.
         """
+        await publish_tools_setup(self.user_id, integration_id, ToolsSetup.RUNNING)
 
         async def _bg_connect_after_oauth() -> None:
+            # Tools already in memory are returned without a discovery to report them ready.
+            warm = integration_id in self._tools
             try:
-                await self.connect(integration_id)
-                log.info(
-                    f"{LogTag.MCP} background connect after OAuth succeeded",
-                    integration_id=integration_id,
-                )
+                async with asyncio.timeout(MCP_TOOLS_SETUP_TIMEOUT_SECONDS):
+                    await self.connect(integration_id)
             except Exception as e:
                 is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
                 terminal = is_terminal_auth_failure(e) or is_auth_error
@@ -1091,6 +1119,16 @@ class MCPClient:
                 )
                 if terminal:
                     await self._reset_to_disconnected(integration_id)
+                await publish_tools_setup(self.user_id, integration_id, ToolsSetup.FAILED)
+                return
+            log.info(
+                f"{LogTag.MCP} background connect after OAuth succeeded",
+                integration_id=integration_id,
+            )
+            if warm:
+                await publish_tools_setup(
+                    self.user_id, integration_id, ToolsSetup.READY, only_from=ToolsSetup.RUNNING
+                )
 
         bg_task = _spawn_background(_bg_connect_after_oauth(), f"oauth_bg_connect_{integration_id}")
         if bg_task is None:
@@ -1343,6 +1381,31 @@ async def get_mcp_client(user_id: str) -> MCPClient:
     """Get MCP client for a user from the pool."""
     pool = await get_mcp_client_pool()
     return await pool.get(user_id)
+
+
+class McpToolOwner(NamedTuple):
+    client: MCPClient
+    integration_id: str
+
+
+async def mcp_tool_owner(user_id: str, tool_name: str) -> McpToolOwner | None:
+    """Return the user's connected MCP integration exposing tool_name; execute and tool cards both resolve through this.
+
+    None when no connected MCP exposes it, or when the user's MCP client is
+    unavailable: an MCP outage must not take down registry or Composio tools.
+    """
+    try:
+        client = await get_mcp_client(user_id=user_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.MCP} MCP client unavailable for a tool owner lookup",
+            user_id=user_id,
+            tool_name=tool_name,
+            error_type=type(e).__name__,
+        )
+        return None
+    integration_id = await client.resolve_tool_owner(tool_name)
+    return None if integration_id is None else McpToolOwner(client, integration_id)
 
 
 async def drop_local_sessions(integration_id: str, user_ids: Iterable[str]) -> None:

@@ -20,6 +20,12 @@ BASH_MAX_COMMAND_LENGTH = 16_000
 # a half-written temp file never surfaces as an artifact — keep them in sync.
 WORKSPACE_TMP_SUFFIX = ".gaia-tmp"
 
+# Allowed host/sandbox clock drift when deciding which artifacts a bash command
+# wrote (artifact mtime comes from the sandbox clock, the run start from ours).
+ARTIFACT_MTIME_SKEW_SECONDS = 5
+# Bound on the one find that lists a session's artifacts after each bash command.
+ARTIFACT_ENUMERATE_TIMEOUT_SECONDS = 15
+
 # Health-probe windows (seconds). `is_running()` hits E2B's GET /health; we
 # bound both the request itself and the surrounding wait so a hung control
 # plane never stalls sandbox acquisition.
@@ -75,9 +81,6 @@ LOCAL_SANDBOX_CONTAINER_PREFIX = "gaia-sandbox-"
 # only its own user's subpaths of it. The compose file pins this exact name.
 SELFHOST_WORKSPACE_VOLUME = "gaia-selfhost_workspace"
 
-# The volume every local sandbox mounted whole before per-user isolation; only
-# the one-shot legacy migration still reads it.
-LEGACY_LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
 
 # Label recording the layout and image a sandbox was created with; an older one is replaced.
 # v2: resource limits, dropped capabilities, isolated network.

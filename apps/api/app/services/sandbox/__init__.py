@@ -11,10 +11,12 @@ from app.services.sandbox.lifecycle import (
     pause_idle_sandbox,
     renew_sandbox,
 )
+from app.services.sandbox.local_sandbox import CodingSandbox
 from app.services.sandbox.pool import get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 
 __all__ = [
+    "CodingSandbox",
     "SandboxAcquisitionError",
     "acquire_sandbox",
     "get_sandbox_pool",

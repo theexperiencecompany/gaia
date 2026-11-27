@@ -105,6 +105,27 @@
       },
       "cache": false
     },
+    "e2e-screen": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "E2E_SIM=1 pnpm exec playwright test e2e/screen-",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false,
+      "inputs": [
+        "default",
+        "^production",
+        "simStack",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "web-e2e-screen"
+        }
+      }
+    },
     "clean": {
       "executor": "nx:run-commands",
       "options": {

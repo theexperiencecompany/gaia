@@ -13,9 +13,9 @@ import { useCallback, useEffect, useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { BASE_MESSAGE_SCHEMA } from "@/config/registries/baseMessageRegistry";
+import { MarkdownRenderer } from "@/features/chat";
 import TextBubble from "@/features/chat/components/bubbles/bot/TextBubble";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 
 // streamdown animation config baked into MarkdownRenderer (shown read-only here).
@@ -197,7 +197,6 @@ function Previews({
             text={botShown}
             loading={botLoading}
             message_id="demo-bot"
-            tool_data={[]}
             setOpenImage={noop}
             setImageData={noop}
           />

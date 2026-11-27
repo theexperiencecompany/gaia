@@ -32,12 +32,15 @@ from app.services.support_service import (
     create_support_request_with_attachments,
     get_user_support_requests,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.support import SupportFormSubmitted
 
 # ---------------------------------------------------------------------------
 # Shared constants
 # ---------------------------------------------------------------------------
 
-USER_ID = "user_test_123"
+# A Mongo ObjectId: a successful submission captures on it.
+USER_ID = "6ac74a19fa5dfaf1f5770471"
 USER_EMAIL = "testuser@example.com"
 USER_NAME = "Test User"
 TICKET_ID = "GAIA-20260320-ABCD1234"
@@ -392,6 +395,52 @@ def _assert_utc_ticket_id(ticket_id: str) -> None:
 
 
 class TestCreateSupportRequest:
+    async def test_a_filed_request_is_captured_once_after_its_emails_went_out(
+        self,
+        mock_support_repo,
+        mock_email_notifications,
+        sample_request_data,
+    ):
+        with patch("app.services.support_service.capture") as capture:
+            await create_support_request(sample_request_data, USER_ID, USER_EMAIL, USER_NAME)
+
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            SupportFormSubmitted(
+                request_type=sample_request_data.type.value,
+                title_length=len(sample_request_data.title),
+                description_length=len(sample_request_data.description),
+                attachment_count=0,
+            ),
+        )
+
+    async def test_a_visitor_request_is_filed_without_a_capture(
+        self,
+        mock_support_repo,
+        mock_email_notifications,
+        sample_request_data,
+    ):
+        with patch("app.services.support_service.capture") as capture:
+            await create_support_request(sample_request_data, None, USER_EMAIL, USER_NAME)
+
+        capture.assert_not_called()
+
+    async def test_a_request_rolled_back_on_an_email_failure_is_not_captured(
+        self,
+        mock_support_repo,
+        mock_send_team_notification,
+        mock_send_user_email,
+        sample_request_data,
+    ):
+        mock_send_team_notification.side_effect = RuntimeError("smtp down")
+        with (
+            patch("app.services.support_service.capture") as capture,
+            pytest.raises(HTTPException),
+        ):
+            await create_support_request(sample_request_data, USER_ID, USER_EMAIL, USER_NAME)
+
+        capture.assert_not_called()
+
     async def test_success(
         self,
         mock_support_repo,
@@ -605,6 +654,32 @@ class TestCreateSupportRequest:
 
 
 class TestCreateSupportRequestWithAttachments:
+    async def test_a_filed_request_is_captured_once_with_its_attachment_count(
+        self,
+        mock_support_repo,
+        mock_email_notifications,
+        mock_blob_store,
+        sample_request_data,
+    ):
+        attachments = [
+            _make_upload_file("img1.png", "image/png", b"data1"),
+            _make_upload_file("img2.jpg", "image/jpeg", b"data2"),
+        ]
+        with patch("app.services.support_service.capture") as capture:
+            await create_support_request_with_attachments(
+                sample_request_data, attachments, USER_ID, USER_EMAIL, USER_NAME
+            )
+
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            SupportFormSubmitted(
+                request_type=sample_request_data.type.value,
+                title_length=len(sample_request_data.title),
+                description_length=len(sample_request_data.description),
+                attachment_count=2,
+            ),
+        )
+
     async def test_success_with_attachments(
         self,
         mock_support_repo,

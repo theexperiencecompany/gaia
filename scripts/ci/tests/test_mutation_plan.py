@@ -15,6 +15,7 @@ between those two — runs for real. Nothing here runs mutmut.
 
 from collections.abc import Callable
 import json
+import math
 from pathlib import Path
 import re
 import shutil
@@ -28,6 +29,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.py"
 REPORT_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
+RUNNER_HOST_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "runner_host.py"
 
 
 # Read out of the script under test rather than mirrored here. A hand-copied
@@ -55,6 +57,8 @@ OVERHEAD = _constant("MODULE_OVERHEAD_SECONDS")
 HUGE_DIFF_MODULES = 430
 HUGE_DIFF_MUTANTS = 2000
 FIRST_SHARD_SIZE = -(-HUGE_DIFF_MODULES // MAX_SHARDS)
+# Mutants that make a module cost over half the budget, so no two share a shard.
+OVER_HALF_A_BUDGET = int((SHARD_BUDGET_SECONDS / 2 - OVERHEAD) / UNIT_RATE) + 1
 
 
 def _install(scripts: Path) -> None:
@@ -63,6 +67,7 @@ def _install(scripts: Path) -> None:
     lib = scripts / "lib"
     lib.mkdir(exist_ok=True)
     shutil.copy(REPORT_LIB, lib / "mutation_report.py")
+    shutil.copy(RUNNER_HOST_LIB, lib / "runner_host.py")
 
 
 def _stub_changes(scripts: Path, changed: list[str]) -> None:
@@ -157,8 +162,8 @@ def test_the_matrix_value_is_the_label_alone(harness: PlanRun) -> None:
     # what made a skipped job render `${{ matrix.label }}` literally.
     _, outputs = harness(
         [
-            _entry("app/a.py", ["tests/unit/test_a.py"], [1]),
-            _entry("app/b.py", ["tests/unit/test_b.py"], [1]),
+            _entry("app/a.py", ["tests/unit/test_a.py"], [1], mutants=OVER_HALF_A_BUDGET),
+            _entry("app/b.py", ["tests/unit/test_b.py"], [1], mutants=OVER_HALF_A_BUDGET),
         ]
     )
 
@@ -166,11 +171,11 @@ def test_the_matrix_value_is_the_label_alone(harness: PlanRun) -> None:
     assert set(json.loads(outputs["shard_defs"])) == {"app/a.py", "app/b.py"}
 
 
-def test_every_changed_module_gets_its_own_shard(harness: PlanRun) -> None:
+def test_modules_that_cannot_share_a_budget_get_a_shard_each(harness: PlanRun) -> None:
     process, outputs = harness(
         [
-            _entry("app/a.py", ["tests/unit/test_a.py"], [1, 2]),
-            _entry("app/b.py", ["tests/unit/test_b.py"], [7]),
+            _entry("app/a.py", ["tests/unit/test_a.py"], [1, 2], mutants=OVER_HALF_A_BUDGET),
+            _entry("app/b.py", ["tests/unit/test_b.py"], [7], mutants=OVER_HALF_A_BUDGET),
         ]
     )
 
@@ -261,18 +266,23 @@ class TestPackingAHugeDiff:
         )
 
 
-def test_a_cheap_diff_of_a_wave_of_modules_gets_one_shard_each(harness: PlanRun) -> None:
-    # Shards that run at once cost no wall clock, so a cheap diff still fans out.
+def test_a_cheap_diff_runs_in_one_shard(harness: PlanRun) -> None:
+    # Each shard pays a checkout, a uv sync and a runner slot from the org's
+    # pool of 20; six one-module shards spent ~6x that setup on ~100 s of mutants.
     _, outputs = harness([_entry(f"app/m{i}.py", [UNIT_TEST], [i]) for i in range(MUTATION_WAVE)])
 
-    assert int(outputs["count"]) == MUTATION_WAVE
-    assert all(len(group) == 1 for group in _groups(outputs))
+    assert int(outputs["count"]) == 1
+    assert [item["label"] for item in _matrix(outputs)] == [f"shard 1/1 ({MUTATION_WAVE} modules)"]
 
 
-def test_a_cheap_diff_never_takes_more_than_one_wave(harness: PlanRun) -> None:
-    _, outputs = harness([_entry(f"app/m{i}.py", [UNIT_TEST], [i]) for i in range(40)])
+def test_a_cheap_diff_gets_the_fewest_shards_its_cost_fits(harness: PlanRun) -> None:
+    modules = 40
+    _, outputs = harness([_entry(f"app/m{i}.py", [UNIT_TEST], [i]) for i in range(modules)])
 
-    assert int(outputs["count"]) == MUTATION_WAVE
+    per_module = OVERHEAD + UNIT_RATE
+    assert int(outputs["count"]) == math.ceil(modules * per_module / SHARD_BUDGET_SECONDS)
+    for group in _groups(outputs):
+        assert len(group) * per_module <= SHARD_BUDGET_SECONDS
 
 
 def test_a_costly_diff_gets_as_many_shards_as_it_needs_to_fit_the_budget(
@@ -281,7 +291,7 @@ def test_a_costly_diff_gets_as_many_shards_as_it_needs_to_fit_the_budget(
     # PR #1799: 222 modules worth ~10,000 s were forced into six shards, and
     # every shard ran past its 28-minute deadline. The count follows the cost,
     # and shards past the wave queue behind max-parallel.
-    mutants = 800  # ~260 s per module
+    mutants = int((SHARD_BUDGET_SECONDS / 3 - OVERHEAD) / UNIT_RATE) - 1  # three per shard
     entries = [_entry(f"app/m{i}.py", [UNIT_TEST], [i], mutants=mutants) for i in range(40)]
 
     process, outputs = harness(entries)
@@ -435,31 +445,31 @@ def test_no_shard_mixes_the_two_pools(harness: PlanRun) -> None:
 
 def test_the_two_pools_share_one_shard_budget(harness: PlanRun) -> None:
     # MAX_SHARDS bounds the PLAN, not each pool: two pools helping themselves to
-    # six each would double the wave and walk back toward GitHub's job limit.
+    # MAX_SHARDS each would double it and walk back toward GitHub's job limit.
     _, outputs = harness(
-        [_entry(f"app/repo{i}.py", [CONTRACT_TEST], [i]) for i in range(10)]
-        + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(30)]
+        [_entry(f"app/repo{i}.py", [CONTRACT_TEST], [i], mutants=HEAVY_MUTANTS) for i in range(30)]
+        + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i], mutants=HEAVY_MUTANTS) for i in range(30)]
     )
 
-    assert int(outputs["count"]) == MUTATION_WAVE
+    assert int(outputs["count"]) == MAX_SHARDS
     # And both pools are represented — a budget that starved one of them would
     # leave its modules unmutated.
     assert set(_pools(outputs)) == {"unit", "services"}
 
 
 def test_the_heavier_pool_gets_the_spare_shards(harness: PlanRun) -> None:
-    # Every live pool starts at one shard and the rest follow the diff. The
-    # typical PR touches one repository and many plain modules, so the services
-    # pool takes one shard and the unit pool takes the remaining five.
+    # Cut back to MAX_SHARDS, every live pool starts at one shard and the rest
+    # follow the cost: one repository beside many costly plain modules leaves
+    # the services pool one shard and the unit pool the rest.
     _, outputs = harness(
         [_entry("app/repo.py", [CONTRACT_TEST], [1])]
-        + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(20)]
+        + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i], mutants=HEAVY_MUTANTS) for i in range(40)]
     )
 
     shards_per_pool: dict[str, int] = {}
     for item in _matrix(outputs):
         shards_per_pool[item["pool"]] = shards_per_pool.get(item["pool"], 0) + 1
-    assert shards_per_pool == {"services": 1, "unit": MUTATION_WAVE - 1}
+    assert shards_per_pool == {"services": 1, "unit": MAX_SHARDS - 1}
 
 
 def test_a_services_shard_says_so_in_its_check_name(harness: PlanRun) -> None:
@@ -474,9 +484,6 @@ def test_the_matrix_runs_as_many_shards_at_once_as_the_plan_makes() -> None:
     """More shards than max-parallel queue behind each other; fewer leave runners idle."""
     workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
     assert workflow["jobs"]["test-mutation"]["strategy"]["max-parallel"] == MUTATION_WAVE
-    # runner.py sizes the box's services pool for one wave of them.
-    runner = (REPO_ROOT / "scripts" / "ci" / "runner.py").read_text()
-    assert re.search(rf"^MUTATION_WAVE = {MUTATION_WAVE}$", runner, re.MULTILINE)
 
 
 def test_a_shard_uploads_only_files_its_own_job_wrote() -> None:
@@ -544,7 +551,8 @@ def test_a_few_costly_services_modules_get_shards_of_their_own(harness: PlanRun)
 
     services = [item for item in _matrix(outputs) if item["pool"] == "services"]
     assert len(services) == 3
-    assert int(outputs["count"]) == MUTATION_WAVE
+    # The twenty cheap unit modules fit one budget together.
+    assert int(outputs["count"]) == len(services) + 1
 
 
 def test_a_shard_over_the_budget_is_announced_by_the_plan(harness: PlanRun) -> None:
@@ -573,7 +581,7 @@ class TestAModuleMeasuredOnAnEarlierRunIsPlannedAtThatCost:
     def test_unmeasured_modules_are_planned_from_the_estimate(self, harness: PlanRun) -> None:
         _, outputs = harness(self._entries())
 
-        assert int(outputs["count"]) == MUTATION_WAVE
+        assert int(outputs["count"]) == 1
 
     def test_measured_modules_get_the_shards_their_real_cost_needs(self, harness: PlanRun) -> None:
         process, outputs = harness(self._entries(), {"101": self.SLOW})
@@ -584,14 +592,15 @@ class TestAModuleMeasuredOnAnEarlierRunIsPlannedAtThatCost:
         assert all(group[0]["seconds"] == "500.0" for group in _groups(outputs))
 
     def test_one_module_alone_over_the_budget_adds_no_shards(self, harness: PlanRun) -> None:
-        # More shards cannot split a single module, so a 673 s module must not
-        # push 39 cheap ones from one wave out to MAX_SHARDS.
+        # More shards cannot split a single module, so a 673 s module takes one
+        # shard of its own and the 39 cheap ones take only what their cost needs.
         entries = [_entry(f"app/m{i}.py", [UNIT_TEST], [1]) for i in range(40)]
 
         process, outputs = harness(entries, {"101": {"app/m0.py": 673.0}})
 
         assert process.returncode == 0, process.stderr
-        assert int(outputs["count"]) == MUTATION_WAVE
+        cheap = math.ceil(39 * (OVERHEAD + UNIT_RATE) / SHARD_BUDGET_SECONDS)
+        assert int(outputs["count"]) == 1 + cheap
         assert _shard_of(outputs, "app/m0.py") == ["app/m0.py"]
 
     def test_the_newest_runs_measurement_wins(self, harness: PlanRun) -> None:

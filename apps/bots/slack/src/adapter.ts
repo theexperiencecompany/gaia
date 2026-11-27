@@ -8,7 +8,8 @@
  * - **Ephemeral responses** via Bolt's `respond({ response_type: "ephemeral" })`
  * - **Rich messages** rendered as markdown (Slack has no native embed API)
  * - **App mentions** via the `app_mention` event with streaming chat
- * - **DM messages** via the `message` event with `channel_type === "im"`
+ * - **DM messages** via the `message` event with `channel_type === "im"`,
+ *   including ones carrying files (subtype `file_share`)
  * - **Socket Mode** for real-time event delivery
  *
  * New features gained from the unified command system:
@@ -21,45 +22,63 @@
  */
 
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   type BotCommand,
+  type BotFileData,
   buildAuthLinkMessage,
+  type ConversationSurface,
   createBotLogger,
   extractSubcommandArgs,
-  handleStreamingChat,
   hashLogIdentifier,
+  type IncomingAttachment,
+  type MediaBatchOutcome,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
-  ReplyPlaceholder,
   type RichMessage,
   type RichMessageTarget,
   recordBotFailure,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
-  STREAMING_DEFAULTS,
-  sanitizeErrorForLog,
+  setPlatformConnected,
   withWideEvent,
 } from "@gaia/shared/bots";
-import { App, type CodedError, type Context } from "@slack/bolt";
+import {
+  App,
+  type CodedError,
+  type Context,
+  SocketModeReceiver,
+} from "@slack/bolt";
 import { which } from "node-emoji";
+import {
+  downloadSlackFile,
+  type SlackInboundFile,
+  slackFileMedia,
+} from "./media";
+
+/** What Slack shows while GAIA prepares a reply: it has no typing indicator for bots. */
+/** The reaction on the user's message while GAIA prepares its reply; Slack gives bots no typing indicator. */
+const SLACK_TYPING_REACTION = "eyes";
+/** The Web API's error when the bot already has that reaction on the message. */
+const SLACK_ALREADY_REACTED = "already_reacted";
+
+/** The error code a Slack Web API call answered with (`data.error`), if it answered one. */
+function slackErrorCode(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null || !("data" in err))
+    return undefined;
+  const { data } = err;
+  if (typeof data !== "object" || data === null || !("error" in data))
+    return undefined;
+  return typeof data.error === "string" ? data.error : undefined;
+}
 
 /** Bolt's respond function for slash command responses. */
 type SlackRespondFn = (
   message: string | Record<string, unknown>,
 ) => Promise<unknown>;
-
-/** Slack message event shape (Bolt doesn't export typed message events). */
-interface SlackMessageEvent {
-  text?: string;
-  user?: string;
-  channel?: string;
-  channel_type?: string;
-  subtype?: string;
-  ts?: string;
-}
 
 /** Minimal Slack Web API client shape used by the adapter. */
 interface SlackWebClient {
@@ -78,7 +97,6 @@ interface SlackWebClient {
       user: string;
       text: string;
     }) => Promise<unknown>;
-    delete: (args: { channel: string; ts: string }) => Promise<unknown>;
   };
 }
 
@@ -96,6 +114,8 @@ export class SlackAdapter extends BaseBotAdapter {
   private signingSecret!: string;
   private appToken!: string;
   private readonly adapterLogger = createBotLogger("slack", "adapter");
+  /** Slack's Web API base URL; unset means Slack itself. A test points it at a local fake. */
+  protected readonly slackApiUrl: string | undefined = undefined;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -117,11 +137,24 @@ export class SlackAdapter extends BaseBotAdapter {
     this.signingSecret = signingSecret;
     this.appToken = appToken;
 
+    // Built here, not by Bolt's `socketMode` option, to reach the socket's connect and disconnect events.
+    // Two option objects: the Socket Mode client writes its own retry policy into the one it is given.
+    const receiver = new SocketModeReceiver({
+      appToken: this.appToken,
+      installerOptions: { clientOptions: { slackApiUrl: this.slackApiUrl } },
+    });
+    receiver.client.on("connected", () =>
+      setPlatformConnected(this.platform, true),
+    );
+    // "close", not "disconnected": a dropped socket that will reconnect only emits "close".
+    receiver.client.on("close", () =>
+      setPlatformConnected(this.platform, false),
+    );
     this.app = new App({
       token: this.token,
       signingSecret: this.signingSecret,
-      socketMode: true,
-      appToken: this.appToken,
+      receiver,
+      clientOptions: { slackApiUrl: this.slackApiUrl },
       // Hands the handler the event's context, so the error says who hit it.
       extendedErrorHandler: true,
     });
@@ -150,7 +183,7 @@ export class SlackAdapter extends BaseBotAdapter {
    *
    * Each command's handler:
    * 1. Calls `ack()` immediately (Slack's 3-second requirement)
-   * 2. Special-cases `/gaia` to use streaming via `handleStreamingChat`
+   * 2. Special-cases `/gaia` to post and follow the conversation
    * 3. All others create a {@link RichMessageTarget} and dispatch to the unified command
    */
   protected async registerCommands(commands: BotCommand[]): Promise<void> {
@@ -198,7 +231,7 @@ export class SlackAdapter extends BaseBotAdapter {
       const botMention = context.botUserId
         ? new RegExp(`<@${context.botUserId}>`, "g")
         : null;
-      const content = botMention
+      const caption = botMention
         ? event.text.replace(botMention, "").trim()
         : event.text.trim();
       const userId = event.user;
@@ -206,7 +239,19 @@ export class SlackAdapter extends BaseBotAdapter {
 
       if (!userId) return;
 
-      if (!content) {
+      const media = await this.resolveSlackFiles(
+        client,
+        event.files ?? [],
+        caption,
+        userId,
+        channelId,
+      );
+      const content = media ? media.text : caption;
+      const attachments = media?.attachments ?? [];
+
+      if (!content && attachments.length === 0) {
+        // Every file was rejected and its notice already sent.
+        if (media) return;
         await client.chat.postMessage({
           channel: channelId,
           text: "How can I help you?",
@@ -214,7 +259,7 @@ export class SlackAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleSlackStreaming(
+      await this.postSlackMessage(
         client,
         channelId,
         userId,
@@ -222,26 +267,42 @@ export class SlackAdapter extends BaseBotAdapter {
         false,
         receivedAt,
         event.ts,
+        attachments,
       );
     });
 
-    // DM messages
+    // DM messages; one carrying files arrives with subtype file_share. Bolt's
+    // ignoreSelf drops the bot's own uploads, so outbound files never loop back.
     this.app.message(async ({ message, client }) => {
       const receivedAt = Date.now();
-      const msg = message as SlackMessageEvent;
 
-      if (msg.subtype) return;
-      if (msg.channel_type !== "im") return;
-      if (!msg.text || !msg.user || !msg.channel) return;
+      if (message.subtype !== undefined && message.subtype !== "file_share") {
+        return;
+      }
+      if (message.channel_type !== "im") return;
+      if (!message.user || !message.channel) return;
 
-      await this.handleSlackStreaming(
+      const caption = message.text?.trim() ?? "";
+      const media = await this.resolveSlackFiles(
         client,
-        msg.channel,
-        msg.user,
-        msg.text,
+        message.files ?? [],
+        caption,
+        message.user,
+        message.channel,
+      );
+      const content = media ? media.text : caption;
+      const attachments = media?.attachments ?? [];
+      if (!content && attachments.length === 0) return;
+
+      await this.postSlackMessage(
+        client,
+        message.channel,
+        message.user,
+        content,
         true,
         receivedAt,
-        msg.ts,
+        message.ts,
+        attachments,
       );
     });
   }
@@ -340,6 +401,7 @@ export class SlackAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ): Promise<ReactionOutcome> {
     // reactions.add takes a shortcode (sweat_smile), not the emoji. An emoji
     // with no known shortcode is refused here and the caller sends it as text.
@@ -351,6 +413,11 @@ export class SlackAdapter extends BaseBotAdapter {
     const channel = isChannel
       ? destinationId
       : await this.resolveDmChannel(destinationId);
+    // Slack reactions add up, so GAIA's earlier one comes off before the new one goes on.
+    const replacedName = replaces ? which(replaces) : undefined;
+    if (replacedName && replacedName !== name) {
+      await this.removeReaction(channel, platformMessageId, replacedName);
+    }
     try {
       await this.app.client.reactions.add({
         channel,
@@ -359,6 +426,9 @@ export class SlackAdapter extends BaseBotAdapter {
       });
       return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
+      // A repeat (a resumed follow placing what a dead bot already had) is the reaction in place.
+      if (slackErrorCode(err) === SLACK_ALREADY_REACTED)
+        return REACTION_OUTCOME.ATTACHED;
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         channel_hash: hashLogIdentifier(channel),
         ...(err instanceof Error
@@ -369,15 +439,31 @@ export class SlackAdapter extends BaseBotAdapter {
     }
   }
 
+  /** Takes GAIA's reaction off a message; a failure leaves both showing, which the log records. */
+  private async removeReaction(
+    channel: string,
+    timestamp: string,
+    name: string,
+  ): Promise<void> {
+    try {
+      await this.app.client.reactions.remove({ channel, timestamp, name });
+    } catch (err) {
+      this.adapterLogger.warn("reaction_remove_failed", {
+        channel_hash: hashLogIdentifier(channel),
+        ...(err instanceof Error
+          ? { error_type: err.name, error: err.message }
+          : { error: String(err) }),
+      });
+    }
+  }
+
   // ---------------------------------------------------------------------------
-  // Gaia streaming
+  // Gaia chat
   // ---------------------------------------------------------------------------
 
   /**
-   * Registers the `/gaia` slash command with Slack-specific streaming.
-   *
-   * Posts a public "Thinking..." message and updates it in place as
-   * the streamed response arrives.
+   * Registers the `/gaia` slash command: the message is posted and its reply
+   * follows in the channel.
    */
   private registerGaiaCommand(): void {
     this.app.command("/gaia", async ({ command, ack, client }) => {
@@ -397,7 +483,7 @@ export class SlackAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleSlackStreaming(
+      await this.postSlackMessage(
         client,
         channelId,
         userId,
@@ -409,14 +495,44 @@ export class SlackAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Shared streaming handler for `/gaia`, @mentions, and DMs.
-   *
-   * Posts an initial "Thinking..." message, then updates it via
-   * `chat.update` as chunks arrive from the streaming API. The placeholder is
-   * posted alongside the API request ({@link ReplyPlaceholder}); a reply whose
-   * placeholder never posted opens a message of its own.
+   * Reads the files on a Slack message through the shared pipeline and posts
+   * its notice (rejections, skipped files); null when there are no files.
    */
-  private async handleSlackStreaming(
+  private async resolveSlackFiles(
+    client: SlackWebClient,
+    files: SlackInboundFile[],
+    caption: string,
+    userId: string,
+    channelId: string,
+  ): Promise<MediaBatchOutcome | null> {
+    if (files.length === 0) return null;
+
+    const items = files.map((file): IncomingAttachment => {
+      const url = file.url_private_download;
+      return {
+        media: slackFileMedia(file, caption || undefined),
+        // External files (Drive, Dropbox links) carry no Slack download URL.
+        download: url
+          ? (maxBytes) => downloadSlackFile(url, this.token, maxBytes)
+          : undefined,
+      };
+    });
+
+    const outcome = await this.resolveIncomingMedia(items, userId, channelId);
+    if (outcome.notice) {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: outcome.notice,
+      });
+    }
+    return outcome;
+  }
+
+  /**
+   * Posts a `/gaia` message, @mention or DM and follows its conversation in this
+   * channel. Returns once the message is accepted.
+   */
+  private async postSlackMessage(
     client: SlackWebClient,
     channelId: string,
     userId: string,
@@ -424,135 +540,143 @@ export class SlackAdapter extends BaseBotAdapter {
     isDm: boolean,
     receivedAt: number,
     inboundTs?: string,
+    attachments: BotFileData[] = [],
   ): Promise<void> {
-    const analytics = this.analyticsFor(userId);
-    const placeholder = ReplyPlaceholder.post(
-      () => this.postPlaceholder(client, channelId),
-      (err) =>
-        this.adapterLogger.warn("placeholder_post_failed", {
-          user_hash: hashLogIdentifier(userId),
-          channel_hash: hashLogIdentifier(channelId),
-          ...sanitizeErrorForLog(err),
-        }),
-    );
-    const removePlaceholder = async (): Promise<void> => {
-      const ts = await placeholder.posted();
-      if (ts === null) return;
-      try {
-        await client.chat.delete({ channel: channelId, ts });
-      } catch (err) {
-        // The reply is already settled; a stale "Thinking..." is all this costs.
-        this.adapterLogger.error(
-          "placeholder_delete_failed",
-          { channel_hash: hashLogIdentifier(channelId) },
-          err,
-        );
-      }
-    };
-
-    await handleStreamingChat(
-      this.gaia,
-      {
-        message,
-        platform: "slack",
-        platformUserId: userId,
-        channelId,
-        isDm,
-        platformMessageId: inboundTs,
-        receivedAt,
-      },
-      async (text: string) => {
-        await client.chat.update({
-          channel: channelId,
-          ts: await placeholder.current(),
-          text,
-        });
-      },
-      async (text: string) => {
-        const newMessage = await client.chat.postMessage({
-          channel: channelId,
-          text,
-        });
-        if ((newMessage as { ts?: string }).ts) {
-          placeholder.moveTo((newMessage as { ts: string }).ts);
-        }
-        return async (updatedText: string) => {
-          await client.chat.update({
-            channel: channelId,
-            ts: await placeholder.current(),
-            text: updatedText,
-          });
-        };
-      },
-      async (authUrl: string) => {
-        const authMessage = renderForPlatform(
-          buildAuthLinkMessage(authUrl),
-          "slack",
-        );
-        // In a DM (channel id starts with "D") there is no risk of exposing the
-        // token to others, and chat.postEphemeral is unreliable there — so put
-        // the link straight into the placeholder message where it always shows.
-        if (channelId.startsWith("D")) {
-          await client.chat.update({
-            channel: channelId,
-            ts: await placeholder.current(),
-            text: authMessage,
-          });
-          return;
-        }
-        // In a public channel, keep the token out of the visible message and
-        // deliver the link as an ephemeral only the requesting user can see.
-        await client.chat.update({
-          channel: channelId,
-          ts: await placeholder.current(),
-          text: "🔒 Authentication required. Check the private message below to link your account.",
-        });
-        await client.chat.postEphemeral({
-          channel: channelId,
-          user: userId,
-          text: authMessage,
-        });
-      },
-      async (errMsg: string) => {
-        await client.chat.update({
-          channel: channelId,
-          ts: await placeholder.current(),
-          text: errMsg,
-        });
-      },
-      STREAMING_DEFAULTS.slack,
-      analytics,
-      async (emoji: string) => {
-        // A slash command has no inbound message to react to.
-        if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
-        const outcome = await this.reactToMessage(
+    // Bolt runs handlers concurrently: a user's posts still go in arrival order.
+    await this.arrivals.run(userId, () =>
+      this.postAndFollow(
+        {
+          message,
+          platform: "slack",
+          platformUserId: userId,
           channelId,
-          inboundTs,
-          emoji,
-          true,
-        );
-        if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
-        await removePlaceholder();
-        return outcome;
-      },
-      removePlaceholder,
+          isDm,
+          platformMessageId: inboundTs,
+          receivedAt,
+          ...(attachments.length > 0
+            ? {
+                fileIds: attachments.map((a) => a.fileId),
+                fileData: attachments,
+              }
+            : {}),
+        },
+        this.conversationSurface(channelId),
+        (authUrl) => this.sendAuthLink(client, channelId, userId, authUrl),
+      ),
     );
   }
 
-  /** Posts the "Thinking..." placeholder a streamed reply fills in, resolving to its `ts`. */
-  private async postPlaceholder(
+  protected async resumeSurface({
+    platform_user_id: userId,
+    channel_id: channelId,
+    is_dm: isDm,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    return this.conversationSurface(
+      isDm || !channelId ? await this.resolveDmChannel(userId) : channelId,
+    );
+  }
+
+  /** The channel a conversation follows into; a quoted reply is a thread reply also shown in the channel. */
+  private conversationSurface(channelId: string): ConversationSurface {
+    const { client } = this.app;
+    const bubble = (ts: string) => ({
+      id: ts,
+      edit: async (updatedText: string) => {
+        await client.chat.update({ channel: channelId, ts, text: updatedText });
+      },
+    });
+    return {
+      send: async (text, replyTo) => {
+        const posted = await (replyTo
+          ? client.chat.postMessage({
+              channel: channelId,
+              text,
+              thread_ts: replyTo,
+              reply_broadcast: true,
+            })
+          : client.chat.postMessage({ channel: channelId, text }));
+        const sentTs = posted.ts;
+        if (!sentTs) throw new Error("chat.postMessage returned no ts");
+        return bubble(sentTs);
+      },
+      reopen: (ts) => ({
+        ...bubble(ts),
+        delete: async () => {
+          await client.chat.delete({ channel: channelId, ts });
+        },
+      }),
+      react: (platformMessageId, emoji, replaces) =>
+        this.reactToMessage(
+          channelId,
+          platformMessageId,
+          emoji,
+          true,
+          replaces,
+        ),
+      startTyping: (answering) => this.markAnswering(channelId, answering),
+    };
+  }
+
+  /**
+   * Puts eyes on the message GAIA is answering while it prepares the reply, and
+   * takes them off once it stops. A reaction Slack would not add costs only the
+   * indicator, so the miss is logged.
+   */
+  private markAnswering(
+    channelId: string,
+    answering: string | null,
+  ): () => void {
+    if (!answering) return () => undefined;
+    const added = this.app.client.reactions
+      .add({
+        channel: channelId,
+        timestamp: answering,
+        name: SLACK_TYPING_REACTION,
+      })
+      .then(
+        () => true,
+        (err: unknown) => {
+          this.adapterLogger.warn("typing_reaction_not_added", {
+            channel_hash: hashLogIdentifier(channelId),
+            ...(err instanceof Error
+              ? { error_type: err.name, error: err.message }
+              : { error: String(err) }),
+          });
+          return false;
+        },
+      );
+    return () => {
+      void added.then((wasAdded) =>
+        wasAdded
+          ? this.removeReaction(channelId, answering, SLACK_TYPING_REACTION)
+          : undefined,
+      );
+    };
+  }
+
+  /**
+   * Sends the account-link prompt: straight into a DM, where chat.postEphemeral is
+   * unreliable and no one else can see it; as an ephemeral in a public channel.
+   */
+  private async sendAuthLink(
     client: SlackWebClient,
     channelId: string,
-  ): Promise<string> {
-    const result = await client.chat.postMessage({
-      channel: channelId,
-      text: "Thinking...",
-    });
-    const ts = (result as { ts?: string }).ts;
-    if (!ts) {
-      throw new Error("Slack returned no ts for the Thinking... placeholder");
+    userId: string,
+    authUrl: string,
+  ): Promise<void> {
+    const authMessage = renderForPlatform(
+      buildAuthLinkMessage(authUrl),
+      "slack",
+    );
+    if (channelId.startsWith("D")) {
+      await client.chat.postMessage({ channel: channelId, text: authMessage });
+      return;
     }
-    return ts;
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: authMessage,
+    });
   }
 
   // ---------------------------------------------------------------------------

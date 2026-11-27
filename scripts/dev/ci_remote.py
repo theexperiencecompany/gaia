@@ -31,8 +31,9 @@ SonarCloud) are printed as not required for merge and the watch keeps going.
 It settles only once every check the base requires has reported: quality-gate
 is created after the last lane it needs, so "nothing pending" alone is not done.
 `mise ci:watch` is `--watch --fail-fast --max-wait 3600`.
-A branch with no PR (master) is read at its head commit, gated by the
-required checks a push to it runs. Under --json a failed read prints
+A branch with no PR (master) is read at its head commit (a watch keeps the one it began on), gated by the
+required checks a push to it runs. Once they pass, a red job is the deploy's,
+and --fail-fast waits for its run (the rollback) instead of stopping. Under --json a failed read prints
 {"error", "exit_code"} on stdout, so a reader discarding stderr sees why.
 `--stack` prints the gh stack alone, one line per PR.
 `--verbose` adds full finding details, passing lanes, and the source used.
@@ -282,6 +283,8 @@ class Target:
 
     branch: str
     pr_number: int | None
+    # A watch pins the branch head it started on, so master moving on cannot hide that commit's deploy.
+    sha: str | None = None
 
 
 def slug(text: str) -> str:
@@ -543,9 +546,14 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
 
 
 def run_artifacts(repo: Repo, run_id: int) -> list[dict]:
-    return repo.github.get(repo.api(f"actions/runs/{run_id}/artifacts?per_page=100")).get(
-        "artifacts", []
-    )
+    """Return a run's artifacts; none for a run GitHub created too recently to list any."""
+    try:
+        doc = repo.github.get(repo.api(f"actions/runs/{run_id}/artifacts?per_page=100"))
+    except GitHubError as err:
+        if err.status == HTTPStatus.NOT_FOUND:
+            return []
+        raise
+    return doc.get("artifacts", [])
 
 
 def is_current_attempt(verdict: Verdict, checks: list[Check]) -> bool:
@@ -1505,7 +1513,9 @@ def render_stack_only(report: dict) -> None:
 def snapshot_once(repo: Repo, target: Target, with_stack: bool) -> tuple[dict, int]:
     t0 = time.monotonic()
     pr_meta = None if target.pr_number is None else fetch_pr_state(repo, target.pr_number)
-    head = pr_meta["headRefOid"] if pr_meta else fetch_branch_head(repo, target.branch)
+    head = (
+        pr_meta["headRefOid"] if pr_meta else target.sha or fetch_branch_head(repo, target.branch)
+    )
     if head is None:
         raise CiRemoteError(
             f"no PR and no branch '{target.branch}' on {repo.slug} — push first or check the name"
@@ -1572,6 +1582,12 @@ def snapshot_once(repo: Repo, target: Target, with_stack: bool) -> tuple[dict, i
     # quality-gate is only created once every lane it needs has finished, so a
     # head whose lanes are all done can still be waiting on it.
     report["unreported_required"] = sorted(gate.required - {c["name"] for c in checks})
+    # On a push past its gate, what still runs is the deploy, rollback included.
+    report["gate_passed"] = (
+        bool(gate.required)
+        and not report["unreported_required"]
+        and all(c["status"] == "passed" for c in checks if c["name"] in gate.required)
+    )
     report["advice"] = collect_advice(report, target.branch)
     conflicting = bool(pr_meta) and pr_meta["mergeable"] == "CONFLICTING"
     report["merge_blocked"] = conflicting or bool(report["blocking_red"])
@@ -1764,10 +1780,44 @@ def parse_options(args: argparse.Namespace) -> Options:
     )
 
 
+def print_poll(report: dict, poll: int, elapsed: int, max_wait: int) -> None:
+    counts = report["counts"]
+    early = len(report["early_failures"])
+    red = counts["failed"] + counts["error"] + counts["timeout"] + early
+    running_red = f" ({early} still running)" if early else ""
+    print(
+        f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: "
+        f"{red} failed{running_red}, {counts['pending'] - early} pending "
+        f"(elapsed {elapsed}s / max {max_wait}s)"
+    )
+
+
+def stops_fast(report: dict, options: Options, announced: bool) -> tuple[bool, bool]:
+    """Return whether --fail-fast stops on this poll, and whether the deploy wait was announced.
+
+    A red job of a push past its gate is the deploy's, and its rollback runs after
+    it in the same run, so the watch waits for that run instead of stopping before
+    prod is known.
+    """
+    if not report["merge_blocked"]:
+        return False, announced
+    if report["pr"] is not None or not report["gate_passed"]:
+        if options.fail_fast and not options.as_json:
+            print("watch: stopping at the first failure that blocks merge (--fail-fast).")
+        return options.fail_fast, announced
+    if not announced and not options.as_json:
+        print(
+            "watch: the gate passed, so this is the deploy failing — waiting for its "
+            "run to finish, rollback included."
+        )
+    return False, True
+
+
 def watch(repo: Repo, target: Target, options: Options) -> tuple[dict, int]:
     """Poll until no check is pending, the budget runs out, or (fail-fast) merge is blocked."""
     deadline = time.monotonic() + options.max_wait
     poll = 0
+    announced = False
     while True:
         poll += 1
         try:
@@ -1778,21 +1828,14 @@ def watch(repo: Repo, target: Target, options: Options) -> tuple[dict, int]:
             eprint(f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: skipped — {err}")
             time.sleep(options.interval)
             continue
-        counts = report["counts"]
-        pending = counts["pending"]
+        if target.pr_number is None:
+            target = replace(target, sha=report["head"]["sha"])
+        pending = report["counts"]["pending"]
         if not options.as_json:
             elapsed = int(time.monotonic() - (deadline - options.max_wait))
-            early = len(report["early_failures"])
-            red = counts["failed"] + counts["error"] + counts["timeout"] + early
-            running_red = f" ({early} still running)" if early else ""
-            print(
-                f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: "
-                f"{red} failed{running_red}, {pending - early} pending "
-                f"(elapsed {elapsed}s / max {options.max_wait}s)"
-            )
-        if options.fail_fast and report["merge_blocked"]:
-            if not options.as_json:
-                print("watch: stopping at the first failure that blocks merge (--fail-fast).")
+            print_poll(report, poll, elapsed, options.max_wait)
+        stop, announced = stops_fast(report, options, announced)
+        if stop:
             break
         # A required check that has not reported is a run still starting or a gate not yet created.
         unreported = report["unreported_required"]

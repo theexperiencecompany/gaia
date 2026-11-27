@@ -1,7 +1,7 @@
 /**
  * Shared HTTP server for all bot containers.
  *
- * Provides a Hono app with a built-in `/health` endpoint. Subclass adapters
+ * Provides a Hono app with built-in `/health` and `/metrics` endpoints. Subclass adapters
  * can mount additional routes (e.g. WhatsApp's `/webhook`) on the same app
  * via {@link BotServer.app} before calling {@link BotServer.start}.
  *
@@ -14,6 +14,7 @@
 import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { botRegistry } from "../metrics";
 import type { PlatformName } from "../types";
 import { resolveCommit } from "../utils/logger";
 
@@ -40,6 +41,11 @@ export class BotServer {
         commit: resolveCommit(),
       }),
     );
+
+    this.app.get("/metrics", async (c) => {
+      c.header("Content-Type", botRegistry.contentType);
+      return c.body(await botRegistry.metrics());
+    });
   }
 
   /**

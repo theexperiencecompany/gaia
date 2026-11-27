@@ -1,0 +1,227 @@
+import { applyReplyDelta, EMPTY_REPLY_DRAFT } from "./draft";
+import { LIVE_WORK_STATUS, SCREEN_ITEM_KIND } from "./entries";
+import { DISPLAY_STATE, FRAME_KIND } from "./frames";
+import { applyChanges } from "./patch";
+import type {
+  ConversationFrame,
+  ConversationView,
+  FrameOutcome,
+  PendingSend,
+  ScreenItem,
+  StreamDraft,
+} from "./types";
+
+type DeltaFrame = Extract<ConversationFrame, { kind: "reply_delta" }>;
+
+export const EMPTY_CONVERSATION_VIEW: ConversationView = {
+  items: [],
+  patched: {},
+  drafts: [],
+  closed: {},
+  pending: [],
+  display: DISPLAY_STATE.IDLE,
+  work: [],
+  head: 0,
+  screenHead: 0,
+};
+
+const applied = (view: ConversationView): FrameOutcome => ({
+  status: "applied",
+  view,
+});
+
+const isDev = () => process.env.NODE_ENV !== "production";
+
+/** The id whose stream an item's arrival ends: a settled reply's, or finished work's task. */
+function endedStream(item: ScreenItem): string | null {
+  if (item.kind === SCREEN_ITEM_KIND.REPLY)
+    return item.outcome === null ? null : item.id;
+  if (item.kind === SCREEN_ITEM_KIND.WORK)
+    return LIVE_WORK_STATUS.has(item.status) ? null : item.task_id;
+  return null;
+}
+
+/**
+ * Take the server's items as of the log at head: each replaces the one it updates, and every item sits at its seq.
+ * patches is how many the stream has applied to each since it sent it whole; null for items a page read brought.
+ */
+function withItems(
+  view: ConversationView,
+  incoming: readonly ScreenItem[],
+  head: number,
+  patches: number | null,
+): ConversationView {
+  const byId = new Map(view.items.map((item) => [item.id, item]));
+  for (const item of incoming) {
+    const held = byId.get(item.id);
+    // The server never moves an item; this firing means the projection broke that rule.
+    if (held && held.seq !== item.seq && isDev())
+      console.warn("[conversation] item moved", item.id, held.seq, item.seq);
+    byId.set(item.id, item);
+  }
+  const items = [...byId.values()].sort((a, b) => a.seq - b.seq);
+  const ended = incoming.flatMap((item) => endedStream(item) ?? []);
+  const closed = { ...view.closed };
+  for (const id of ended) closed[id] = true;
+  const shown = new Set(items.map((item) => item.id));
+  const patched = { ...view.patched };
+  for (const { id } of incoming) {
+    if (patches === null) delete patched[id];
+    else patched[id] = patches;
+  }
+  return {
+    ...view,
+    items,
+    patched,
+    screenHead: Math.max(view.screenHead, head),
+    closed,
+    drafts: view.drafts.filter(
+      (draft) => !(draft.replyId && closed[draft.replyId]),
+    ),
+    pending: view.pending.filter((send) => !shown.has(send.id)),
+  };
+}
+
+/** An update for an item older than everything held belongs to history not loaded here. */
+function update(
+  view: ConversationView,
+  item: ScreenItem,
+  head: number,
+): ConversationView {
+  const oldest = view.items[0];
+  return oldest && item.seq < oldest.seq
+    ? view
+    : withItems(view, [item], head, 0);
+}
+
+const sameStream = (frame: DeltaFrame) => (draft: StreamDraft) =>
+  draft.attemptId === frame.attempt_id;
+
+function newDraft(frame: DeltaFrame): StreamDraft {
+  return {
+    attemptId: frame.attempt_id,
+    replyId: frame.reply_id,
+    nextIndex: 0,
+    content: EMPTY_REPLY_DRAFT,
+  };
+}
+
+function isClosed(view: ConversationView, frame: DeltaFrame): boolean {
+  return Boolean(
+    view.closed[frame.attempt_id] ||
+      (frame.reply_id && view.closed[frame.reply_id]),
+  );
+}
+
+function applyDelta(view: ConversationView, frame: DeltaFrame): FrameOutcome {
+  if (isClosed(view, frame)) return applied(view);
+  const existing = view.drafts.find(sameStream(frame));
+  const draft = existing ?? newDraft(frame);
+  if (frame.index < draft.nextIndex) return applied(view);
+  if (frame.index > draft.nextIndex) {
+    return { status: "index_gap", expected: draft.nextIndex, view };
+  }
+  const content = applyReplyDelta(draft.content, frame.payload);
+  if (!content) return { status: "stale_copy", view };
+  const updated: StreamDraft = {
+    ...draft,
+    nextIndex: draft.nextIndex + 1,
+    content,
+    replyId: frame.reply_id ?? draft.replyId,
+  };
+  const drafts = existing
+    ? view.drafts.map((current) => (current === existing ? updated : current))
+    : [...view.drafts, updated];
+  return applied({ ...view, drafts });
+}
+
+type PatchFrame = Extract<ConversationFrame, { kind: "screen_patch" }>;
+
+/**
+ * A patch for an item the view does not hold belongs to history not loaded here. One written
+ * against another copy than the view holds (a page read replaced it, or a patch went missing)
+ * is never applied: the stream is reopened on the whole screen.
+ */
+function patch(view: ConversationView, frame: PatchFrame): FrameOutcome {
+  const held = view.items.find((item) => item.id === frame.id);
+  if (!held) return applied(view);
+  if (view.patched[frame.id] !== frame.base)
+    return { status: "stale_copy", view };
+  const item = applyChanges(held, frame.changes);
+  if (!item) return { status: "stale_copy", view };
+  return applied(withItems(view, [item], frame.head, frame.base + 1));
+}
+
+function retract(view: ConversationView, attemptId: string): ConversationView {
+  if (view.closed[attemptId]) return view;
+  return {
+    ...view,
+    closed: { ...view.closed, [attemptId]: true },
+    drafts: view.drafts.filter((draft) => draft.attemptId !== attemptId),
+  };
+}
+
+/** Fold one frame into the view; a repeated frame of any kind changes nothing. */
+export function applyFrame(
+  view: ConversationView,
+  frame: ConversationFrame,
+): FrameOutcome {
+  switch (frame.kind) {
+    case FRAME_KIND.SCREEN:
+      return applied(withItems(view, frame.items, frame.head, 0));
+    case FRAME_KIND.SCREEN_INSERT:
+      return applied(withItems(view, [frame.item], frame.head, 0));
+    case FRAME_KIND.SCREEN_UPDATE:
+      return applied(update(view, frame.item, frame.head));
+    case FRAME_KIND.SCREEN_PATCH:
+      return patch(view, frame);
+    case FRAME_KIND.REPLY_DELTA:
+      return applyDelta(view, frame);
+    case FRAME_KIND.RETRACT:
+      return applied(retract(view, frame.attempt_id));
+    case FRAME_KIND.STATE:
+      return applied(
+        frame.head < view.head
+          ? view
+          : {
+              ...view,
+              head: frame.head,
+              display: frame.display,
+              work: frame.work,
+            },
+      );
+    // The title is the conversation's metadata, held with the conversation list, not in the screen.
+    case FRAME_KIND.CONVERSATION_UPDATED:
+      return applied(view);
+    default: {
+      const unhandled: never = frame;
+      return unhandled;
+    }
+  }
+}
+
+/** Take a page of the server's screen (a load, a sync or a page back) and its state; a page no newer than the view's items only adds the items the view lacks. */
+export function applyPage(
+  view: ConversationView,
+  items: readonly ScreenItem[],
+  state: Extract<ConversationFrame, { kind: "state" }>,
+): ConversationView {
+  const held = new Set(view.items.map((item) => item.id));
+  const fresh =
+    state.head <= view.screenHead
+      ? items.filter((item) => !held.has(item.id))
+      : items;
+  const outcome = applyFrame(withItems(view, fresh, state.head, null), state);
+  return outcome.view;
+}
+
+/** Show this device's own send until the server's screen inserts it; a send already shown is not added. */
+export function addPendingSend(
+  view: ConversationView,
+  send: PendingSend,
+): ConversationView {
+  const known =
+    view.pending.some((pending) => pending.id === send.id) ||
+    view.items.some((item) => item.id === send.id);
+  return known ? view : { ...view, pending: [...view.pending, send] };
+}

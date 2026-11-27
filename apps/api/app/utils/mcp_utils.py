@@ -95,6 +95,7 @@ _CONNECTION_ERROR_PATTERNS = (
     "not connected",
     "session closed",
     "session expired",
+    "session terminated",
     "ssl",
     "certificate",
 )

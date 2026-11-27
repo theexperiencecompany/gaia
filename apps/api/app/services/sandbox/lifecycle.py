@@ -23,10 +23,9 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 import time
-from typing import cast
 from urllib.parse import unquote, urlsplit, urlunsplit
 
-from e2b import AsyncSandbox, NotFoundException, SandboxState
+from e2b import AsyncSandbox, CommandExitException, NotFoundException, SandboxState
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.deployment import DeploymentKind
@@ -54,13 +53,13 @@ from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve as resolve_e2b_config,
 )
-from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.errors import (
     CodeExecutionDisabledError,
     SandboxAcquisitionError,
     SandboxRateLimitError,
 )
 from app.services.sandbox.local_sandbox import (
+    CodingSandbox,
     LocalDockerSandbox,
     get_local_sandbox,
     pop_local_sandbox,
@@ -309,13 +308,16 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
         sandbox_id=sandbox_id,
         user_id=user_id,
     )
-    await _run_mount_script(sbx, _mount_env(user_id, shard_id))
+    try:
+        await _run_mount_script(sbx, _mount_env(user_id, shard_id))
+    except SandboxAcquisitionError:
+        # Nothing has recorded this sandbox yet, so only this kill stops it running to its cap.
+        await sbx.kill()
+        raise
     return sbx
 
 
-async def _set_up_agents_home(
-    user_id: str, sbx: AsyncSandbox | LocalDockerSandbox, *, replaced: bool
-) -> None:
+async def _set_up_agents_home(user_id: str, sbx: CodingSandbox, *, replaced: bool) -> None:
     """Lay out the coding agents' home on a fresh agent-lab or local sandbox, restoring the last save.
 
     Runs once the sandbox is recorded, so a failure never orphans it: the
@@ -364,22 +366,22 @@ async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> Non
     except OSError:
         cmd = MOUNT_SCRIPT_PATH
     async with fs_timer(FsOps.SBX_MOUNT_SCRIPT):
-        result = await sbx.commands.run(
-            cmd,
-            timeout=SANDBOX_MOUNT_TIMEOUT_SECONDS,
-            envs=mount_env,
-            user="root",
-        )
-    if result.exit_code != 0:
-        raise SandboxAcquisitionError(
-            f"Mount script crashed (exit {result.exit_code}): {result.stderr}"
-        )
+        try:
+            result = await sbx.commands.run(
+                cmd,
+                timeout=SANDBOX_MOUNT_TIMEOUT_SECONDS,
+                envs=mount_env,
+                user="root",
+            )
+        except CommandExitException as e:
+            raise SandboxAcquisitionError(
+                f"Mount script crashed (exit {e.exit_code}): {e.stderr}"
+            ) from e
     # If the script took the ephemeral path it logs a `WARN:` to stderr —
     # surface that so we know the sandbox FS isn't durable.
-    stderr = getattr(result, "stderr", "") or ""
-    if "WARN:" in stderr:
+    if "WARN:" in result.stderr:
         _record(mount_status="ephemeral_fallback")
-        log.warning(f"{LogTag.SANDBOX} ephemeral /workspace fallback", stderr=stderr.strip())
+        log.warning(f"{LogTag.SANDBOX} ephemeral /workspace fallback", stderr=result.stderr.strip())
     else:
         _record(mount_status="mounted")
         log.info(f"{LogTag.SANDBOX} workspace mounted")
@@ -398,16 +400,12 @@ async def _run_silent(sbx: AsyncSandbox, cmd: str, *, timeout: int = 10) -> tupl
     """
     try:
         result = await sbx.commands.run(cmd, timeout=timeout)
-        return (
-            getattr(result, "exit_code", 0) or 0,
-            getattr(result, "stdout", "") or "",
-            getattr(result, "stderr", "") or "",
-        )
+    except CommandExitException as e:
+        return e.exit_code, e.stdout, e.stderr
     except Exception as e:
-        msg = str(e)
-        # E2B's CommandExitException includes the exit code in its string repr;
-        # we don't need to parse it precisely — any non-zero is "no".
-        return 1, "", msg
+        # A probe that could not run at all (timeout, transport) is also a "no".
+        return 1, "", str(e)
+    return result.exit_code, result.stdout, result.stderr
 
 
 async def _ensure_mounted(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
@@ -440,9 +438,17 @@ async def _write_canary(sbx: AsyncSandbox) -> str:
 async def _read_canary(sbx: AsyncSandbox) -> str | None:
     """Return the canary contents, or None if the file is missing/unreadable."""
     try:
-        content = cast(str, await sbx.files.read(CANARY_PATH))
-    except Exception:
-        # Missing (NotFoundException) or any read failure → treat as stale.
+        content = await sbx.files.read(CANARY_PATH)
+    except NotFoundException:
+        return None
+    except Exception as e:
+        # An unreadable canary is treated as stale (the sandbox is recreated), but say why.
+        log.warning(
+            f"{LogTag.SANDBOX} canary read failed",
+            sandbox_id=sbx.sandbox_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
     return content.strip() or None
 
@@ -515,7 +521,13 @@ async def _health_probe(
             return await asyncio.wait_for(
                 sbx.is_running(request_timeout=request_timeout), timeout=wait_timeout
             )
-        except Exception:
+        except Exception as e:
+            log.warning(
+                f"{LogTag.SANDBOX} health probe failed",
+                sandbox_id=sbx.sandbox_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
 
@@ -559,32 +571,6 @@ async def _liveness(sbx: AsyncSandbox) -> SandboxLiveness:
         wait_timeout=HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS,
     )
     return SandboxLiveness.ALIVE if alive else SandboxLiveness.GONE
-
-
-async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
-    """Start the artifact watcher if it isn't already running.
-
-    Best-effort: the watcher is a latency optimization for surfacing
-    artifacts/ artifacts; the host-side JuiceFS list is authoritative,
-    so a watcher failure must never block sandbox acquisition.
-    """
-    if entry.watcher is not None and entry.watcher.is_alive():
-        return
-    with contextlib.suppress(Exception):
-        entry.watcher = await start_watcher_for(user_id, entry.sandbox)
-    _record(watcher_active=entry.watcher is not None)
-
-
-async def _stop_watcher(entry: PooledSandbox) -> None:
-    """Stop and drop the watcher.
-
-    HTTP/2 streams to envd don't survive pause/kill, so we reopen on the next
-    acquire.
-    """
-    if entry.watcher is not None:
-        with contextlib.suppress(Exception):
-            await entry.watcher.stop()
-        entry.watcher = None
 
 
 async def _seed_user_subtrees(user_id: str) -> None:
@@ -635,7 +621,6 @@ async def _reuse_cached_entry(
     if liveness == SandboxLiveness.PAUSED:
         _record(cache_evicted="paused")
         log.info(f"{LogTag.SANDBOX} cached sandbox paused; resuming from record", user_id=user_id)
-        await _stop_watcher(entry)
         pool.evict(user_id)
         return None
     if liveness == SandboxLiveness.GONE:
@@ -656,7 +641,6 @@ async def _reuse_cached_entry(
         await mark_sandbox_dead(user_id)
         return None
 
-    await _ensure_watcher(user_id, entry)
     return entry
 
 
@@ -782,7 +766,6 @@ async def _acquire_or_create(user_id: str, template_id: str) -> PooledSandbox:
         template_id=running_template_id,
     )
     pool.put(user_id, entry)
-    await _ensure_watcher(user_id, entry)
     if source == "create" and is_agent_lab_template(template_id):
         await _set_up_agents_home(
             user_id, sbx, replaced=doc is not None and doc.sandbox_id is not None
@@ -804,14 +787,14 @@ async def _cancel_pause_task(entry: PooledSandbox) -> None:
 async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
     """Pause the sandbox and record the paused state. False on failure.
 
-    The SDK method is beta_pause (there is no plain pause); it snapshots
-    both filesystem and memory so a later connect() resumes in place. An
+    The SDK's pause keeps memory by default, so it snapshots both filesystem
+    and memory and a later connect() resumes in place. An
     agent-lab sandbox saves its agents' home first, in case it never resumes.
     """
     if is_agent_lab_template(entry.template_id):
         await save_agents_home(user_id, entry.sandbox)
     try:
-        await entry.sandbox.beta_pause()
+        await entry.sandbox.pause()
         await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
         log.info(f"{LogTag.SANDBOX} paused idle sandbox user", user_id=user_id)
         return True
@@ -890,7 +873,6 @@ async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
     log.info(f"{LogTag.SANDBOX} evicting sandbox user", user_id=user_id)
     get_sandbox_pool().evict(user_id)
     await _cancel_pause_task(entry)
-    await _stop_watcher(entry)
     # Let the JuiceFS daemons close their metadata sessions before the kill so
     # dead sessions don't linger and get re-scanned by the volume's GC owner.
     await _release_juicefs_sessions(entry.sandbox)
@@ -928,9 +910,8 @@ async def renew_sandbox(user_id: str) -> None:
     async with pool.distributed_lock(user_id):
         entry = await _acquire_or_create(user_id, template_id)
         await _cancel_pause_task(entry)
-        await _stop_watcher(entry)
         sandbox_id = entry.sandbox.sandbox_id
-        await entry.sandbox.beta_pause()
+        await entry.sandbox.pause()
         resumed = await _connect_sandbox(sandbox_id, sandbox_lifetime_seconds(entry.template_id))
         if resumed is None:
             await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
@@ -946,7 +927,6 @@ async def renew_sandbox(user_id: str) -> None:
         if doc is None:
             raise SandboxAcquisitionError(f"sandbox record for {user_id} vanished during renew")
         await _ensure_mounted(resumed, _mount_env(user_id, doc.shard_id))
-        await _ensure_watcher(user_id, entry)
         await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
         log.info(
             f"{LogTag.SANDBOX} renewed sandbox lifetime", user_id=user_id, sandbox_id=sandbox_id
@@ -977,7 +957,6 @@ async def pause_idle_sandbox(user_id: str) -> bool:
                 return False
             entry = PooledSandbox(sandbox=sbx, template_id=doc.template_id)
         await _cancel_pause_task(entry)
-        await _stop_watcher(entry)
         paused = await _pause_sandbox(user_id, entry)
         # The pooled handle points at a frozen sandbox; the next acquire resumes it from Mongo.
         pool.evict(user_id)
@@ -985,7 +964,7 @@ async def pause_idle_sandbox(user_id: str) -> bool:
 
 
 @contextlib.asynccontextmanager
-async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
+async def acquire_sandbox(user_id: str) -> AsyncIterator[CodingSandbox]:
     """Yield a live sandbox for the user, serialized per user with debounced pause.
 
     On self-host without an E2B key this yields the local Docker-exec backend

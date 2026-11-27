@@ -152,17 +152,23 @@ groups:
           severity: critical
           service: api
 
-      # 2. API p95 latency >1s for 10m
+      # 2. API p95 latency >1s for 10m. Streaming and long-running handlers are
+      # excluded: a chat stream, an SSE feed, a sandbox run and an upload last as
+      # long as their work, and they alone held p95 at the 10s top bucket. Chat
+      # slowness is the chat latency rules' to report. Under 100 requests in the
+      # window three slow ones move p95, so the rule says nothing below that.
       - uid: gaia-api-p95-latency
         title: API responses are slow
         condition: C
         data:
           - refId: A
-            relativeTimeRange: { from: 600, to: 0 }
+            relativeTimeRange: { from: 900, to: 0 }
             datasourceUid: prometheus
             model:
               refId: A
-              expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico"}[5m])))
+              expr: |
+                histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico|/api/v1/chat-stream|/api/v1/bot/chat-stream|/api/v1/sandbox/execute|/api/v1/upload|.*/events"}[15m])))
+                and on() (sum(increase(http_request_duration_seconds_count{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico|/api/v1/chat-stream|/api/v1/bot/chat-stream|/api/v1/sandbox/execute|/api/v1/upload|.*/events"}[15m])) >= 100)
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -185,14 +191,17 @@ groups:
         annotations:
           summary: >-
             {{ if $values.B }}API p95 response time is
-            {{ printf "%.2f" $values.B.Value }}s (threshold 1s){{ else }}Unable to read
-            the API p95 response time — this rule could not be evaluated, which almost
-            always means Prometheus is down or unreachable.{{ end }}
+            {{ printf "%.2f" $values.B.Value }}s over the last 15 minutes (threshold
+            1s){{ else }}Unable to read the API p95 response time — this rule could not
+            be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
           description: >-
-            One request in twenty is taking over a second, so chat feels stalled
-            and the first SSE token arrives late. Use the "Slowest Endpoints
-            (p95)" and "P95 Latency by Endpoint" panels to find which handler is
-            responsible before looking at database or LLM latency.
+            One request in twenty is taking over a second, so pages, lists and
+            settings load slowly across web, desktop and the bots. Chat streams,
+            the conversation event feed, sandbox runs and uploads are not counted
+            here; slow chat has its own alerts. Use the "Slowest Endpoints (p95)"
+            and "P95 Latency by Endpoint" panels to find which handler is
+            responsible before looking at database latency.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-p95-latency
           __dashboardUid__: gaia-api-prometheus
           __panelId__: "6"
@@ -546,6 +555,7 @@ groups:
           __panelId__: "10"
         labels:
           severity: critical
+          notify: email
           service: api
           incident: availability
 
@@ -559,11 +569,11 @@ groups:
     interval: 1m
     rules:
       # 10. Any core service target down for 2m (multi-dimensional: one alert
-      # instance per failing job). voice_agent is intentionally excluded because
-      # gaia-voice-agent-down below owns it with a longer dwell and voice-specific
-      # copy — NOT because it is scaled to 0, which is stale (see that rule).
-      # Every other job is covered by gaia-monitoring-target-down's negative
-      # regex, so the three rules together provably cover every scrape job.
+      # instance per failing job). arq_worker and voice_agent are excluded because
+      # gaia-arq-worker-down and gaia-voice-agent-down own them with their own
+      # copy. Every other job is covered by gaia-monitoring-target-down's negative
+      # regex, which lists this rule's jobs and those two, so each scrape job has
+      # exactly one owner.
       - uid: gaia-target-down
         title: A monitored service stopped responding
         condition: C
@@ -573,7 +583,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: up{job=~"gaia-api|arq_worker|postgres|redis|jfs_meta_redis|rabbitmq"}
+              expr: up{job=~"gaia-api|postgres|redis|jfs_meta_redis|rabbitmq"}
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -594,19 +604,23 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
+          headline: >-
+            {{ if $values.B }}{{ $labels.job }} is not responding{{ else }}A monitored service stopped responding{{ end }}
           summary: >-
-            {{ if $values.B }}Prometheus can no longer scrape {{ $labels.job }} at
-            {{ $labels.instance }}{{ else }}Unable to read scrape target health — this
-            rule could not be evaluated, which almost always means Prometheus is down or
-            unreachable.{{ end }}
+            {{ if $values.B }}Prometheus has not been able to scrape {{ $labels.job }}
+            ({{ $labels.instance }}) for 2 minutes{{ else }}Unable to read scrape target
+            health — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
           description: >-
-            The container is gone or its metrics endpoint is unreachable. What
-            this means depends on the job — gaia-api means the API container is
-            down or /metrics is rejecting the bearer token; arq_worker means
-            background jobs have stopped; rabbitmq is the broker itself. Note
-            that postgres and redis scrape their exporter sidecars, not the
-            databases, so those two mean the exporter died and say nothing about
-            whether the database is healthy.
+            {{ if $values.B }}{{ if eq $labels.job "gaia-api" }}The API container is down, or
+            its /metrics endpoint is rejecting Prometheus. If "Public API is unreachable" is
+            in this thread too, users are affected; if not, only monitoring of the API is
+            blind.{{ else if eq $labels.job "rabbitmq" }}The message broker is down, so replies
+            to bot users are not being delivered.{{ else }}This is the metrics exporter beside
+            {{ $labels.job }}, not the database itself. The database may be healthy; its own
+            alert fires if it is not. Until the exporter is back, that database is
+            unmonitored.{{ end }}{{ else }}One of the API, the message broker or a database
+            exporter stopped answering Prometheus.{{ end }}
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-target-down
           __dashboardUid__: gaia-overview
           __panelId__: "5"
@@ -617,8 +631,7 @@ groups:
 
       # 11. ARQ worker has no running replica: the worker exports its own metrics
       # on :9100, so `absent()` / up==0 on that job is a direct "background jobs
-      # are not processing" signal. Kept separate from rule 10 so it carries a
-      # worker-specific summary even if the regex above is ever narrowed.
+      # are not processing" signal. The only rule that watches this job.
       - uid: gaia-arq-worker-down
         title: Background worker is down
         condition: C
@@ -747,6 +760,8 @@ groups:
         execErrState: OK
         for: 0m
         annotations:
+          headline: >-
+            {{ if $values.B }}{{ reReplaceAll "gaia-prod_" "" $labels.swarm_service }} keeps restarting{{ else }}A container is restarting repeatedly{{ end }}
           summary: >-
             {{ if $values.B }}{{ $labels.swarm_service }} has run as
             {{ printf "%.0f" $values.B.Value }} different containers in the last 15
@@ -802,19 +817,22 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
+          headline: >-
+            {{ if $values.B }}{{ reReplaceAll "https?://([^:/]+).*" "$1" $labels.instance }} is down{{ else }}A bot or the embedding sidecar is down{{ end }}
           summary: >-
-            {{ if $values.B }}{{ $labels.instance }} has been failing its health check
-            for 2 minutes{{ else }}Unable to read the internal service health probes —
-            this rule could not be evaluated, which almost always means Prometheus is
-            down or unreachable.{{ end }}
+            {{ if $values.B }}{{ reReplaceAll "https?://([^:/]+).*" "$1" $labels.instance }}
+            has failed its health check for 2 minutes{{ else }}Unable to read the internal
+            service health probes — this rule could not be evaluated, which almost always
+            means Prometheus is down or unreachable.{{ end }}
           description: >-
-            These six targets have no metrics of their own and are health-probed
-            instead. If this is embedding-sidecar:8200, both the API and the ARQ
-            worker lose embedding and reranking, so memory storage and semantic
-            memory search break product-wide — there is no in-process fallback,
-            the worker cannot fit the models in its memory limit. If it is one of
-            the discord, slack, telegram, whatsapp or imessage bots, that platform's users
-            get no replies even though the API itself is healthy.
+            {{ if $values.B }}{{ if match "embedding-sidecar" $labels.instance }}Memory is
+            broken for everyone: the API and the worker cannot store or search memories
+            without the embedding sidecar, and there is no fallback. Check the
+            embedding-sidecar container; it needs about 2.4G of its 3G limit for its
+            models.{{ else }}People messaging GAIA on this platform get no reply. The API
+            and the other platforms are unaffected. Check this bot's container: if it keeps
+            restarting, its last log lines before each restart say why.{{ end }}{{ else }}A
+            bot or the embedding sidecar is failing its health check.{{ end }}
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-internal-service-down
           __dashboardUid__: gaia-containers
           __panelId__: "1"
@@ -824,18 +842,20 @@ groups:
           incident: availability
 
       # 14. API severely slow: p95 > 3s for 5m. The warning-tier latency rule
-      # (gaia-api-p95-latency, >1s) goes to Slack only; this critical tier also
-      # pages email so a real latency incident isn't missed.
+      # (gaia-api-p95-latency, >1s) repeats daily; this critical tier repeats
+      # every 12h. Same handlers and same 100-request floor as the warning tier.
       - uid: gaia-api-p95-latency-critical
         title: API responses are critically slow
         condition: C
         data:
           - refId: A
-            relativeTimeRange: { from: 600, to: 0 }
+            relativeTimeRange: { from: 900, to: 0 }
             datasourceUid: prometheus
             model:
               refId: A
-              expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico"}[5m])))
+              expr: |
+                histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico|/api/v1/chat-stream|/api/v1/bot/chat-stream|/api/v1/sandbox/execute|/api/v1/upload|.*/events"}[15m])))
+                and on() (sum(increase(http_request_duration_seconds_count{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico|/api/v1/chat-stream|/api/v1/bot/chat-stream|/api/v1/sandbox/execute|/api/v1/upload|.*/events"}[15m])) >= 100)
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -858,15 +878,15 @@ groups:
         annotations:
           summary: >-
             {{ if $values.B }}API p95 response time is
-            {{ printf "%.2f" $values.B.Value }}s (critical threshold 3s){{ else }}Unable
-            to read the API p95 response time — this rule could not be evaluated, which
-            almost always means Prometheus is down or unreachable.{{ end }}
+            {{ printf "%.2f" $values.B.Value }}s over the last 15 minutes (critical
+            threshold 3s){{ else }}Unable to read the API p95 response time — this rule
+            could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
           description: >-
             Same signal as the warning-tier latency rule, at the point where the
-            product is effectively unusable rather than merely slow. This tier
-            also pages email. Treat it as an incident — check whether the API is
-            saturated, a downstream database is slow, or an upstream LLM provider
-            is degraded.
+            product is effectively unusable rather than merely slow. Treat it as an incident: check whether the API is
+            saturated (event-loop lag, CPU) or a database it reads on every
+            request (Mongo, Redis, Postgres) is slow.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-p95-latency-critical
           __dashboardUid__: gaia-api-prometheus
           __panelId__: "6"
@@ -874,204 +894,18 @@ groups:
           severity: critical
           service: api
 
-      # 26. Chat TTFT p95 >5s for 10m. First user-visible text is late.
-      - uid: gaia-chat-ttft-p95
+      # 26-29. Chat latency. chat_ttft_seconds and chat_e2e_full_seconds run from
+      # the user's message to the first text, and to the settle, of the reply
+      # that answered it, so a turn that waited on its work is long by design:
+      # in prod half of replies settle in 8s, one in ten takes over 2 minutes
+      # and one in twenty-five over 5. A p95 over the few turns of a quiet window
+      # is one turn, so each rule reads the share of answered turns (status="ok";
+      # a failed turn is gaia-chat-turns-failing's) slower than a bucket edge, and
+      # says nothing until five turns were that slow.
+      #
+      # 26. Over 30% of replies showed their first text after 30s (normal: 5%).
+      - uid: gaia-chat-first-reply-slow
         title: Chat first reply is slow
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange: { from: 600, to: 0 }
-            datasourceUid: prometheus
-            model:
-              refId: A
-              expr: histogram_quantile(0.95, sum by (le) (rate(chat_ttft_seconds_bucket{job="gaia-api"}[5m])))
-              instant: true
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              refId: B
-              type: reduce
-              expression: A
-              reducer: last
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              refId: C
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator: { type: gt, params: [5] }
-        noDataState: OK
-        execErrState: Error
-        for: 10m
-        annotations:
-          summary: >-
-            {{ if $values.B }}Chat p95 time-to-first-reply is
-            {{ printf "%.2f" $values.B.Value }}s (threshold 5s){{ else }}Unable to
-            read the chat TTFT p95 — this rule could not be evaluated, which almost
-            always means Prometheus is down or unreachable.{{ end }}
-          description: >-
-            One chat turn in twenty waits over five seconds for its first reply
-            text. Decompose with llm_ttft_seconds (provider) vs chat_ttft_seconds
-            (pipeline): if llm_ttft moved, the provider is slow; if only chat_ttft
-            moved, suspect context assembly (context_assemble_seconds) or the
-            pre-LLM graph spans. No latency dashboard panel exists for these
-            metrics yet — query /metrics histograms directly.
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95
-        labels:
-          severity: warning
-          service: api
-
-      # 27. Chat TTFT p95 >10s for 5m. Critical tier: also pages email.
-      - uid: gaia-chat-ttft-p95-critical
-        title: Chat first reply is critically slow
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange: { from: 600, to: 0 }
-            datasourceUid: prometheus
-            model:
-              refId: A
-              expr: histogram_quantile(0.95, sum by (le) (rate(chat_ttft_seconds_bucket{job="gaia-api"}[5m])))
-              instant: true
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              refId: B
-              type: reduce
-              expression: A
-              reducer: last
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              refId: C
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator: { type: gt, params: [10] }
-        noDataState: OK
-        execErrState: Error
-        for: 5m
-        annotations:
-          summary: >-
-            {{ if $values.B }}Chat p95 time-to-first-reply is
-            {{ printf "%.2f" $values.B.Value }}s (critical threshold 10s){{ else }}Unable
-            to read the chat TTFT p95 — this rule could not be evaluated, which
-            almost always means Prometheus is down or unreachable.{{ end }}
-          description: >-
-            Same signal as the warning-tier TTFT rule, at the point where chat
-            feels broken rather than slow. This tier also pages email. Treat it
-            as an incident — check provider status first (llm_ttft_seconds),
-            then executor queue wait (executor_queue_wait_seconds) for a stuck
-            conversation lock.
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95-critical
-        labels:
-          severity: critical
-          service: api
-
-      # 28. Chat E2E-ack p95 >30s for 10m. Comms replies take too long.
-      - uid: gaia-chat-e2e-p95
-        title: Chat replies are slow end to end
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange: { from: 600, to: 0 }
-            datasourceUid: prometheus
-            model:
-              refId: A
-              expr: histogram_quantile(0.95, sum by (le) (rate(chat_e2e_ack_seconds_bucket{job="gaia-api"}[5m])))
-              instant: true
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              refId: B
-              type: reduce
-              expression: A
-              reducer: last
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              refId: C
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator: { type: gt, params: [30] }
-        noDataState: OK
-        execErrState: Error
-        for: 10m
-        annotations:
-          summary: >-
-            {{ if $values.B }}Chat p95 end-to-end ack time is
-            {{ printf "%.2f" $values.B.Value }}s (threshold 30s){{ else }}Unable to
-            read the chat E2E p95 — this rule could not be evaluated, which almost
-            always means Prometheus is down or unreachable.{{ end }}
-          description: >-
-            One chat turn in twenty takes over thirty seconds to complete its
-            comms reply. Split delegated vs direct via the delegated label, then
-            executor_active_seconds (executor work) vs HIL wait
-            (hil_user_wait_seconds) vs delivery (delivery_narration_seconds,
-            delivery_persist_seconds). No latency dashboard panel exists for
-            these metrics yet — query /metrics histograms directly.
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95
-        labels:
-          severity: warning
-          service: api
-
-      # 29. Chat E2E-ack p95 >60s for 5m. Critical tier: also pages email.
-      - uid: gaia-chat-e2e-p95-critical
-        title: Chat replies are critically slow end to end
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange: { from: 600, to: 0 }
-            datasourceUid: prometheus
-            model:
-              refId: A
-              expr: histogram_quantile(0.95, sum by (le) (rate(chat_e2e_ack_seconds_bucket{job="gaia-api"}[5m])))
-              instant: true
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              refId: B
-              type: reduce
-              expression: A
-              reducer: last
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              refId: C
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator: { type: gt, params: [60] }
-        noDataState: OK
-        execErrState: Error
-        for: 5m
-        annotations:
-          summary: >-
-            {{ if $values.B }}Chat p95 end-to-end ack time is
-            {{ printf "%.2f" $values.B.Value }}s (critical threshold 60s){{ else }}Unable
-            to read the chat E2E p95 — this rule could not be evaluated, which
-            almost always means Prometheus is down or unreachable.{{ end }}
-          description: >-
-            Same signal as the warning-tier E2E rule, at the point where turns
-            time out rather than lag. This tier also pages email. Treat it as an
-            incident — look for a wedged executor lock (executor_queue_wait_seconds
-            climbing), a provider outage, or a runaway tool (tool_call_seconds).
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
-        labels:
-          severity: critical
-          service: api
-
-      # 30. Our overhead on a direct comms reply, p90 >200ms for 15m. Provider time is
-      # excluded by construction: the stages run from request receipt to the model
-      # request, and from the model's first chunk to the frame written.
-      # The 30m window outlasts `for`, so on a quiet night one slow turn among a
-      # handful would hold the p90 over budget long enough to fire alone. Below 20
-      # direct turns in the window the query returns nothing (NoData -> OK): a p90
-      # needs at least three slow turns behind it before it can cross 200ms.
-      - uid: gaia-turn-overhead-p90
-        title: Replies spend too long in our own code
         condition: C
         data:
           - refId: A
@@ -1080,17 +914,19 @@ groups:
             model:
               refId: A
               expr: |
-                histogram_quantile(0.9, sum by (le) (rate(turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct"}[30m])))
-                and on ()
-                (sum(increase(turn_overhead_seconds_count{job="gaia-api",stage="total",path="direct"}[30m])) >= 20)
+                (
+                  1 - sum(increase(chat_ttft_seconds_bucket{job=~"gaia-api|arq_worker", status="ok", le="30.0"}[30m]))
+                  / clamp_min(sum(increase(chat_ttft_seconds_count{job=~"gaia-api|arq_worker", status="ok"}[30m])), 1)
+                )
+                and on() (
+                  sum(increase(chat_ttft_seconds_count{job=~"gaia-api|arq_worker", status="ok"}[30m]))
+                  - sum(increase(chat_ttft_seconds_bucket{job=~"gaia-api|arq_worker", status="ok", le="30.0"}[30m]))
+                  >= 5
+                )
               instant: true
           - refId: B
             datasourceUid: __expr__
-            model:
-              refId: B
-              type: reduce
-              expression: A
-              reducer: last
+            model: { refId: B, type: reduce, expression: A, reducer: last }
           - refId: C
             datasourceUid: __expr__
             model:
@@ -1098,25 +934,198 @@ groups:
               type: threshold
               expression: B
               conditions:
-                - evaluator: { type: gt, params: [0.2] }
+                - evaluator: { type: gt, params: [0.3] }
         noDataState: OK
         execErrState: Error
-        for: 15m
+        for: 10m
         annotations:
           summary: >-
-            {{ if $values.B }}Our p90 overhead on direct replies is
-            {{ humanizeDuration $values.B.Value }} (budget 200ms){{ else }}Unable
-            to read the turn overhead p90 — this rule could not be evaluated, which
-            almost always means Prometheus is down or unreachable.{{ end }}
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of chat
+            replies in the last 30 minutes showed their first text more than 30s
+            after the message (threshold 30%, at least 5 replies){{ else }}Unable to
+            read the chat time-to-first-reply — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end }}
           description: >-
-            One direct reply in ten spends over 200ms in our code on top of the
-            model's own time to first token. Split turn_overhead_seconds by stage:
-            ingress (auth, rate limits, before the turn is accepted), prep (context
-            assembly before the model request; per-section times are in
-            context_assemble_seconds) or egress (first token to frame written).
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-turn-overhead-p90
+            Users are watching a typing indicator for over half a minute before
+            anything appears. Compare "Provider TTFT vs pipeline TTFT" on the
+            latency dashboard: if llm_ttft_seconds moved, the model provider is
+            slow; if only chat_ttft_seconds moved, look at context assembly
+            (context_assemble_seconds) and at turns queued behind a reply that
+            is still running.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-first-reply-slow
+          __dashboardUid__: gaia-latency
+          __panelId__: "1"
         labels:
           severity: warning
+          service: api
+
+      # 27. Over 30% of replies showed their first text after 60s.
+      - uid: gaia-chat-first-reply-critically-slow
+        title: Chat first reply is critically slow
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  1 - sum(increase(chat_ttft_seconds_bucket{job=~"gaia-api|arq_worker", status="ok", le="60.0"}[30m]))
+                  / clamp_min(sum(increase(chat_ttft_seconds_count{job=~"gaia-api|arq_worker", status="ok"}[30m])), 1)
+                )
+                and on() (
+                  sum(increase(chat_ttft_seconds_count{job=~"gaia-api|arq_worker", status="ok"}[30m]))
+                  - sum(increase(chat_ttft_seconds_bucket{job=~"gaia-api|arq_worker", status="ok", le="60.0"}[30m]))
+                  >= 5
+                )
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.3] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of chat
+            replies in the last 30 minutes showed their first text more than 60s
+            after the message (critical threshold 30%, at least 5
+            replies){{ else }}Unable to read the chat time-to-first-reply — this rule
+            could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Same signal as the warning-tier rule, at the point where chat looks
+            broken rather than slow: a third of users wait over a minute for the
+            first word. Check the model provider
+            first (llm_ttft_seconds and gaia-llm-provider-failing), then a
+            conversation stuck behind a running executor
+            (executor_queue_wait_seconds).
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-first-reply-critically-slow
+          __dashboardUid__: gaia-latency
+          __panelId__: "1"
+        labels:
+          severity: critical
+          service: api
+
+      # 28. Over 30% of replies took more than 2 minutes to settle (normal: 11%).
+      - uid: gaia-chat-reply-slow
+        title: Chat replies are slow end to end
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  1 - sum(increase(chat_e2e_full_seconds_bucket{job=~"gaia-api|arq_worker", status="ok", le="120.0"}[30m]))
+                  / clamp_min(sum(increase(chat_e2e_full_seconds_count{job=~"gaia-api|arq_worker", status="ok"}[30m])), 1)
+                )
+                and on() (
+                  sum(increase(chat_e2e_full_seconds_count{job=~"gaia-api|arq_worker", status="ok"}[30m]))
+                  - sum(increase(chat_e2e_full_seconds_bucket{job=~"gaia-api|arq_worker", status="ok", le="120.0"}[30m]))
+                  >= 5
+                )
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.3] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of chat
+            replies in the last 30 minutes took more than 2 minutes from the
+            message to the finished reply (threshold 30%, at least 5
+            replies){{ else }}Unable to read the chat end-to-end time — this rule
+            could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            A third of replies are taking over two minutes to finish, three
+            times the usual share. The latency dashboard splits where the time
+            goes: model calls (llm_call_seconds), executor work
+            (executor_active_seconds) and its queue wait
+            (executor_queue_wait_seconds), and tools (tool_call_seconds).
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-reply-slow
+          __dashboardUid__: gaia-latency
+          __panelId__: "2"
+        labels:
+          severity: warning
+          service: api
+
+      # 29. Over 30% of replies took more than 5 minutes to settle (normal: 4%).
+      - uid: gaia-chat-reply-critically-slow
+        title: Chat replies are critically slow end to end
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  1 - sum(increase(chat_e2e_full_seconds_bucket{job=~"gaia-api|arq_worker", status="ok", le="300.0"}[30m]))
+                  / clamp_min(sum(increase(chat_e2e_full_seconds_count{job=~"gaia-api|arq_worker", status="ok"}[30m])), 1)
+                )
+                and on() (
+                  sum(increase(chat_e2e_full_seconds_count{job=~"gaia-api|arq_worker", status="ok"}[30m]))
+                  - sum(increase(chat_e2e_full_seconds_bucket{job=~"gaia-api|arq_worker", status="ok", le="300.0"}[30m]))
+                  >= 5
+                )
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.3] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of chat
+            replies in the last 30 minutes took more than 5 minutes from the
+            message to the finished reply (critical threshold 30%, at least 5
+            replies){{ else }}Unable to read the chat end-to-end time — this rule
+            could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Same signal as the warning-tier rule, at the point where replies
+            hang rather than lag. Treat it as an
+            incident: look for a wedged executor lock
+            (executor_queue_wait_seconds climbing), a model provider outage
+            (gaia-llm-provider-failing) or a runaway tool (tool_call_seconds).
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-reply-critically-slow
+          __dashboardUid__: gaia-latency
+          __panelId__: "2"
+        labels:
+          severity: critical
           service: api
 
       # 20. Postgres itself is refusing connections. `up{job="postgres"}` (rule
@@ -1234,9 +1243,11 @@ groups:
           incident: availability
 
       # 22. Monitoring has gone blind on part of the stack. The negative regex is
-      # the complement of rule 10 + rule 23, so every job in prometheus.yml is
-      # covered by exactly one of the three and a job added later lands here
-      # automatically instead of being silently unmonitored. noDataState is
+      # the complement of rules 10, 11 and 23, so every job in prometheus.yml is
+      # covered by exactly one of the four and a job added later lands here
+      # automatically instead of being silently unmonitored. The bots job lands
+      # here on purpose: a dead bot is gaia-internal-service-down's page, and what
+      # its scrape adds is that the bot alerts have gone blind. noDataState is
       # Alerting because `up` can only go absent if the job was removed from the
       # scrape config, which is precisely the failure this rule exists to catch.
       # No `incident` label: monitoring going blind is a different conversation
@@ -1250,7 +1261,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: up{job!~"gaia-api|arq_worker|postgres|redis|rabbitmq|voice_agent"}
+              expr: up{job!~"gaia-api|arq_worker|postgres|redis|jfs_meta_redis|rabbitmq|voice_agent"}
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -1271,6 +1282,8 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
+          headline: >-
+            {{ if $values.B }}Monitoring has lost sight of {{ $labels.job }}{{ else }}Monitoring has lost sight of part of the stack{{ end }}
           summary: >-
             {{ if $values.B }}Prometheus has not been able to scrape {{ $labels.job }}
             at {{ $labels.instance }} for 10 minutes (up is
@@ -1282,10 +1295,12 @@ groups:
             depend on it have gone quiet rather than green. node_exporter down
             silently disables the host disk, inode and memory alerts; cadvisor
             down silently disables OOM and restart detection; blackbox_exporter
-            down takes ChromaDB, the public API probe and all five internal
-            health probes with it at once, which looks like three simultaneous
-            outages when the real fault is one container. Read the job named
-            above before believing anything that fired alongside it.
+            down takes ChromaDB, the public API, readiness and web probes and
+            the internal health probes with it at once, which looks like several
+            simultaneous outages when the real fault is one container; bots down
+            with the bot's health probe still green means the bot delivery and
+            connection alerts cannot see that bot. Read the job named above
+            before believing anything that fired alongside it.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-monitoring-target-down
         labels:
           severity: warning
@@ -1351,6 +1366,144 @@ groups:
           service: voice_agent
           incident: availability
 
+      # 34. The API cannot reach one of the services it needs. /health/ready
+      # makes a real round trip to Mongo, Postgres, Redis, RabbitMQ and Chroma
+      # and answers 503 when any fails. MongoDB has no exporter, so this probe is
+      # its only signal. No dashboard link: nothing charts this probe.
+      - uid: gaia-api-dependencies-not-ready
+        title: API cannot reach one of its databases
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: probe_success{job="blackbox_ready"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 3m
+        annotations:
+          summary: The API readiness check has been failing for 3 minutes
+          description: >-
+            The API is up but one of MongoDB, Postgres, Redis, RabbitMQ or
+            ChromaDB did not answer it. MongoDB down means no sign-in, no
+            conversations and no settings for anyone; the others have their own
+            alerts, which will be in this thread if they are the cause. Read
+            /health/ready from inside the stack: its body names the service that
+            failed and the error.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-dependencies-not-ready
+        labels:
+          severity: critical
+          notify: email
+          service: api
+          incident: availability
+
+      # 35. The web app does not load. The API probe cannot see this: the site is
+      # a Cloudflare Worker, separate from the API host. No dashboard link:
+      # nothing charts this probe.
+      - uid: gaia-web-unreachable
+        title: Web app is unreachable
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: probe_success{job="blackbox_web"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 3m
+        annotations:
+          summary: https://heygaia.io/ has not returned 200 for 3 minutes
+          description: >-
+            Nobody can open the web app or the marketing site, and new users
+            cannot sign up. The site is a Cloudflare Worker, so the API, the
+            bots and the desktop app can be healthy while this fires. Check the
+            last deploy-web run and the Worker in the Cloudflare dashboard, then
+            Cloudflare's status page.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-web-unreachable
+        labels:
+          severity: critical
+          notify: email
+          service: web
+          incident: availability
+
+      # 36. A bot process is running but its platform connection is down. Only
+      # telegram, discord and slack hold a connection and export this gauge;
+      # whatsapp and imessage are webhook-only and never create the series, so
+      # absence is not a disconnect and noDataState is OK. A dead bot process is
+      # gaia-internal-service-down's page. No dashboard link: nothing charts bots.
+      - uid: gaia-bot-platform-disconnected
+        title: A bot lost its connection to its chat platform
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: min by (platform) (gaia_bot_platform_connected{job="bots"})
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          headline: >-
+            {{ if $values.B }}The {{ $labels.platform | title }} bot is disconnected from {{ $labels.platform | title }}{{ else }}A bot lost its connection to its chat platform{{ end }}
+          summary: >-
+            {{ if $values.B }}The {{ $labels.platform }} bot has been disconnected
+            from {{ $labels.platform }} for 5 minutes{{ else }}Unable to read the bot
+            platform connections — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            The bot container is healthy but is not connected to the platform,
+            so messages sent to GAIA there are not received and nothing is
+            answered. The usual causes are a revoked or rotated bot token and a
+            platform outage. Read that bot's logs for the disconnect reason
+            before restarting it.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-bot-platform-disconnected
+        labels:
+          severity: critical
+          service: bots
+          incident: availability
+
   # Extended coverage: failure modes that historically went unmonitored
   # (cert expiry, OOM kills, Redis memory pressure, stuck queues). All metrics
   # verified present in prod Prometheus before adding.
@@ -1359,10 +1512,10 @@ groups:
     folder: GAIA
     interval: 1m
     rules:
-      # 15. A TLS cert expires in < 14 days. Covers api/logs.heygaia.io and the
-      # JuiceFS metadata Redis — a missed renewal there takes the filesystem
-      # offline, since every sandbox mount speaks rediss://. Per-instance so the
-      # alert names which cert.
+      # 15. A TLS cert expires in < 14 days. Covers api/logs.heygaia.io, the web
+      # app at heygaia.io and the JuiceFS metadata Redis — a missed renewal there
+      # takes the filesystem offline, since every sandbox mount speaks rediss://.
+      # Per-instance so the alert names which cert.
       - uid: gaia-ssl-cert-expiry
         title: TLS certificate is expiring soon
         condition: C
@@ -1372,7 +1525,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: min by (instance) (probe_ssl_earliest_cert_expiry{job=~"blackbox_api|blackbox_jfs_meta"}) - time()
+              expr: min by (instance) (probe_ssl_earliest_cert_expiry{job=~"blackbox_api|blackbox_jfs_meta|blackbox_web"}) - time()
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -1389,6 +1542,8 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
+          headline: >-
+            {{ if $values.B }}The TLS certificate for {{ reReplaceAll "https?://([^:/]+).*" "$1" $labels.instance }} is expiring soon{{ else }}TLS certificate is expiring soon{{ end }}
           summary: >-
             {{ if $values.B }}The {{ $labels.instance }} TLS certificate expires in
             {{ $values.B.Value | humanizeDuration }} (threshold 14 days){{ else }}Unable
@@ -1483,6 +1638,8 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
+          headline: >-
+            {{ if $values.B }}Redis ({{ $labels.job }}) is close to its memory limit{{ else }}Redis is close to its memory limit{{ end }}
           summary: >-
             {{ if $values.B }}Redis ({{ $labels.job }}) is using
             {{ $values.B.Value | humanizePercentage }} of its memory limit
@@ -1863,3 +2020,1333 @@ groups:
         labels:
           severity: critical
           service: arq_worker
+
+      # 29. Brief runs are failing. gaia_brief_run_total{kind,outcome} counts every
+      # daily and weekly run by how it ended; a run that raised counts outcome="failed".
+      # A failed run is a user's brief that never arrived, so a tenth of an hour's runs
+      # failing is a real outage, not noise. clamp_min keeps an hour with no runs at a
+      # ratio of 0 instead of NoData. No dashboard link: no panel charts briefs yet.
+      - uid: gaia-brief-run-failures
+        title: Morning briefs are failing to send
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(gaia_brief_run_total{outcome="failed"}[1h]))
+                / clamp_min(sum(increase(gaia_brief_run_total[1h])), 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.1] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ humanizePercentage $values.B.Value }} of brief runs
+            failed in the last hour (threshold: 10%){{ else }}Unable to read the brief
+            run counts — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Users whose brief run failed got no brief this morning. The kind label
+            says daily or weekly. Find the failed runs in the worker's wide events
+            (workflow.briefing_outcome is absent, errors[] holds the cause) and fix
+            what they share: a model provider, the edition renderer, Mongo.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-run-failures
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 30. No brief has been sent for six hours. Briefs land at each user's own
+      # morning hour, so across time zones some are sent in every six-hour window;
+      # none at all means the schedule, the queue or delivery stopped, which the
+      # failure ratio above cannot see when runs stop being attempted. The sent
+      # series exists at 0 from worker start, so a restart reads as 0, not NoData:
+      # for 30m keeps a deploy from tripping it.
+      - uid: gaia-brief-none-sent
+        title: No briefs have been sent in six hours
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 21600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_brief_run_total{outcome="sent"}[6h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} briefs sent in the
+            last six hours (threshold: at least one){{ else }}Unable to read the
+            brief run counts — this rule could not be evaluated, which almost always
+            means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Nobody has received a brief for six hours. Check that the worker is
+            consuming the briefing queue, that brief workflows are still scheduled
+            (the scheduler re-arms them after each run), and the outcome label of
+            gaia_brief_run_total: runs that end skipped rather than failed point at
+            the dormancy or quiet-note rules.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-none-sent
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 31. Scouts are failing. gaia_brief_scout_total{outcome,skip_reason} counts
+      # every scout's turn in a brief; skip_reason="failed" is a scout that raised
+      # (an app down, a bad report, a timeout). One app failing is expected; a fifth
+      # of all turns failing means scouts as a whole broke and briefs have gone
+      # quiet about every connected app.
+      - uid: gaia-brief-scout-failures
+        title: Brief scouts are failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(gaia_brief_scout_total{skip_reason="failed"}[1h]))
+                / clamp_min(sum(increase(gaia_brief_scout_total[1h])), 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ humanizePercentage $values.B.Value }} of scout turns
+            failed in the last hour (threshold: 20%){{ else }}Unable to read the scout
+            turn counts — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Briefs still send, but say nothing about the apps whose scouts failed.
+            The briefing.scout_failed errors in the worker's wide events carry the
+            integration_id and error_type: one integration dominating is that app's
+            outage; every integration failing is the scout model or the MCP client.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-scout-failures
+        labels:
+          severity: warning
+          service: arq_worker
+
+      # 32. Share links cannot be minted. gaia_link_mint_total{outcome} counts every
+      # short-link mint; a failed one leaves a brief, artifact or file without the
+      # link the user was promised. Mints touch only Mongo and the blob store, so a
+      # few failing in an hour is already a dependency problem.
+      - uid: gaia-link-mint-failures
+        title: Share links are failing to mint
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_link_mint_total{outcome="failed"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} share links failed
+            to mint in the last hour (threshold: more than 2){{ else }}Unable to read
+            the link mint count — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Briefs, artifacts and files went out without the link that opens them.
+            The mint failures in the API and worker wide events carry error_type:
+            a storage error is the blob store, a duplicate key is the short_links
+            unique index.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-link-mint-failures
+        labels:
+          severity: warning
+          service: api
+
+      # 33. A comms model call ran over a minute. A chat reply that long is a
+      # runaway: the 3,998-break replies of October ran ~100 s to the output
+      # limit. Counted per call, not as a p95, so a single one shows up. The slow-call
+      # counter is derived before increase(), which extrapolates two counters apart.
+      - uid: gaia-comms-reply-runaway
+        title: A chat reply ran to an abnormal length
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase((llm_call_seconds_count{agent="comms_agent"} - ignoring(le) llm_call_seconds_bucket{agent="comms_agent",le="60.0"})[15m:1m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        # Rides out the counter reset of a Prometheus restart; one slow call
+        # stays in the 15m window long past it.
+        for: 2m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} chat model calls
+            ran over 60s in the last 15 minutes (threshold: the first one){{ else }}Unable
+            to read the comms model call durations — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            The front chat model took over a minute on one reply, which in practice
+            means it generated to its output limit (a loop of repeated text or bubble
+            breaks) while the user waited. Find the call in the llm_calls ledger
+            (comms_agent, duration_ms over 60000) and read its output tokens and
+            finish reason.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-comms-reply-runaway
+        labels:
+          severity: warning
+          service: api
+
+  # Product outcomes: counters GAIA's own code records where an action ends, so
+  # these fire on what users feel rather than on a host or a dependency. Each
+  # ratio carries a floor on its failure count: at this traffic a ratio over two
+  # events is noise. Every series is created at zero when its process starts
+  # (the create_*_series functions), so NoData means no traffic and is OK;
+  # tools/lints/check_alert_metric_contract.py fails CI when a metric named here
+  # is no longer registered and recorded by production code.
+  - orgId: 1
+    name: gaia-product
+    folder: GAIA
+    interval: 1m
+    rules:
+      # 1. Chat turns are ending in an error. chat_turn_total{source,status}
+      # counts every turn once, where its reply settles; a cancelled turn is the
+      # user's Stop and is in neither side of the ratio. Three failures is the
+      # floor: at a few turns an hour one failed turn is already a fifth of the
+      # window.
+      - uid: gaia-chat-turns-failing
+        title: Chat messages are failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum (increase(chat_turn_total{job=~"gaia-api|arq_worker", status="error"}[15m]))
+                  / clamp_min(sum (increase(chat_turn_total{job=~"gaia-api|arq_worker", status=~"ok|error"}[15m])), 1)
+                )
+                and on() (sum (increase(chat_turn_total{job=~"gaia-api|arq_worker", status="error"}[15m])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of chat
+            messages failed in the last 15 minutes (threshold 20%, at least 3
+            failures){{ else }}Unable to read the chat turn counts — this rule
+            could not be evaluated, which almost always means Prometheus is down
+            or unreachable.{{ end }}
+          description: >-
+            Users on web, desktop, the bots and voice are sending messages and
+            getting an error instead of a reply. The source label says which
+            surface. Find the failed turns in the API and worker wide events and
+            read what they share: a model provider (gaia-llm-fallback-exhausted
+            fires alongside), Postgres checkpoints, or a bug in the last deploy.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-turns-failing
+          __dashboardUid__: gaia-latency
+          __panelId__: "4"
+        labels:
+          severity: critical
+          notify: email
+          service: api
+          incident: availability
+
+      # 2. A model provider is failing. gaia_llm_call_total{provider,outcome}
+      # counts each model call after its own retries; rate_limited is a failure
+      # the provider chose. Warning tier: the fallback to the default model
+      # usually answers the user, and gaia-llm-fallback-exhausted is the alert for
+      # when it does not. One instance per provider. No dashboard link: nothing
+      # charts this counter.
+      - uid: gaia-llm-provider-failing
+        title: A model provider is failing or rate limiting us
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum by (provider) (increase(gaia_llm_call_total{job=~"gaia-api|arq_worker", outcome=~"failed|rate_limited"}[15m]))
+                  / clamp_min(sum by (provider) (increase(gaia_llm_call_total{job=~"gaia-api|arq_worker"}[15m])), 1)
+                )
+                and on(provider) (sum by (provider) (increase(gaia_llm_call_total{job=~"gaia-api|arq_worker", outcome=~"failed|rate_limited"}[15m])) >= 5)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.25] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          headline: >-
+            {{ if $values.B }}The {{ $labels.provider }} model provider is failing or rate limiting us{{ else }}A model provider is failing or rate limiting us{{ end }}
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
+            model calls to {{ $labels.provider }} failed or were rate limited in
+            the last 15 minutes (threshold 25%, at least 5 failures){{ else
+            }}Unable to read the model call counts — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Calls to this provider are failing after retries. Users mostly still
+            get an answer from the default model, slower and at its cost, but
+            anything pinned to this provider degrades. Split outcome failed from
+            rate_limited: rate limiting is a quota or credit problem on the
+            provider key, failures are the provider's outage or a bad key. Check
+            the provider's status page.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-llm-provider-failing
+        labels:
+          severity: warning
+          service: api
+
+      # 3. A model call failed on its own model and again on the default model.
+      # gaia_llm_fallback_total{outcome=exhausted} is a call nothing answered: a
+      # chat turn, a workflow or a brief ends in an error. No dashboard link:
+      # nothing charts it.
+      - uid: gaia-llm-fallback-exhausted
+        title: Model calls are failing even after the fallback
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                sum(increase(gaia_llm_fallback_total{job=~"gaia-api|arq_worker", outcome="exhausted"}[15m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} model calls
+            failed on both their model and the fallback in the last 15 minutes
+            (threshold: more than 2){{ else }}Unable to read the model fallback
+            counts — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Model calls are failing with nothing left to fall back to, so chat
+            turns, workflows and briefs are ending in an error. Either the
+            default model's provider is down, or two providers are at once.
+            Check gaia_llm_call_total by provider for which, then that
+            provider's status page and the credits and limits on its key.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-llm-fallback-exhausted
+        labels:
+          severity: warning
+          service: api
+
+      # 4. Scheduled tasks are being claimed more than five minutes after their
+      # time. gaia_scheduled_task_lateness_seconds{kind} is scheduled time to the
+      # moment a worker claimed the task. The late count is derived before
+      # increase(), which extrapolates two counters apart. One instance per kind.
+      # No dashboard link: nothing charts it.
+      - uid: gaia-scheduled-tasks-late
+        title: Reminders and scheduled workflows are running late
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                sum by (kind) (increase((
+                  gaia_scheduled_task_lateness_seconds_count{job=~"gaia-api|arq_worker"}
+                  - ignoring(le) gaia_scheduled_task_lateness_seconds_bucket{job=~"gaia-api|arq_worker", le="300.0"}
+                )[30m:1m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          headline: >-
+            {{ if $values.B }}Scheduled {{ $labels.kind }}s are running late{{ else }}Reminders and scheduled workflows are running late{{ end }}
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} {{
+            $labels.kind }} tasks started more than 5 minutes late in the last
+            30 minutes (threshold: more than 2){{ else }}Unable to read the
+            scheduled task lateness — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Reminders are arriving late and scheduled workflows are starting
+            late. The worker is behind: it was down and is catching up, its
+            queue is backed up behind long jobs, or the due-task scan is slow.
+            Check the ARQ worker dashboard for queue depth and task duration,
+            and whether gaia-arq-worker-down fired just before this.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-scheduled-tasks-late
+        labels:
+          severity: warning
+          service: arq_worker
+
+      # 5. Scheduled tasks are failing or being reaped.
+      # gaia_scheduled_task_total{kind,outcome}: failed is a fire that raised or
+      # reported failure, reaped is a task found wedged in EXECUTING and reset.
+      # One instance per kind. No dashboard link: nothing charts this counter.
+      - uid: gaia-scheduled-tasks-failing
+        title: Reminders or scheduled workflows are failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum by (kind) (increase(gaia_scheduled_task_total{job=~"gaia-api|arq_worker", outcome=~"failed|reaped"}[1h]))
+                  / clamp_min(sum by (kind) (increase(gaia_scheduled_task_total{job=~"gaia-api|arq_worker"}[1h])), 1)
+                )
+                and on(kind) (sum by (kind) (increase(gaia_scheduled_task_total{job=~"gaia-api|arq_worker", outcome=~"failed|reaped"}[1h])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          headline: >-
+            {{ if $values.B }}Scheduled {{ $labels.kind }}s are failing{{ else }}Reminders or scheduled workflows are failing{{ end }}
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of {{
+            $labels.kind }} tasks failed or were found stuck in the last hour
+            (threshold 20%, at least 3 failures){{ else }}Unable to read the
+            scheduled task counts — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Reminders did not fire or scheduled workflows did not run, and the
+            user is told nothing. Split the outcome label: failed is the task
+            raising, so read the worker's 'Failed to execute task' errors for
+            what they share; reaped is a task that was still EXECUTING after the
+            stale threshold, which means the worker died or hung mid-task.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-scheduled-tasks-failing
+        labels:
+          severity: warning
+          service: arq_worker
+
+      # 6. A Dodo webhook delivery was not applied.
+      # gaia_payment_webhook_total{outcome}: failed is a state change that did not
+      # land and Dodo was asked to redeliver, abandoned is one no retry can land,
+      # error is a delivery that raised before it had a result. Each is a paid
+      # event, so the threshold is the first one. No dashboard link: nothing
+      # charts this counter.
+      - uid: gaia-payment-webhook-failing
+        title: A payment event could not be applied
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                sum(increase(gaia_payment_webhook_total{job="gaia-api", outcome=~"abandoned|error"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} payment
+            webhook deliveries could not be applied in the last hour (threshold:
+            the first one){{ else }}Unable to read the payment webhook counts —
+            this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Someone paid, cancelled or changed plan and GAIA did not record it:
+            at worst a paying user is still on the free plan. Dodo will not
+            retry these, so the subscription needs fixing by hand. A delivery
+            that failed but can still be retried is not counted here. The API
+            logs 'Webhook abandoned' with the event type and failure_reason.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-payment-webhook-failing
+        labels:
+          severity: critical
+          notify: email
+          service: api
+
+      # 7. Dodo deliveries are failing verification and none is getting through. A
+      # wrong or rotated DODO_WEBHOOK_PAYMENTS_SECRET rejects every delivery, so
+      # no payment activates. A stray unsigned request while real deliveries
+      # verify is not that, hence the second half: no delivery verified in the
+      # same hour. No dashboard link: nothing charts this counter.
+      - uid: gaia-payment-webhook-bad-signature
+        title: Payment webhooks are failing signature verification
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                sum(increase(gaia_payment_webhook_total{job="gaia-api", outcome="invalid_signature"}[1h]))
+                and on() (sum(increase(gaia_payment_webhook_total{job="gaia-api", outcome=~"processed|ignored"}[1h])) < 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} payment
+            webhook deliveries failed signature verification and none verified
+            in the last hour (threshold: more than 2){{ else }}Unable to read
+            the payment webhook counts — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Every payment webhook is being rejected with 401, so no purchase,
+            renewal or cancellation is reaching GAIA and new subscribers are not
+            activated. Dodo keeps retrying, so the events land once verification
+            works again. Compare the webhook signing secret in the Dodo
+            dashboard with the one the API runs with.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-payment-webhook-bad-signature
+        labels:
+          severity: critical
+          service: api
+
+      # 8. Sign-ins are failing at the WorkOS callback.
+      # gaia_oauth_callback_total{flow=login} counts every sign-in callback on
+      # web, desktop and mobile; failed sent the user back to the login page with
+      # an error. Nothing else sees this: the API is up and every probe is green.
+      # No dashboard link: nothing charts this counter.
+      - uid: gaia-login-failing
+        title: Sign-in is failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="login", outcome="failed"}[30m]))
+                  / clamp_min(sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="login", outcome=~"ok|failed"}[30m])), 1)
+                )
+                and on() (sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="login", outcome="failed"}[30m])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
+            sign-ins failed in the last 30 minutes (threshold 50%, at least 3
+            failures){{ else }}Unable to read the sign-in callback counts — this
+            rule could not be evaluated, which almost always means Prometheus is
+            down or unreachable.{{ end }}
+          description: >-
+            People are signing in and being sent back to the login page with an
+            error, so new users cannot sign up and signed-out users cannot get
+            in. The API logs each failed WorkOS callback with its error type.
+            Check WorkOS's status, the WorkOS API key and client id the API runs
+            with, and the redirect URIs configured in WorkOS.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-login-failing
+        labels:
+          severity: critical
+          notify: email
+          service: api
+
+      # 9. Integration connects are failing at the Composio callback. Same counter
+      # as rule 8 with flow=integration; kept apart because a user who cannot
+      # connect Gmail is degraded, not locked out. A user who says no on the
+      # consent screen is counted cancelled and is in neither side of the ratio.
+      # No dashboard link: nothing charts this counter.
+      - uid: gaia-integration-connect-failing
+        title: Connecting integrations is failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="integration", outcome="failed"}[30m]))
+                  / clamp_min(sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="integration", outcome=~"ok|failed"}[30m])), 1)
+                )
+                and on() (sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="integration", outcome="failed"}[30m])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
+            integration connects failed in the last 30 minutes (threshold 50%,
+            at least 3 failures){{ else }}Unable to read the integration
+            callback counts — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Users who try to connect an app (Gmail, Calendar, Slack and the
+            rest) finish the consent screen and land back in GAIA with an error,
+            so onboarding stalls at its first step. The redirect carries
+            oauth_error, and the API logs the callback's failure. Check
+            Composio's status and whether one toolkit's auth config is the
+            common factor.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-integration-connect-failing
+        labels:
+          severity: warning
+          service: api
+
+      # 10. Composio is reporting connected accounts as dead.
+      # gaia_integration_token_refresh_total{outcome=failed} is a connection event
+      # whose status left the account unusable. One user revoking access is one
+      # event; many in an hour is our OAuth app or a provider. A count, not a
+      # ratio: a live account sends no event to divide by. No dashboard link:
+      # nothing charts this counter.
+      - uid: gaia-integration-token-refresh-failing
+        title: Connected integrations are losing access
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                sum(increase(gaia_integration_token_refresh_total{job="gaia-api", outcome="failed"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} connected
+            accounts lost access in the last hour (threshold: more than 5){{
+            else }}Unable to read the integration token refresh counts — this
+            rule could not be evaluated, which almost always means Prometheus is
+            down or unreachable.{{ end }}
+          description: >-
+            Users' connected apps are being disconnected in number, so their
+            workflows, triggers and briefs lose that app until they reconnect.
+            The API's composio_connection wide events carry the toolkit and
+            status_reason: one toolkit dominating is that provider revoking our
+            OAuth app or a changed scope; every toolkit is Composio.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-integration-token-refresh-failing
+        labels:
+          severity: warning
+          service: api
+
+      # 11. Inbound Composio trigger events are failing in background processing.
+      # gaia_trigger_webhook_total{outcome}: failed is an event (new email,
+      # calendar change) whose matching workflows were never queued, by an error
+      # or the timeout. No dashboard link: nothing charts this counter.
+      - uid: gaia-trigger-webhooks-failing
+        title: Integration triggers are failing to process
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum (increase(gaia_trigger_webhook_total{job="gaia-api", outcome="failed"}[30m]))
+                  / clamp_min(sum (increase(gaia_trigger_webhook_total{job="gaia-api"}[30m])), 1)
+                )
+                and on() (sum (increase(gaia_trigger_webhook_total{job="gaia-api", outcome="failed"}[30m])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
+            integration trigger events failed to process in the last 30 minutes
+            (threshold 20%, at least 3 failures){{ else }}Unable to read the
+            trigger webhook counts — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Events from connected apps arrived and the workflows and tracked
+            todos that react to them did not start, so a user's 'when I get an
+            email from X' automation silently did nothing. The API logs 'Webhook
+            background processing failed' or 'timed out' with the event type.
+            Check Mongo and Redis health, then the last deploy.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-trigger-webhooks-failing
+        labels:
+          severity: warning
+          service: api
+
+      # 12. One tool is failing more than half its calls.
+      # tool_call_total{tool_name,status}: error is a call that raised or returned
+      # an error result. One instance per tool, so the alert names it; the floor
+      # of five keeps a tool the model misused twice from firing. No dashboard
+      # link: the latency dashboard charts tool duration, not failures.
+      - uid: gaia-tool-calls-failing
+        title: An agent tool is failing most of its calls
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum by (tool_name) (increase(tool_call_total{job=~"gaia-api|arq_worker", status="error"}[30m]))
+                  / clamp_min(sum by (tool_name) (increase(tool_call_total{job=~"gaia-api|arq_worker"}[30m])), 1)
+                )
+                and on(tool_name) (sum by (tool_name) (increase(tool_call_total{job=~"gaia-api|arq_worker", status="error"}[30m])) >= 5)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          headline: >-
+            {{ if $values.B }}The {{ $labels.tool_name }} tool is failing most of its calls{{ else }}An agent tool is failing most of its calls{{ end }}
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of {{
+            $labels.tool_name }} calls failed in the last 30 minutes (threshold
+            50%, at least 5 failures){{ else }}Unable to read the tool call
+            counts — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            The agent keeps calling this tool and getting an error back, so
+            whatever users ask that needs it fails or is answered without it.
+            The API and worker log each failed call with the tool name and error
+            type. A tool backed by an outside service usually means that service
+            or its key; mcp is every MCP-backed tool together.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-tool-calls-failing
+        labels:
+          severity: warning
+          service: api
+
+      # 13. Storage operations are failing. fs_op_total{operation,mode,status}
+      # counts every sandbox and JuiceFS operation; prod runs at zero errors, so a
+      # fifth of one operation failing is the filesystem, the sandbox provider or
+      # the metadata Redis. One instance per operation.
+      - uid: gaia-storage-ops-failing
+        title: File storage operations are failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum by (operation) (increase(fs_op_total{job=~"gaia-api|arq_worker", status="error"}[15m]))
+                  / clamp_min(sum by (operation) (increase(fs_op_total{job=~"gaia-api|arq_worker"}[15m])), 1)
+                )
+                and on(operation) (sum by (operation) (increase(fs_op_total{job=~"gaia-api|arq_worker", status="error"}[15m])) >= 5)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          headline: >-
+            {{ if $values.B }}File storage {{ $labels.operation }} operations are failing{{ else }}File storage operations are failing{{ end }}
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of {{
+            $labels.operation }} storage operations failed in the last 15
+            minutes (threshold 20%, at least 5 failures){{ else }}Unable to read
+            the storage operation counts — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end
+            }}
+          description: >-
+            The agent's sandbox and file storage are failing, so code execution,
+            file reads and writes, uploads and artifacts break for every user.
+            The operation says where: sbx_ operations are the sandbox provider,
+            mount and sync operations are JuiceFS and its metadata Redis. The fs
+            field of the API and worker wide events carries last_error_type per
+            operation.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-storage-ops-failing
+          __dashboardUid__: fs-ops
+          __panelId__: "8"
+        labels:
+          severity: warning
+          service: api
+
+      # 14. Executor runs are ending in an error.
+      # executor_run_total{status,queued} counts every run of the worker agent
+      # once, at finalize; prod sees about one error a week, so three in half an
+      # hour at a fifth of all runs is a fault, not a bad request.
+      - uid: gaia-executor-runs-failing
+        title: Agent tasks are failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum (increase(executor_run_total{job=~"gaia-api|arq_worker", status="error"}[30m]))
+                  / clamp_min(sum (increase(executor_run_total{job=~"gaia-api|arq_worker"}[30m])), 1)
+                )
+                and on() (sum (increase(executor_run_total{job=~"gaia-api|arq_worker", status="error"}[30m])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
+            agent tasks failed in the last 30 minutes (threshold 20%, at least 3
+            failures){{ else }}Unable to read the executor run counts — this
+            rule could not be evaluated, which almost always means Prometheus is
+            down or unreachable.{{ end }}
+          description: >-
+            The work users hand to GAIA (send this, look that up, run this
+            workflow or tracked todo) is ending in an error instead of a result.
+            Read the worker's and the API's executor errors for what the failed
+            runs share: a model provider, the sandbox, a tool, or the Postgres
+            checkpointer.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-executor-runs-failing
+          __dashboardUid__: gaia-latency
+          __panelId__: "12"
+        labels:
+          severity: warning
+          service: arq_worker
+
+      # 15. A bot is dead-lettering its deliveries.
+      # gaia_bot_outbound_total{platform,outcome}: failed is a reply the bot gave
+      # up on and sent to the dead-letter queue. The API generated the reply, so
+      # nothing on the API side sees this. One instance per platform. No dashboard
+      # link: nothing charts the bot counters.
+      - uid: gaia-bot-outbound-failing
+        title: Bot replies are failing to deliver
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum by (platform) (increase(gaia_bot_outbound_total{job="bots", outcome="failed"}[30m]))
+                  / clamp_min(sum by (platform) (increase(gaia_bot_outbound_total{job="bots"}[30m])), 1)
+                )
+                and on(platform) (sum by (platform) (increase(gaia_bot_outbound_total{job="bots", outcome="failed"}[30m])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          headline: >-
+            {{ if $values.B }}{{ $labels.platform | title }} bot replies are failing to deliver{{ else }}Bot replies are failing to deliver{{ end }}
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of {{
+            $labels.platform }} deliveries failed in the last 30 minutes
+            (threshold 20%, at least 3 failures){{ else }}Unable to read the bot
+            delivery counts — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            GAIA wrote replies, briefs or notifications for users on this
+            platform and the bot could not send them. The messages are in that
+            platform's dead-letter queue and can be replayed. The bot logs each
+            one as a delivery failure with its reason: a revoked bot token, the
+            platform's API down or rate limiting, or a message the platform
+            rejects.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-bot-outbound-failing
+        labels:
+          severity: warning
+          service: bots
+
+      # 16. A bot is losing the messages users send it.
+      # gaia_bot_inbound_total{platform,outcome}: failed is a message or command
+      # whose reply was lost, which is the bot failing to hand it to the API; a
+      # refusal the user was told about counts ok. One instance per platform. No
+      # dashboard link: nothing charts the bot counters.
+      - uid: gaia-bot-inbound-failing
+        title: Messages sent to a bot are getting no reply
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum by (platform) (increase(gaia_bot_inbound_total{job="bots", outcome="failed"}[30m]))
+                  / clamp_min(sum by (platform) (increase(gaia_bot_inbound_total{job="bots"}[30m])), 1)
+                )
+                and on(platform) (sum by (platform) (increase(gaia_bot_inbound_total{job="bots", outcome="failed"}[30m])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          headline: >-
+            {{ if $values.B }}Messages to the {{ $labels.platform | title }} bot are getting no reply{{ else }}Messages sent to a bot are getting no reply{{ end }}
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
+            messages sent to the {{ $labels.platform }} bot got no reply in the
+            last 30 minutes (threshold 20%, at least 3 failures){{ else }}Unable
+            to read the bot inbound counts — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end
+            }}
+          description: >-
+            Users on this platform are messaging GAIA and hearing nothing back.
+            The bot received the message and could not hand it to the API: the
+            API is down or slow (its own alerts will be firing), or this bot's
+            API key or URL is wrong, which nothing else can see. The bot logs
+            chat_post_refused or command_dispatch_failed with the reason.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-bot-inbound-failing
+        labels:
+          severity: warning
+          service: bots
+
+      # 17. Voice sessions are closing on an error.
+      # gaia_voice_session_total{outcome}: error is a session LiveKit closed
+      # because a model or the room failed. Voice is low volume, so the window is
+      # an hour and the floor three. No dashboard link: the voice dashboard charts
+      # lk_agents_* only.
+      - uid: gaia-voice-sessions-failing
+        title: Voice calls are ending in errors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum (increase(gaia_voice_session_total{job="voice_agent", outcome="error"}[1h]))
+                  / clamp_min(sum (increase(gaia_voice_session_total{job="voice_agent"}[1h])), 1)
+                )
+                and on() (sum (increase(gaia_voice_session_total{job="voice_agent", outcome="error"}[1h])) >= 3)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.3] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
+            voice calls ended in an error in the last hour (threshold 30%, at
+            least 3 failures){{ else }}Unable to read the voice session counts —
+            this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Voice calls are dropping mid-conversation. The worker is up
+            (gaia-voice-agent-down is the page when it is not) but its sessions
+            fail: the speech-to-text, text-to-speech or language model behind it
+            is erroring, or LiveKit is. The worker logs 'session error' with the
+            error type and whether it was recoverable.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-voice-sessions-failing
+        labels:
+          severity: warning
+          service: voice_agent
+
+      # 18. The API refused GAIA's own web server. A request with a valid
+      # INTERNAL_API_TOKEN is the web app rendering a page for a visitor, so a
+      # 401 or 403 on it is always our bug: a page calls a route that does not
+      # admit the web server. A few stray requests stay under the threshold; a
+      # page refused on every render crosses it and holds it within the hour.
+      # No dashboard link: nothing charts this counter.
+      - uid: gaia-web-server-refused
+        title: The API is refusing the web app's own requests
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_internal_caller_refused_total{job="gaia-api"}[30m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: >-
+            {{ if $values.B }}The API refused {{ printf "%.0f" $values.B.Value }}
+            requests from GAIA's web server in the last 30 minutes (threshold: more
+            than 5){{ else }}Unable to read the web server refusal count — this rule
+            could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            A page of the web app calls an API route while it renders, and the
+            route answers 401 or 403 because it does not admit the web server.
+            Visitors see that page degraded or with a piece missing, and nothing
+            errors. Find the route in the API's http_request logs (status 401 or
+            403, user agent node), then admit the internal caller on it or stop
+            the page calling it.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-web-server-refused
+        labels:
+          severity: warning
+          service: api
+
+      # 19. Workers AI is rate limiting us beyond its daily bursts. Measured
+      # baseline (2026-11): three bursts a day of 250-420 rate limited calls,
+      # each inside one hour, on the worker, and near zero otherwise. So three
+      # hours hold one burst (420 at most) or, back to back, two (840). More
+      # than 1000 is either one hour at over twice the largest burst or burst-level
+      # rate limiting that did not stop. Slack only. No dashboard link: nothing
+      # charts this counter.
+      - uid: gaia-workers-ai-rate-limited
+        title: Workers AI is rate limiting us more than usual
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 10800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_llm_call_total{job=~"gaia-api|arq_worker", provider="cloudflare", outcome="rate_limited"}[3h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [1000] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Workers AI rate limited {{ printf "%.0f" $values.B.Value }}
+            model calls in the last 3 hours (threshold: more than 1000; a normal
+            daily burst is 250 to 420 in one hour){{ else }}Unable to read the
+            Workers AI rate limit count — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Workers AI is refusing more model calls than its usual daily bursts.
+            A refused call goes straight to the fallback model, at that model's
+            cost, so users mostly still get an answer; a call with no fallback
+            is retried and then fails. Check which job and label is sending the
+            calls (the llm_call log lines with error_family rate_limit), then
+            the Workers AI limits on the Cloudflare account and whether a
+            background job is looping.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-workers-ai-rate-limited
+        labels:
+          severity: warning
+          service: api
+
+  # Log rules read Loki, not Prometheus, so pint and promtool cannot test them:
+  # tools/alert-rules/extract_promql.py validates their shape and names them as
+  # log rules, and the LogQL is verified against Loki when the rule is written.
+  - orgId: 1
+    name: gaia-logs
+    folder: GAIA
+    interval: 5m
+    rules:
+      # 1. One service keeps logging the same error. Every log.error() writes a
+      # line at level ERROR whose message is a constant, so the message is the
+      # grouping key; the boundary roll-ups (http_request, worker_task,
+      # background_task, bot_event) repeat those errors in their errors[] and
+      # are left out so one occurrence counts once. Eight a day is one every
+      # three hours: on a normal prod day about ten messages reach it and the
+      # other 25 occurred at most five times. One instance per service and
+      # message. No dashboard link: the lines are read in Explore.
+      - uid: gaia-error-repeating
+        title: A service keeps logging the same error
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: >-
+                sum by (service_name, message) (count_over_time({service_name=~".+", level=~"ERROR|CRITICAL"}
+                | json message
+                | message!~"http_request|worker_task|background_task|bot_event" [24h]))
+              queryType: instant
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [25] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          headline: >-
+            {{ if $values.B }}{{ $labels.service_name }} keeps logging: {{ printf "%.80s" $labels.message }}{{ else }}A service keeps logging the same error{{ end }}
+          summary: >-
+            {{ if $values.B }}{{ $labels.service_name }} logged "{{ $labels.message }}"
+            {{ printf "%.0f" $values.B.Value }} times in the last 24 hours (threshold:
+            more than 25){{ else }}Unable to read the error log counts — this rule
+            could not be evaluated, which almost always means Loki is down or
+            unreachable.{{ end }}
+          description: >-
+            The same error keeps happening in one service and no metric alert
+            covers it. Pull the lines in Grafana Explore on the Loki datasource:
+            {service_name="<service>", level="ERROR"} |= "<message>". Each line
+            carries error_type and the fields of the call that failed. The fix
+            is the bug behind it, or, when the line is not an error anyone
+            should act on, logging it at warning instead.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-error-repeating
+        labels:
+          severity: warning
+          service: logs

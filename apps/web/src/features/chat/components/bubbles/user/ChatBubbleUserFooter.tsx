@@ -1,7 +1,8 @@
 import { RedoIcon } from "@icons";
+import { SEND_NOT_DELIVERED } from "@shared/conversation";
+import { formatMessageTime } from "@shared/utils";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
-import { parseDate } from "@/utils/date/dateUtils";
 import ChatBubble_Actions from "../actions/ChatBubble_Actions";
 
 interface ChatBubbleUserFooterProps {
@@ -46,7 +47,9 @@ export function ChatBubbleUserFooter({
       <div
         className={`flex items-center gap-2 ${hideAvatar ? "pr-1" : "pr-13"} pb-1`}
       >
-        <span className="text-xs text-zinc-400 select-none">Not delivered</span>
+        <span className="text-xs text-zinc-400 select-none">
+          {SEND_NOT_DELIVERED}
+        </span>
         {onRetry && (
           <GaiaButton
             shape="pill"
@@ -76,7 +79,7 @@ export function ChatBubbleUserFooter({
           className="flex flex-col text-xs text-zinc-400 select-text"
           suppressHydrationWarning
         >
-          {parseDate(date)}
+          {formatMessageTime(date)}
         </span>
       )}
       {text && (

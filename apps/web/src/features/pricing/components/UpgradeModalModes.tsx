@@ -4,6 +4,7 @@ import { Chip, ModalBody, Tabs } from "@heroui/react";
 import type { ReactNode } from "react";
 import { chipVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import type { Plan } from "../api/pricingApi";
 import type { PaywallCopy } from "../constants";
@@ -94,7 +95,7 @@ interface UpgradeModalOfferProps {
   onLogout: () => void;
 }
 
-/** Enforcement mode: a compact wall around a single monthly Pro CTA. */
+/** Enforcement mode: a compact wall around a single monthly Pro CTA, with the plans page as its way out. */
 export function UpgradeModalOffer({
   offerMessage,
   discountBanner,
@@ -149,17 +150,30 @@ export function UpgradeModalOffer({
         </RaisedButton>
       )}
 
-      <GaiaButton
-        variant="text"
-        size="sm"
-        tone="faint"
-        hoverTone="dim"
-        inset="none"
-        className="mx-auto mt-1 text-xs data-[hover=true]:underline"
-        onPress={() => onLogout()}
-      >
-        Log out
-      </GaiaButton>
+      <div className="mx-auto mt-1 flex items-center gap-4">
+        <LinkButton
+          href="/pricing"
+          variant="text"
+          size="sm"
+          tone="faint"
+          hoverTone="dim"
+          inset="none"
+          className="text-xs data-[hover=true]:underline"
+        >
+          See all plans
+        </LinkButton>
+        <GaiaButton
+          variant="text"
+          size="sm"
+          tone="faint"
+          hoverTone="dim"
+          inset="none"
+          className="text-xs data-[hover=true]:underline"
+          onPress={() => onLogout()}
+        >
+          Log out
+        </GaiaButton>
+      </div>
     </ModalBody>
   );
 }

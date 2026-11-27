@@ -7,8 +7,7 @@ the real oauth/integration services (oauth_state_service,
 integration_connection_service, user_integration_status, user_integrations,
 integration_resolver, oauth_config, oauth_service, integration_pause).
 
-Mocked: Redis, MongoDB collections, the Composio service, the token
-repository, and the MCP client.
+Mocked: Redis, MongoDB collections, the Composio service, and the MCP client.
 """
 
 from collections.abc import Iterator
@@ -22,14 +21,18 @@ import pytest
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_by_id,
-    get_integration_scopes,
 )
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, AccountConnectOutcome
+from app.constants.integrations import (
+    MAX_ACCOUNTS_PER_INTEGRATION,
+    AccountConnectOutcome,
+    IntegrationStatus,
+)
+from app.db.repositories.scouts import scouts_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.integration_models import (
     Integration,
     IntegrationAccount,
     UserIntegrationDocument,
-    UserIntegrationStatus,
 )
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
@@ -45,7 +48,6 @@ from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
-    connect_self_integration,
     disconnect_integration,
 )
 from app.services.integrations.integration_expiry import expire_account
@@ -74,7 +76,6 @@ from tests.integration_account_factories import with_nickname
 
 USER_ID = "507f1f77bcf86cd799439011"
 USER_ID_2 = "507f1f77bcf86cd799439022"
-USER_EMAIL = "test@example.com"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -131,7 +132,7 @@ class _FakeUserIntegrationRepo:
         user_id: str,
         integration_id: str,
         *,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
         expired_reason: str | None = None,
     ) -> bool:
         key = (user_id, integration_id)
@@ -168,7 +169,7 @@ class _FakeUserIntegrationRepo:
         *,
         accounts: list[IntegrationAccount],
         primary_account_id: str | None,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
         expired_reason: str | None = None,
     ) -> UserIntegrationDocument:
         existing = self.docs.get((user_id, integration_id))
@@ -419,7 +420,9 @@ class TestUserIntegrationStatusTracking:
         repo = _FakeUserIntegrationRepo()
 
         with _patched_repo(repo):
-            result = await update_user_integration_status(USER_ID, "gmail", "created")
+            result = await update_user_integration_status(
+                USER_ID, "gmail", IntegrationStatus.CREATED
+            )
 
         assert result is True
         assert len(repo.stored) == 1
@@ -441,7 +444,9 @@ class TestUserIntegrationStatusTracking:
         )
 
         with _patched_repo(repo):
-            result = await update_user_integration_status(USER_ID, "gmail", "connected")
+            result = await update_user_integration_status(
+                USER_ID, "gmail", IntegrationStatus.CONNECTED
+            )
 
         assert result is True
         assert len(repo.stored) == 1
@@ -454,7 +459,9 @@ class TestUserIntegrationStatusTracking:
         repo = _FakeUserIntegrationRepo()
 
         with _patched_repo(repo):
-            result = await update_user_integration_status(USER_ID, "gmail", "connected")
+            result = await update_user_integration_status(
+                USER_ID, "gmail", IntegrationStatus.CONNECTED
+            )
 
         assert result is True
         assert len(repo.stored) == 1
@@ -469,8 +476,8 @@ class TestUserIntegrationStatusTracking:
         repo = _FakeUserIntegrationRepo()
 
         with _patched_repo(repo):
-            await update_user_integration_status(USER_ID, "gmail", "created")
-            await update_user_integration_status(USER_ID, "gmail", "created")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CREATED)
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CREATED)
 
         matching = [d for d in repo.stored if d.user_id == USER_ID and d.integration_id == "gmail"]
         assert len(matching) == 1
@@ -634,67 +641,6 @@ class TestComposioIntegrationConnection:
 
 
 # ---------------------------------------------------------------------------
-# Tests — Self-Managed Integration Connection (Google)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestSelfManagedIntegrationConnection:
-    """connect_self_integration: Google OAuth URL generation."""
-
-    async def test_connect_google_returns_redirect_with_scopes(self) -> None:
-        """Self-managed Google connect produces redirect with correct scopes."""
-
-        with (
-            patch(
-                "app.services.integrations.integration_connection_service.create_oauth_state",
-                AsyncMock(return_value="state_xyz"),
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.update_user_integration_status",
-                AsyncMock(return_value=True),
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.build_google_oauth_url",
-                AsyncMock(
-                    return_value="https://accounts.google.com/o/oauth2/auth?scope=calendar&state=state_xyz"
-                ),
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.get_integration_scopes",
-                return_value=["https://www.googleapis.com/auth/calendar.events"],
-            ),
-        ):
-            response = await connect_self_integration(
-                user_id=USER_ID,
-                user_email=USER_EMAIL,
-                integration_id="googlecalendar",
-                integration_name="Google Calendar",
-                provider="google",
-                redirect_path="/integrations",
-            )
-
-            assert response.status == "redirect"
-            assert response.redirect_url is not None
-            assert "accounts.google.com" in response.redirect_url
-
-    async def test_connect_non_google_provider_returns_error(self) -> None:
-        """Self-managed connect with non-Google provider returns error."""
-
-        response = await connect_self_integration(
-            user_id=USER_ID,
-            user_email=USER_EMAIL,
-            integration_id="unknown",
-            integration_name="Unknown",
-            provider="microsoft",
-            redirect_path="/integrations",
-        )
-
-        assert response.status == "error"
-        assert "not implemented" in (response.error or "").lower()
-
-
-# ---------------------------------------------------------------------------
 # Tests — Disconnect Integration
 # ---------------------------------------------------------------------------
 
@@ -702,6 +648,14 @@ class TestSelfManagedIntegrationConnection:
 @pytest.mark.integration
 class TestDisconnectIntegration:
     """disconnect_integration: cleanup for different managed_by types."""
+
+    @pytest.fixture(autouse=True)
+    def _scout_store(self) -> Iterator[None]:
+        with (
+            patch.object(scouts_repository, "delete_for", AsyncMock()),
+            patch.object(signal_memory_repository, "delete_for_integration", AsyncMock()),
+        ):
+            yield
 
     async def test_disconnect_composio_integration(self) -> None:
         """Disconnecting a Composio integration revokes every account the user holds on it."""
@@ -850,10 +804,10 @@ class TestConnectionStatusLifecycle:
         repo = _FakeUserIntegrationRepo()
 
         with _patched_repo(repo):
-            await update_user_integration_status(USER_ID, "gmail", "created")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CREATED)
             assert repo.stored[0].status == "created"
 
-            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CONNECTED)
             doc = repo.stored[0]
             assert doc.status == "connected"
             assert doc.connected_at is not None
@@ -878,7 +832,7 @@ class TestReconnectionFlow:
 
         with _patched_repo(repo):
             # Connect
-            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CONNECTED)
             assert len(repo.stored) == 1
 
             # Disconnect
@@ -886,7 +840,7 @@ class TestReconnectionFlow:
             assert len(repo.stored) == 0
 
             # Reconnect
-            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CONNECTED)
             assert len(repo.stored) == 1
 
             doc = repo.stored[0]
@@ -899,9 +853,9 @@ class TestReconnectionFlow:
         repo = _FakeUserIntegrationRepo()
 
         with _patched_repo(repo):
-            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CONNECTED)
             await update_user_integration_status(
-                USER_ID, "gmail", "expired", expired_reason="refresh_token_revoked"
+                USER_ID, "gmail", IntegrationStatus.EXPIRED, expired_reason="refresh_token_revoked"
             )
 
             expired = repo.stored[0]
@@ -909,7 +863,7 @@ class TestReconnectionFlow:
             assert expired.expired_at is not None
             assert expired.expired_reason == "refresh_token_revoked"
 
-            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CONNECTED)
 
             reconnected = repo.stored[0]
             assert reconnected.status == "connected"
@@ -981,9 +935,9 @@ class TestMultiProviderSupport:
 
         with _patched_repo(repo):
             # Connect Gmail
-            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CONNECTED)
             # Connect Slack
-            await update_user_integration_status(USER_ID, "slack", "connected")
+            await update_user_integration_status(USER_ID, "slack", IntegrationStatus.CONNECTED)
 
         assert len(repo.stored) == 2
 
@@ -998,8 +952,8 @@ class TestMultiProviderSupport:
         repo = _FakeUserIntegrationRepo()
 
         with _patched_repo(repo):
-            await update_user_integration_status(USER_ID, "gmail", "connected")
-            await update_user_integration_status(USER_ID, "slack", "connected")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CONNECTED)
+            await update_user_integration_status(USER_ID, "slack", IntegrationStatus.CONNECTED)
 
             # Remove Gmail only
             await remove_user_integration(USER_ID, "gmail")
@@ -1014,8 +968,8 @@ class TestMultiProviderSupport:
         repo = _FakeUserIntegrationRepo()
 
         with _patched_repo(repo):
-            await update_user_integration_status(USER_ID, "gmail", "connected")
-            await update_user_integration_status(USER_ID_2, "gmail", "connected")
+            await update_user_integration_status(USER_ID, "gmail", IntegrationStatus.CONNECTED)
+            await update_user_integration_status(USER_ID_2, "gmail", IntegrationStatus.CONNECTED)
 
         assert len(repo.stored) == 2
 
@@ -1164,17 +1118,6 @@ class TestOAuthConfigHelpers:
         """Unknown integration ID returns None."""
         assert get_integration_by_id("nonexistent_xyz") is None
 
-    def test_get_integration_scopes_gmail(self) -> None:
-        """Gmail scopes include gmail.modify."""
-        scopes = get_integration_scopes("gmail")
-        assert len(scopes) > 0
-        assert any("gmail" in s for s in scopes)
-
-    def test_get_integration_scopes_unknown_returns_empty(self) -> None:
-        """Unknown integration returns empty scope list."""
-        scopes = get_integration_scopes("nonexistent_xyz_123")
-        assert scopes == []
-
     def test_oauth_integrations_list_not_empty(self) -> None:
         """OAUTH_INTEGRATIONS contains at least one integration."""
         assert len(OAUTH_INTEGRATIONS) > 0
@@ -1185,7 +1128,7 @@ class TestOAuthConfigHelpers:
             assert integration.id, f"Integration missing id: {integration}"
             assert integration.name, f"Integration {integration.id} missing name"
             assert integration.provider, f"Integration {integration.id} missing provider"
-            assert integration.managed_by in ("self", "composio", "mcp", "internal"), (
+            assert integration.managed_by in ("composio", "mcp", "internal"), (
                 f"Integration {integration.id} has invalid managed_by: {integration.managed_by}"
             )
 

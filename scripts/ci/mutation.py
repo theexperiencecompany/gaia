@@ -10,7 +10,7 @@ Subcommands:
   plan                     Emit the lane's GitHub Actions matrix — as many
                            shards as the cost (measured on an earlier run of
                            the PR, else estimated) needs to fit
-                           SHARD_BUDGET_SECONDS each (at least a wave, at
+                           SHARD_BUDGET_SECONDS each (the fewest that fit, at
                            most MAX_SHARDS), balanced by cost. Writes shards (the
                            labels), shard_defs and count to $GITHUB_OUTPUT.
   shard                    Run every module in $GROUP, in order, each under a
@@ -63,6 +63,7 @@ from contextlib import contextmanager, suppress
 import dataclasses
 from dataclasses import dataclass, field
 from enum import StrEnum
+import fcntl
 import json
 import math
 import os
@@ -80,15 +81,17 @@ from types import FrameType
 from typing import IO
 from urllib.parse import urlparse
 
-from lib import mutation_report as report
+from lib import mutation_report as report, runner_host
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 API_ROOT = REPO_ROOT / "apps" / "api"
 LIB = SCRIPT_DIR / "lib"
+# What lib/mutation_matrix.py --scope prints for a module exclusion() leaves out.
+EXCLUDED_SCOPE = "excluded"
 
 # Shards that run at once: the workflow's max-parallel and runner.py's
-# MUTATION_WAVE. A cheap diff still fans out to a full wave; more shards queue.
+# MUTATION_WAVE. More shards than that queue behind it.
 MUTATION_WAVE = 6
 # The most shards a plan makes: four waves, far under GitHub's 256-job matrix
 # limit (a matrix over it is refused, and a skipped lane counts as a pass).
@@ -108,10 +111,9 @@ SERVICES_SECONDS_PER_MUTANT_TEST = 0.061
 # The step's 30-minute timeout less the log tail and report: the shard starts
 # no module it cannot finish by then, so the step never kills it unreported.
 SHARD_DEADLINE_SECONDS = 1680
-# What the plan aims to fit in one shard: replaying both #1799 runs' measured
-# durations, a 600 s budget kept the worst shard at 1133 s, where 1200 s let one
-# reach 2248 s and leave 33 modules unstarted at the deadline.
-SHARD_BUDGET_SECONDS = 600
+# What the plan aims to fit in one shard: setup plus 420 s ends a shard before
+# ts-build-test (616 s median on a PR). Replaying #1799, 600 s kept the worst at 1133 s.
+SHARD_BUDGET_SECONDS = 420
 # mutmut's cap inside a module: CAP_FACTOR x its estimate, never under the old
 # fixed 720 s, never past what the deadline leaves after wrap-up.
 CAP_FACTOR = 3
@@ -143,6 +145,8 @@ PLUGIN_FENCE = (
 )
 PLAIN_RUN_ADDOPTS = f"addopts={PLUGIN_FENCE} --timeout=300"
 LOCAL_LOG_DIR = Path("verify-logs/mutation")
+# Held for a whole local run: each run clears LOCAL_LOG_DIR, which a second one would do mid-run.
+LOCAL_LOCK = Path("verify-logs/mutation.lock")
 SHARD_LOG_TAIL_BYTES = 200_000
 TMPFS = Path("/dev/shm")
 TMPFS_MIN_FREE_BYTES = 1 << 30
@@ -324,6 +328,10 @@ class UsageError(Exception):
     """A `module` invocation that cannot run; exits 2."""
 
 
+class ExcludedModule(Exception):
+    """A `module` invocation on a module the lane leaves out; exits 0 without mutating."""
+
+
 def _compact(value: object) -> str:
     return json.dumps(value, separators=(",", ":"))
 
@@ -334,9 +342,9 @@ def _say(*lines: str) -> None:
 
 
 def mutant_workers() -> int:
-    """Return half the threads: eight workers measured clean on the 16-thread box (2026-09-17)."""
+    """Return every thread, or half on the box, where three shards share 16 (clean, 2026-09-17)."""
     threads = os.cpu_count() or 2
-    return max(threads // 2, 1)
+    return max(threads // 2, 1) if runner_host.on_the_box() else threads
 
 
 def memory_available() -> int:
@@ -463,9 +471,11 @@ def _spread(work: Sequence[ModuleWork], count: int) -> list[tuple[ModuleWork, ..
 def _shards_to_fit(work: Sequence[ModuleWork]) -> int:
     """Return the fewest shards whose packing keeps each within SHARD_BUDGET_SECONDS.
 
-    A module over the budget on its own is left over: no shard count can split it.
+    A module over the budget on its own takes a shard alone: no shard count can split it.
     """
-    count = max(math.ceil(sum(w.cost for w in work) / SHARD_BUDGET_SECONDS), 1)
+    alone = sum(w.cost > SHARD_BUDGET_SECONDS for w in work)
+    rest = sum(w.cost for w in work if w.cost <= SHARD_BUDGET_SECONDS)
+    count = max(alone + math.ceil(rest / SHARD_BUDGET_SECONDS), 1)
     while count < len(work) and any(
         len(group) > 1 and sum(w.cost for w in group) > SHARD_BUDGET_SECONDS
         for group in _spread(work, count)
@@ -477,10 +487,9 @@ def _shards_to_fit(work: Sequence[ModuleWork]) -> int:
 def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
     """Split modules into homogeneous shards that each fit the budget, balanced by cost.
 
-    Each pool gets the fewest shards that fit SHARD_BUDGET_SECONDS. A plan
-    under one wave is topped up to MUTATION_WAVE, since shards that run at once
-    cost no wall clock; one over MAX_SHARDS is cut back to it. Either way the
-    shard goes to the pool with the most cost per shard.
+    Each pool gets the fewest shards that fit SHARD_BUDGET_SECONDS: every shard
+    pays a checkout, an install and a runner slot. A plan over MAX_SHARDS is cut
+    back to it, each spare shard going to the pool with the most cost per shard.
     """
     members = {
         "services": [m for m in modules if m.needs_services],
@@ -491,14 +500,9 @@ def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
     counts = {pool: _shards_to_fit(live[pool]) for pool in live}
     if sum(counts.values()) > MAX_SHARDS:
         counts = dict.fromkeys(live, 1)
-        target = MAX_SHARDS
-    else:
-        target = MUTATION_WAVE
-    while sum(counts.values()) < target:
-        hungry = [pool for pool in live if counts[pool] < len(live[pool])]
-        if not hungry:
-            break
-        counts[max(hungry, key=lambda pool: totals[pool] / counts[pool])] += 1
+        while sum(counts.values()) < MAX_SHARDS:
+            hungry = [pool for pool in live if counts[pool] < len(live[pool])]
+            counts[max(hungry, key=lambda pool: totals[pool] / counts[pool])] += 1
     return [
         Shard(pool, group)
         for pool in POOLS
@@ -645,8 +649,8 @@ def services_precondition(work: Sequence[ModuleWork]) -> str | None:
                 f"this shard maps {SERVICES_TIER} tests but USE_REAL_SERVICES is not 1 — every "
                 "contract test would skip and its mutants would be reported as uncovered rather "
                 "than surviving. On CI the job must run with pool=services "
-                "(setup-python-test-env); locally, start the services and export "
-                "USE_REAL_SERVICES=1."
+                "(setup-python-test-env); locally, run it as `mise mutation:one <module>`, which "
+                "starts this machine's test-services lane and points the run at it."
             )
         problem = unreachable_service()
         if problem:
@@ -895,6 +899,21 @@ def _local_status(work: ModuleWork, rc: int, log_dir: Path) -> str:
 
 def cmd_local(args: list[str]) -> int:
     os.chdir(REPO_ROOT)
+    LOCAL_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with LOCAL_LOCK.open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(
+                f"ERROR: another `mutation.py local` run is using {LOCAL_LOG_DIR}/ in this "
+                "checkout; wait for it, or pass every module to one run.",
+                file=sys.stderr,
+            )
+            return 2
+        return _run_local(args)
+
+
+def _run_local(args: list[str]) -> int:
     shutil.rmtree(LOCAL_LOG_DIR, ignore_errors=True)
     LOCAL_LOG_DIR.mkdir(parents=True)
     # Cleared once, and only this lane's subtree: a stale module from an earlier
@@ -1016,6 +1035,8 @@ class ModuleRequest:
                 # The detector has already said why on stderr.
                 raise SystemExit(1)
             ranges = scope.stdout.strip()
+            if ranges == EXCLUDED_SCOPE:
+                raise ExcludedModule(module)
         if ranges in ("", "[]"):
             raise UsageError(
                 f"mutation: empty line scope for {module} — refusing to run.\n"
@@ -1100,8 +1121,9 @@ def configure_mutmut(request: ModuleRequest, workdir: Path) -> None:
         f"'addopts={PLUGIN_FENCE} --timeout={MUTANT_TEST_TIMEOUT}']\n"
     )
     pyproject = workdir / "pyproject.toml"
-    text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", replacement, pyproject.read_text())
-    pyproject.write_text(text)
+    # The only [tool.mutmut] there is: written here, never read from the checkout.
+    text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", "", pyproject.read_text())
+    pyproject.write_text(f"{text.rstrip()}\n\n{replacement}")
 
 
 def mutmut_cap_seconds() -> int:
@@ -1537,7 +1559,7 @@ def _notes(classified: list[tuple[str, str]], uncovered_changed: list[str], no_t
         ("EQUIV", "provably equivalent mutant(s) (see scripts/test/mutation_classify.py):"),
         (
             "LOGGING",
-            "mutant(s) excluded as logging-only (log.debug/log.info never reach the wide event):",
+            "mutant(s) excluded as logging-only (inside a wide-event log call):",
         ),
         ("LINTED", "mutant(s) excluded as lint-caught (the tool-dump-boundary lint, #917):"),
     ):
@@ -1597,6 +1619,8 @@ def cmd_module(args: list[str]) -> int:
     record_dir = os.environ.get("MUTATION_VERDICT_DIR")
     try:
         request = ModuleRequest.from_args(args)
+    except ExcludedModule:
+        return 0
     except UsageError as exc:
         _say(str(exc))
         module = args[0].removeprefix("apps/api/") if args else ""

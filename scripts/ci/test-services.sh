@@ -12,6 +12,10 @@
 #                 remove this job's containers on a GitHub-hosted runner.
 #   janitor       reset every lane whose env file is older than STALE_HOURS
 #                 (the box only; any other runner is thrown away).
+#   exec -- cmd   up + prepare, then run cmd with this lane's endpoints and
+#                 USE_REAL_SERVICES=1 exported over whatever the caller had.
+#                 Wrap the real binary, never `mise …`: mise re-applies a
+#                 worktree's .env.worktree over the caller's env.
 #
 # The script decides for itself which topology it is on — callers never choose:
 #
@@ -27,7 +31,7 @@
 #
 #   Postgres  a database per lane        gaia_test_r<r>       (CREATE DATABASE)
 #   Redis     a 32-DB stripe per lane    GAIA_REDIS_DB_BASE=8+r*32
-#   MongoDB   a db-name prefix per lane  gaia_test_r<r>_gw<n>
+#   MongoDB   a db-name prefix per lane  gaia_test_r<r> (the app) + _gw<n>
 #   ChromaDB  a collection suffix        _r<r>   (Chroma has no namespaces)
 #   RabbitMQ  a vhost per lane           /r<r>
 #
@@ -38,7 +42,8 @@
 # Env contract:
 #   RUNNER_NAME             a box runner name (gaia-home-<n>, lib/runner-host.sh)
 #                           selects the shared topology.
-#   RUNNER_INDEX            lane number / port offset (default 0).
+#   RUNNER_INDEX            lane number / port offset (default 0 on a GitHub
+#                           runner, LOCAL_LANE on a developer machine).
 #   GAIA_CI_RUNDIR,
 #   RUNNER_LOCAL_CACHE      where the per-lane env file and the lock live.
 #   GAIA_TEST_SERVICES_ENV  override the env file path (per-job mode).
@@ -108,6 +113,13 @@ LOCK_FILE="${RUNDIR}/gaia-shared-test-services.lock"
 LOCK_WAIT_SECS=600
 
 env_file_for() { echo "${RUNDIR}/gaia-test-services-$1.env"; }
+
+# A developer machine runs the dev stack's own services on the canonical ports
+# lane 0 would bind, so off CI the default lane is the last one.
+LOCAL_LANE=12
+if [ -z "${RUNNER_INDEX:-}" ]; then
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then RUNNER_INDEX=0; else RUNNER_INDEX=$LOCAL_LANE; fi
+fi
 
 # ── which topology are we on? ─────────────────────────────────────────────
 # ci_on_the_box (lib/runner-host.sh) reads the runner name; RUNNER_INDEX comes
@@ -179,8 +191,12 @@ _fingerprint() { printf '%s' "$*" | sha256sum | cut -c1-16; }
 
 _run_labelled() {
   # _run_labelled <name> <fingerprint-source> <docker run args...>
+  # The box's shared set outlives any one job, so it restarts with the daemon.
   local name="$1" spec="$2"
   shift 2
+  if ci_on_the_box; then
+    set -- --restart unless-stopped "$@"
+  fi
   docker run -d --name "$name" --label "${CONFIG_LABEL}=$(_fingerprint "$spec")" "$@"
 }
 
@@ -194,7 +210,7 @@ _pg_spec() {
 
 start_postgres() {
   if ci_on_the_box; then
-    _run_labelled "$PG_NAME" "$(_pg_spec)" --restart unless-stopped \
+    _run_labelled "$PG_NAME" "$(_pg_spec)" \
       -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
       -e PGDATA=/var/lib/postgresql/data/pgdata \
       --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=6g \
@@ -222,9 +238,7 @@ _redis_databases() { if ci_on_the_box; then echo "$REDIS_DATABASES"; else echo "
 _redis_spec() { echo "${REDIS_IMAGE}|${REDIS_PORT}|databases=$(_redis_databases)"; }
 
 start_redis() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$REDIS_NAME" "$(_redis_spec)" "${restart[@]}" \
+  _run_labelled "$REDIS_NAME" "$(_redis_spec)" \
     -p "127.0.0.1:${REDIS_PORT}:6379" "$REDIS_IMAGE" \
     redis-server --databases "$(_redis_databases)" --save "" --appendonly no
 }
@@ -233,9 +247,7 @@ _mongo_tmpfs() { if ci_on_the_box; then echo 6g; else echo 2g; fi; }
 _mongo_spec() { echo "${MONGO_IMAGE}|${MONGO_PORT}|tmpfs=$(_mongo_tmpfs)"; }
 
 start_mongo() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$MONGO_NAME" "$(_mongo_spec)" "${restart[@]}" \
+  _run_labelled "$MONGO_NAME" "$(_mongo_spec)" \
     -e MONGO_INITDB_ROOT_USERNAME=gaia -e MONGO_INITDB_ROOT_PASSWORD=gaia \
     --tmpfs "/data/db:rw,noexec,nosuid,size=$(_mongo_tmpfs)" \
     -p "127.0.0.1:${MONGO_PORT}:27017" "$MONGO_IMAGE"
@@ -244,18 +256,14 @@ start_mongo() {
 _chroma_spec() { echo "${CHROMA_IMAGE}|${CHROMA_PORT}"; }
 
 start_chroma() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$CHROMA_NAME" "$(_chroma_spec)" "${restart[@]}" \
+  _run_labelled "$CHROMA_NAME" "$(_chroma_spec)" \
     -p "127.0.0.1:${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
 }
 
 _rabbitmq_spec() { echo "${RABBITMQ_IMAGE}|${RABBITMQ_PORT}"; }
 
 start_rabbitmq() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$RABBITMQ_NAME" "$(_rabbitmq_spec)" "${restart[@]}" \
+  _run_labelled "$RABBITMQ_NAME" "$(_rabbitmq_spec)" \
     -p "127.0.0.1:${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
 }
 
@@ -492,7 +500,7 @@ _prepare_shared() {
   echo "Postgres: ${pg_db} created empty"
 
   flush_redis_stripe "$redis_base" || ci_warn "Redis: flushing the lane stripe failed — continuing"
-  drop_mongo_databases "$lane" || ci_warn "MongoDB: dropping stale gaia_test_r${lane}_* failed — continuing"
+  drop_mongo_databases "$lane" || ci_warn "MongoDB: dropping stale gaia_test_r${lane}[_*] failed — continuing"
   # Fatal, unlike the warnings around it: the lane's collections share one
   # server with every other lane's, so a listing that failed cleared nothing.
   reset_chroma "$chroma_suffix" || ci_die "ChromaDB: could not list collections to clear those ending in ${chroma_suffix}"
@@ -581,14 +589,15 @@ flush_redis_stripe() {
     "for db in \$(seq $base $((base + REDIS_STRIPE - 1))); do redis-cli -n \$db flushdb >/dev/null; done"
 }
 
-# Every worker database of this lane: gaia_test_r<lane>_gw0, _gw1, ...
+# Every database of this lane: the app's gaia_test_r<lane> (MONGO_DB_NAME, the one the
+# live-server fuzz boots on) and the workers' gaia_test_r<lane>_gw0, _gw1, ...
 drop_mongo_databases() {
   local lane="$1"
   docker exec "$MONGO_NAME" mongosh --quiet \
     -u gaia -p gaia --authenticationDatabase admin \
     --eval "db.adminCommand({listDatabases:1,nameOnly:true}).databases
       .map(d => d.name)
-      .filter(n => /^gaia_test_r${lane}_/.test(n))
+      .filter(n => /^gaia_test_r${lane}(_|$)/.test(n))
       .forEach(n => { db.getSiblingDB(n).dropDatabase(); print('dropped ' + n); })"
 }
 
@@ -666,9 +675,9 @@ cmd_reset() {
   fi
 
   if drop_mongo_databases "$lane"; then
-    echo "MongoDB: dropped gaia_test_r${lane}_* databases"
+    echo "MongoDB: dropped gaia_test_r${lane}[_*] databases"
   else
-    ci_warn "MongoDB: dropping gaia_test_r${lane}_* databases failed"
+    ci_warn "MongoDB: dropping gaia_test_r${lane}[_*] databases failed"
   fi
 
   reset_chroma "$suffix" || ci_warn "ChromaDB: resetting collections ending in ${suffix} failed"
@@ -707,6 +716,24 @@ _down_perjob() {
 
 cmd_down() { cmd_reset "${1:-}"; }
 
+cmd_exec() {
+  [ "${1:-}" = "--" ] && shift
+  if [ "$#" -eq 0 ]; then
+    usage
+    exit 2
+  fi
+  cmd_up
+  cmd_prepare
+  local env_file
+  env_file="${GAIA_TEST_SERVICES_ENV:-$(env_file_for "$RUNNER_INDEX")}"
+  set -a
+  # shellcheck source=/dev/null
+  source "$env_file"
+  set +a
+  export USE_REAL_SERVICES=1
+  exec "$@"
+}
+
 # ── janitor ───────────────────────────────────────────────────────────────
 
 # A cancelled job never runs its own reset, so its namespaces would accumulate
@@ -741,12 +768,14 @@ cmd_janitor() {
 usage() {
   cat >&2 <<'USAGE'
 Usage: test-services.sh <up|prepare|reset|down|janitor> [lane]
+       test-services.sh exec -- <command> [args…]
 
   up            make the services exist and be ready (idempotent)
   prepare [r]   claim lane r's namespace, clean it, export its env contract
   reset [r]     release lane r's namespace (never fails a green lane)
   down          teardown for an `if: always()` step
   janitor       reset every lane whose env file is stale (the box only)
+  exec -- cmd   run cmd against this lane's services (up + prepare first)
 
 The topology (shared set on the box vs per-job containers) is decided from
 RUNNER_NAME (lib/runner-host.sh) and RUNNER_INDEX; callers do not choose.
@@ -762,6 +791,7 @@ main() {
     reset)   cmd_reset "$@" ;;
     down)    cmd_down "$@" ;;
     janitor) cmd_janitor "$@" ;;
+    exec)    cmd_exec "$@" ;;
     *)
       echo "test-services.sh: unknown subcommand '${sub}'" >&2
       usage

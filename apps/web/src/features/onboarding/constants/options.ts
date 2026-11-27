@@ -4,6 +4,7 @@
  * style for a need that no longer exists, fails to compile.
  */
 
+import type { HeardFrom } from "@shared/api/generated";
 import type { NeedOption, ProfessionOption } from "../types";
 
 export const professionOptions = [
@@ -80,6 +81,29 @@ export const roleNeedOptions = {
 } as const satisfies Partial<
   Record<(typeof professionOptions)[number]["value"], readonly NeedOption[]>
 >;
+
+/**
+ * Q3, one pick: where the user first heard about GAIA. `value` is the API's
+ * `HeardFrom` enum, so a source the API would reject cannot be listed.
+ */
+export const heardFromOptions = [
+  { value: "friend", label: "Friend or colleague" },
+  { value: "twitter", label: "X (Twitter)" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "youtube", label: "YouTube" },
+  { value: "tiktok", label: "TikTok" },
+  { value: "instagram", label: "Instagram" },
+  { value: "reddit", label: "Reddit" },
+  { value: "product_hunt", label: "Product Hunt" },
+  { value: "hacker_news", label: "Hacker News" },
+  { value: "google", label: "Google search" },
+  { value: "ai_assistant", label: "ChatGPT or another AI" },
+  { value: "newsletter", label: "Newsletter or blog" },
+  { value: "podcast", label: "Podcast" },
+  { value: "github", label: "GitHub" },
+  { value: "discord", label: "Discord" },
+  { value: "somewhere_else", label: "Somewhere else" },
+] as const satisfies readonly { value: HeardFrom; label: string }[];
 
 /** Q2's catch-all. Not a backend need: it opens a field whose text is sent as
  * `other_need`, so this value never lands in `selectedNeeds`. */

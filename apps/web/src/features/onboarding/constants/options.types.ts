@@ -1,5 +1,6 @@
 import type { NeedOption } from "../types";
 import type {
+  heardFromOptions,
   needOptions,
   OTHER_NEED,
   professionOptions,
@@ -14,8 +15,10 @@ export type NeedValue =
   | (typeof roleNeedOptions)[keyof typeof roleNeedOptions][number]["value"]
   | typeof OTHER_NEED;
 
+export type HeardFromValue = (typeof heardFromOptions)[number]["value"];
+
 /** Every value an onboarding chip can carry. */
-export type OptionValue = ProfessionValue | NeedValue;
+export type OptionValue = ProfessionValue | NeedValue | HeardFromValue;
 
 /** A Q2 option whose value is known at compile time. */
 export interface TypedNeedOption extends NeedOption {

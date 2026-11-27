@@ -1,4 +1,5 @@
 import { ScrollShadow, Spinner, Tooltip } from "@heroui/react";
+import { FIXED_LOCALE, formatInboxTime, YESTERDAY } from "@shared/utils";
 import { useEffect, useRef, useState } from "react";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
@@ -40,26 +41,7 @@ function extractSenderName(from: string): string {
 }
 
 function formatTime(time: string | null): string {
-  if (!time) return "Yesterday";
-
-  const date = new Date(time);
-  const now = new Date();
-  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-
-  if (diffInHours < 24) {
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  } else if (diffInHours < 48) {
-    return "Yesterday";
-  } else {
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  }
+  return time ? formatInboxTime(time, new Date(), FIXED_LOCALE) : YESTERDAY;
 }
 
 /**

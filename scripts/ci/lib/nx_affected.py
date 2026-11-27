@@ -44,6 +44,15 @@ SCOPED_FILES_MAX = 300
 # an env var or job output: Linux refuses one env string over 128 KiB
 # (MAX_ARG_STRLEN), and a 233-file PR's map was 139,600 bytes.
 TASK_FILES_ENV = "TASK_FILES_PATH"
+# detect's tier for a master push whose SHA a green merge_group run already checked
+# (verdict.py queue-verified): it builds what a deploy ships and publishes what only
+# a master push may, and checks nothing the queue checked.
+VERIFIED_TIER = "verified"
+DEPLOY_BRANCH = "master"
+# ci.yml's web-build job builds the bundle deploy-web ships; web:build is what opens it,
+# and usercontent-worker:build opens deploy-usercontent-worker.
+SHIPPING_JOBS = frozenset({"web-build"})
+SHIPPED_TASKS = frozenset({"web:build", "usercontent-worker:build"})
 # pnpm records a finished install here; the workspace's nx and its plugins are in it.
 PNPM_INSTALL_MARKER = REPO_ROOT / "node_modules" / ".modules.yaml"
 
@@ -77,9 +86,13 @@ class Check:
         return self.branch is None or self.branch == branch
 
 
+# Each affected task, with every reason nx gives for reaching it.
+Reasons = dict[str, list[dict[str, str]]]
+
+
 @dataclass(frozen=True)
 class Selection:
-    tasks: dict[str, list[dict[str, str]]]
+    tasks: Reasons
 
 
 def _project(task: str) -> str:
@@ -115,20 +128,54 @@ def _nx(*args: str, stdin: str | None = None) -> str:
     raise NxFailedError(f"`nx {' '.join(args)}` exited {done.returncode}:\n{said}")
 
 
-def _json_after_banner(out: str, opener: str) -> object:
-    """Parse nx's JSON, which a plugin's deprecation notice may precede on stdout."""
-    return json.loads(out[out.index(opener) :])
+class CiMetadata(TypedDict, total=False):
+    """A target's `metadata.ci`, which makes it a CI check."""
+
+    job: str
+    check: str
+    area: str
+    events: list[str]
+    branch: str
+    reuse: bool
+    runner: str
+    fallback: str
+
+
+class TargetMetadata(TypedDict, total=False):
+    ci: CiMetadata
+
+
+class Target(TypedDict, total=False):
+    options: dict[str, str]
+    metadata: TargetMetadata
+    parallelism: bool
+    dependsOn: list[object]
+
+
+class NodeData(TypedDict, total=False):
+    targets: dict[str, Target]
+    tags: list[str]
+
+
+class Node(TypedDict):
+    data: NodeData
+
+
+@functools.cache
+def _graph() -> dict[str, Node]:
+    """Read the project graph's nodes from a file nx writes, never a pipe its exit can cut."""
+    with tempfile.TemporaryDirectory() as scratch:
+        graph = Path(scratch) / "graph.json"
+        _nx("graph", f"--file={graph}")
+        nodes: dict[str, Node] = json.loads(graph.read_text())["graph"]["nodes"]
+    return nodes
 
 
 @functools.cache
 def checks() -> dict[str, Check]:
     """Every CI check in the workspace, by task, read from the project graph."""
-    with tempfile.TemporaryDirectory() as scratch:
-        graph = Path(scratch) / "graph.json"
-        _nx("graph", f"--file={graph}")
-        nodes = json.loads(graph.read_text())["graph"]["nodes"]
     found: dict[str, Check] = {}
-    for project, node in nodes.items():
+    for project, node in _graph().items():
         for target, spec in node["data"]["targets"].items():
             ci = (spec.get("metadata") or {}).get("ci") or {}
             if not ci.get("job"):
@@ -158,13 +205,23 @@ def tracked_files() -> list[str]:
     return [f for f in out.splitlines() if (REPO_ROOT / f).is_file()]
 
 
+def explain(targets: list[str], range_args: list[str], stdin: str | None = None) -> Reasons:
+    """Ask nx which tasks of these targets a range reaches, each with why."""
+    # A file, as for the graph above: nx prints --explain=stdout with console.log
+    # and then calls process.exit, and on the box the read came back cut at 8192 bytes.
+    with tempfile.TemporaryDirectory() as scratch:
+        written = Path(scratch) / "explain.json"
+        _nx("affected", "-t", *targets, f"--explain={written}", *range_args, stdin=stdin)
+        explained = json.loads(written.read_text())
+    assert isinstance(explained, dict)
+    affected: Reasons = explained["affected"]
+    return affected
+
+
 def select(range_args: list[str], stdin: str | None = None) -> Selection:
     known = checks()
     targets = sorted({_target(task) for task in known} | {IMAGE_TARGET})
-    out = _nx("affected", "-t", *targets, "--explain=stdout", *range_args, stdin=stdin)
-    explained = _json_after_banner(out, "{")
-    assert isinstance(explained, dict)
-    affected = explained["affected"]
+    affected = explain(targets, range_args, stdin)
     return Selection(
         tasks={
             task: reasons
@@ -301,17 +358,23 @@ def release_groups(selection: Selection) -> list[str]:
     if not built:
         return []
 
-    def members(patterns: list[str]) -> list[str]:
-        # nx resolves a group's projects (names or tag: patterns) the way -p does.
-        out = _json_after_banner(
-            _nx("show", "projects", "--projects", ",".join(patterns), "--json"), "["
-        )
-        assert isinstance(out, list)
-        return [str(p) for p in out]
+    def members(patterns: list[str]) -> set[str]:
+        return {project for pattern in patterns for project in _matching(pattern)}
 
     return sorted(
         name for name, group in groups.items() if built.intersection(members(group["projects"]))
     )
+
+
+def _matching(pattern: str) -> list[str]:
+    """Resolve a release group's project pattern: a project name or `tag:<tag>`."""
+    nodes = _graph()
+    if pattern.startswith("tag:"):
+        tag = pattern.removeprefix("tag:")
+        return [p for p, node in nodes.items() if tag in node["data"].get("tags", [])]
+    if pattern in nodes:
+        return [pattern]
+    raise ValueError(f"release group pattern {pattern!r} is neither a project nor tag:<tag>")
 
 
 def task_files(selection: Selection) -> dict[str, str | list[str]]:
@@ -335,11 +398,31 @@ def _is_source(reason: dict[str, str]) -> bool:
     )
 
 
-def outputs(selection: Selection, event: str, branch: str | None) -> dict[str, str]:
+def _publishes(check: Check) -> bool:
+    """Say whether only a master push runs this check: it publishes, so no queue run did it."""
+    return check.events == ("push",) and check.branch == DEPLOY_BRANCH
+
+
+def _shipping(check: Check | None, task: str) -> bool:
+    return task in SHIPPED_TASKS or (
+        check is not None and (check.job in SHIPPING_JOBS or _publishes(check))
+    )
+
+
+def outputs(selection: Selection, event: str, branch: str | None, tier: str = "") -> dict[str, str]:
     """Build detect's outputs; a job reads each as the same name upper-cased, and ci:local sets them too."""
     jobs = job_tasks(selection, event, branch)
+    tasks = sorted(selection.tasks)
+    if tier == VERIFIED_TIER:
+        known = checks()
+        tasks = [task for task in tasks if _shipping(known.get(task), task)]
+        jobs = {
+            job: kept
+            for job, listed in jobs.items()
+            if (kept := [t for t in listed if job in SHIPPING_JOBS or _publishes(known[t])])
+        }
     return {
-        "tasks": json.dumps(sorted(selection.tasks)),
+        "tasks": json.dumps(tasks),
         "jobs": json.dumps(sorted(jobs)),
         "job_tasks": json.dumps(jobs),
         "release_groups": json.dumps(release_groups(selection)),
@@ -394,6 +477,7 @@ def main() -> int:
         selection,
         os.environ.get("GITHUB_EVENT_NAME", LOCAL_EVENT),
         os.environ.get("GITHUB_REF_NAME"),
+        os.environ.get("CI_TIER", ""),
     )
     lines = "".join(f"{key}={value}\n" for key, value in published.items())
     sink = os.environ.get("GITHUB_OUTPUT")

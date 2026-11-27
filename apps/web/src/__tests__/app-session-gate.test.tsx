@@ -2,8 +2,9 @@
 /**
  * Regression: an unpaid account mid-onboarding fired /conversations,
  * /notifications and /integrations from the shell behind the wizard, and each
- * 402 surfaced as a "Failed to fetch conversations" or paywall toast. The paid
- * session must not mount until the plan is read and allows it.
+ * 402 surfaced as a "Failed to fetch conversations" or paywall toast. On the
+ * routes an unpaid account lives on, the paid session must not mount until the
+ * plan is read and allows it; everywhere else a signed-in account gets it at once.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, renderHook, waitFor } from "@testing-library/react";
@@ -12,6 +13,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSubscriptionStatus = vi.fn();
 const paidSessionHook = vi.fn();
+const usePathname = vi.fn();
+
+vi.mock("@/i18n/navigation", () => ({ usePathname: () => usePathname() }));
 
 vi.mock("@/features/auth/api/authApi", () => ({
   authApi: {
@@ -38,18 +42,6 @@ vi.mock("@/features/notification/hooks/useNotifications", () => ({
 }));
 vi.mock("@/features/notification/hooks/useNotificationWebSocket", () => ({
   useNotificationWebSocket: () => paidSessionHook("notification_ws"),
-}));
-vi.mock("@/features/chat/hooks/useBgMessageWebSocket", () => ({
-  useBgMessageWebSocket: () => paidSessionHook("bg_messages"),
-}));
-vi.mock("@/features/chat/hooks/useExecutorStream", () => ({
-  useExecutorStream: () => paidSessionHook("executor_stream"),
-}));
-vi.mock("@/features/chat/hooks/useExecutorCancelWebSocket", () => ({
-  useExecutorCancelWebSocket: () => paidSessionHook("executor_cancel"),
-}));
-vi.mock("@/features/chat/hooks/useApprovalDecisionWebSocket", () => ({
-  useApprovalDecisionWebSocket: () => paidSessionHook("approvals"),
 }));
 vi.mock("@/features/todo/hooks/useTodoWorkflowGlobalListener", () => ({
   useTodoWorkflowGlobalListener: () => paidSessionHook("todo_listener"),
@@ -88,8 +80,14 @@ const status = (planType: "pro" | "free", hasEverSubscribed: boolean) => ({
   has_ever_subscribed: hasEverSubscribed,
 });
 
+const neverAnswers = () =>
+  new Promise(() => {
+    // The plan read stays in flight.
+  });
+
 beforeEach(() => {
   vi.clearAllMocks();
+  usePathname.mockReturnValue("/onboarding");
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -128,12 +126,42 @@ describe("useEntitlement", () => {
 });
 
 describe("ProvidersLayout paid session", () => {
-  it("fires no paid request for an account that never paid", async () => {
+  it("fires no paid request on onboarding for an account that never paid", async () => {
     getSubscriptionStatus.mockResolvedValue(status("free", false));
 
     render(<ProvidersLayout>page</ProvidersLayout>, { wrapper });
 
     await waitFor(() => expect(getSubscriptionStatus).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(paidSessionHook).not.toHaveBeenCalled();
+  });
+
+  it("fires no paid request on onboarding while the plan is unread", async () => {
+    getSubscriptionStatus.mockReturnValue(neverAnswers());
+
+    render(<ProvidersLayout>page</ProvidersLayout>, { wrapper });
+
+    await waitFor(() => expect(getSubscriptionStatus).toHaveBeenCalled());
+    expect(paidSessionHook).not.toHaveBeenCalled();
+  });
+
+  it("mounts the app for a signed-in account without waiting for the plan", async () => {
+    usePathname.mockReturnValue("/c");
+    getSubscriptionStatus.mockReturnValue(neverAnswers());
+
+    render(<ProvidersLayout>page</ProvidersLayout>, { wrapper });
+
+    await waitFor(() =>
+      expect(paidSessionHook).toHaveBeenCalledWith("notifications"),
+    );
+  });
+
+  it("mounts nothing in the app for a visitor who is not signed in", async () => {
+    usePathname.mockReturnValue("/c");
+    queryClient.removeQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+
+    render(<ProvidersLayout>page</ProvidersLayout>, { wrapper });
+
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(paidSessionHook).not.toHaveBeenCalled();
   });

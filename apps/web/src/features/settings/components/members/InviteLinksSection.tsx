@@ -3,6 +3,7 @@
 import { InputGroup } from "@heroui/react";
 import { Copy01Icon, UserAdd01Icon } from "@icons";
 import type { InviteResponse } from "@shared/api/generated";
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import { useRef, useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -11,7 +12,6 @@ import { SettingsSection } from "@/features/settings/components/ui/SettingsSecti
 import { inviteLink } from "@/features/settings/hooks/useMembers";
 import { copyFieldText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
-import { formatRelativeDate } from "@/utils/date/dateUtils";
 
 interface InviteLinksSectionProps {
   invites: InviteResponse[];
@@ -91,7 +91,7 @@ export function InviteLinksSection({
         <SettingsRow
           key={invite.id}
           label="Unused invite link"
-          description={`Expires ${formatRelativeDate(invite.expires_at)}`}
+          description={`Expires ${formatDate(invite.expires_at, "long", { locale: FIXED_LOCALE })}`}
         >
           <GaiaButton
             variant="danger-soft"

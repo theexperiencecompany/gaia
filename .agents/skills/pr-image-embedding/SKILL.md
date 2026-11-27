@@ -30,19 +30,23 @@ code diff.
    mkdir -p <pr-number>-<topic>
    cp -f /path/to/images/*.png <pr-number>-<topic>/
    git add <pr-number>-<topic>/
-   git commit -m "Assets for PR #<pr-number> (<topic>), not intended to be merged"
-   git push origin HEAD:pr-assets
+   # pr-assets holds images only and has no hook config, so prek refuses without this
+   PREK_ALLOW_NO_CONFIG=1 git commit -m "Assets for PR #<pr-number> (<topic>), not intended to be merged"
+   PREK_ALLOW_NO_CONFIG=1 git push origin HEAD:pr-assets
    cd - && git worktree remove --force /tmp/pr-assets
    ```
 
-4. **Check each URL serves an image** before you embed it:
+4. **Check each URL serves an image** before you embed it. Check only after the
+   push: a URL fetched too early caches its 404 for about five minutes.
 
    ```bash
-   curl -s -o /dev/null -w "%{http_code} %{content_type}\n" \
+   /usr/bin/curl -s -o /dev/null -w "%{http_code} %{content_type}\n" \
      https://raw.githubusercontent.com/theexperiencecompany/gaia/pr-assets/<pr-number>-<topic>/<file>.png
    ```
 
-   Expect `200 image/png`.
+   Expect `200 image/png`. Use `/usr/bin/curl`, not bare `curl`: this
+   environment aliases `curl` to `curlie`, which changes the request and
+   reports misleading codes (a plain GET coming back 403/422 is the tell).
 
 5. **Reference it by raw URL** in the PR body:
 

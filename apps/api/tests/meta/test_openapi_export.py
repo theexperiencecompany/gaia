@@ -17,7 +17,7 @@ from fastapi import FastAPI
 import pytest
 from scripts.openapi_contract import assert_refs_resolve, with_identifier_component_names
 
-from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
+from app.schemas.errors import NON_JSON_ROUTE_ERROR_RESPONSES
 
 API_ROOT = Path(__file__).resolve().parents[2]
 
@@ -45,7 +45,7 @@ def test_a_dual_use_envelope_dangles_the_hand_written_ref() -> None:
     """A hand-written envelope ref dangles once the model splits into Input/Output."""
     document = _document(
         {"ErrorEnvelope-Input": {}, "ErrorEnvelope-Output": {}},
-        {"/page": {"get": {"responses": dict(HTML_ROUTE_ERROR_RESPONSES)}}},
+        {"/page": {"get": {"responses": dict(NON_JSON_ROUTE_ERROR_RESPONSES)}}},
     )
     with pytest.raises(SystemExit, match="ErrorEnvelope"):
         assert_refs_resolve(with_identifier_component_names(document))

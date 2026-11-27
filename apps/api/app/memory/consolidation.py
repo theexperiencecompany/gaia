@@ -388,7 +388,14 @@ async def _get_user_name(user_id: str) -> str:
     """Return the user's display name, so prompts can tell the user apart from others."""
     try:
         user = await user_repository.get(user_id)
-    except Exception:
+    # The name only labels the prompt, and an id that is not a database id raises before the store.
+    except Exception as e:
+        log.warning(
+            "memory_consolidation_user_name_unavailable",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         user = None
     return (user.name if user else None) or "the user"
 

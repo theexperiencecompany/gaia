@@ -190,6 +190,7 @@ v3 has no `color` on Button (colour folds into `variant`), no `radius`, no `clas
 
 - Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
 - Clickable rows/cards converted from `div onClick` for Sonar S1082 (click without keyboard support): landing demo rows (DemoSidebar integrations, DemoIntegrationsView, DemoTodosView, DummySlashCommandDropdown tools), the CLI install page's click-to-copy code block, and the WorkflowDraftCard body — same full-row layout constraint as above. Where the row also holds a HeroUI control, only the non-interactive part is the `<button>` and the control stays its sibling (never a button inside a button).
+- Folded briefs and files that open on press: the brief letter card (`BriefCard`), the folded letter paper (`BriefLetter`), the editions settings cards (`BriefingEditionsSettings`) and the open area of `FileCard` — each is a whole card or a 3D paper stack whose hover and press move its parts, which `<GaiaButton>`'s fixed height, padding and fill cannot hold. `FileCard` keeps focus in the composer by preventing the mousedown default.
 
 **Do not override HeroUI's look at the call site.** Colour, background, border colour, radius and padding come from the variants in `components/shared/` (DESIGN.md, "How to write frontend code"); a className or style on a HeroUI component carries layout only. A look with no variant gets one, added once, never a per-site class or a constant holding classes.
 
@@ -198,7 +199,7 @@ Two lint checks hold this, and each names the fix when it fails:
 - `node scripts/ci/checks.mjs heroui-style-overrides` rejects a `className`/`style` on a HeroUI component or GAIA wrapper that sets colour, background, border colour, `rounded-*` or padding, written inline or held in a constant (same file or imported). Overrides that predate it are in `scripts/ci/baselines/heroui-style-overrides.txt`, each group with its reason; the file only shrinks.
 - `node scripts/ci/checks.mjs heroui-usage` rejects v2 HeroUI APIs (`@heroui/<component>` imports, `isLoading`/`onClick`/`startContent`/`endContent`/`radius`/`color` on Button, `classNames`, `labelPlacement` as a prop, the v2 variant names, `useDisclosure`/`HeroUIProvider`), a self-closing `Switch` or `Checkbox`, and a bare `Button`, `Select.Value` or `ListBox.Item` where a GAIA wrapper replaces it.
 
-`src/__tests__/css-token-completeness.test.ts` compiles `base.css` plus each area sheet and fails on any fallback-less `var(--x)` with no definition in both light and dark: a new token goes in `app/styles/tokens.css`; one HeroUI's react-aria layer sets inline is listed, with its source, in `HEROUI_RUNTIME_TOKENS`. `src/__tests__/tailwind-source-globs.test.ts` fails when `styles/generated/*.css` is stale (run `pnpm area-css`) or a page imports no area stylesheet or two.
+`src/__tests__/css-token-completeness.test.ts` compiles `base.css` plus each area sheet and fails on any fallback-less `var(--x)` with no definition in both light and dark: a new token goes in `app/styles/tokens.css`; one HeroUI's react-aria layer sets inline is listed, with its source, in `HEROUI_RUNTIME_TOKENS`. `src/__tests__/tailwind-source-globs.test.ts` fails when `styles/generated/*.css` is stale (run `pnpm area-css`) or a page imports no area stylesheet or two. `base.css` takes its sources the same way, from what the root `not-found`, `global-error` and `layout` reach (`generated/base.css`), so no stylesheet holds a hand-written `@source` file list. The built worker is checked for the result, whatever built the lists: `e2e/worker/worker.spec.ts` loads the key pages and a URL no page answers, and fails on a rendered class that Tailwind compiles to a utility and no stylesheet on the page defines.
 
 **Before merging a UI-heavy change, run the whole-app visual review:** `mise web:visual:review <base-ref> [head-ref]` (head defaults to `HEAD`). It seeds one local API, production-builds both refs, screenshots every app route and UI state, and writes `review.html` with each diff. It wraps the review harness's `run.sh`, and needs the full stack (run it on the M4, not a throttled laptop). `mise web:visual` is the narrower marketing-page pixel diff on the Cloudflare worker build.
 
@@ -253,12 +254,6 @@ Use `loadFeatureTranslations` to lazy-load per-feature message files rather than
 - Strict TypeScript (`strict: true`). Path alias `@/` maps to `src/`.
 - `@shared/*` maps to `libs/shared/ts/src/` for shared TypeScript utilities.
 
-<!-- BEGIN:nextjs-agent-rules -->
-
 ## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->

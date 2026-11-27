@@ -12,11 +12,17 @@
  * and `BaseBotAdapter.fetchOutboundArtifact` under test are all real.
  */
 
-import { BaseBotAdapter, type OutboundFile } from "@gaia/shared/bots";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  BaseBotAdapter,
+  type ConversationSurface,
+  type OutboundFile,
+} from "@gaia/shared/bots";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GaiaClient } from "../../../../../libs/shared/ts/src/bots/api";
 import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
+import type { FollowSurface } from "../../../../../libs/shared/ts/src/bots/conversation/follower.types";
 import { fetchPublicAsset } from "../../../../../libs/shared/ts/src/bots/utils/public-fetch";
+import { RETRY_POLICY } from "../../../../../libs/shared/ts/src/retry";
 
 const API_BASE = "https://api.gaia.test";
 const DESTINATION_ID = "123456789";
@@ -51,14 +57,21 @@ class TestAdapter extends BaseBotAdapter {
   protected async stop(): Promise<void> {
     /* nothing to disconnect */
   }
+  protected async resumeSurface(): Promise<ConversationSurface> {
+    throw new Error("no restart under test");
+  }
   protected async deliverOutbound(): Promise<void> {
     /* no outbound delivery under test */
   }
   sentFile: OutboundFile | null = null;
+  /** Errors the platform throws on the next uploads, one per attempt. */
+  uploadFailures: unknown[] = [];
   protected async sendOutboundFile(
     _destinationId: string,
     file: OutboundFile,
   ): Promise<void> {
+    const failure = this.uploadFailures.shift();
+    if (failure !== undefined) throw failure;
     this.sentFile = file;
   }
   override buildContext() {
@@ -76,6 +89,41 @@ class TestAdapter extends BaseBotAdapter {
   async fetch(attachment: OutboundAttachment): Promise<OutboundFile | null> {
     await this.deliverOutboundFile(DESTINATION_ID, attachment, false);
     return this.sentFile;
+  }
+
+  /** Sends a reply's session artifact the way a follow does, through the adapter's real follow surface. */
+  sendFollowFile(path: string, shortUrl?: string): Promise<void> {
+    const surface = (
+      this as unknown as {
+        followSurface: (
+          surface: ConversationSurface,
+          conversationId: string,
+          platformUserId: string,
+          channelId: string | null,
+        ) => FollowSurface;
+      }
+    ).followSurface({} as ConversationSurface, "conv-1", DESTINATION_ID, null);
+    return surface.sendFile("conv-1", {
+      path,
+      content_type: "application/pdf",
+      opens_at: "https://app.gaia.test/c/conv-1",
+      short_url: shortUrl,
+    });
+  }
+
+  /** Sends a notice's image the way a follow does, through the adapter's real follow surface. */
+  sendFollowPhoto(url: string): Promise<void> {
+    const surface = (
+      this as unknown as {
+        followSurface: (
+          surface: ConversationSurface,
+          conversationId: string,
+          platformUserId: string,
+          channelId: string | null,
+        ) => FollowSurface;
+      }
+    ).followSurface({} as ConversationSurface, "conv-1", DESTINATION_ID, null);
+    return surface.sendPhoto(url, "Two GitHub threads are on you");
   }
 }
 
@@ -192,4 +240,98 @@ describe("fetchOutboundArtifact URL routing", () => {
       expect(publicFetch.mock.calls[0][0]).toBe(url);
     },
   );
+});
+
+describe("a follow's file the API cannot serve", () => {
+  const unavailable = { response: { status: 503 } };
+  const rateLimited = Object.assign(new Error("Too Many Requests"), {
+    error_code: 429,
+    parameters: { retry_after: 1 },
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    axiosGet.mockReset();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("gives up fetching once the OWN_API retries are spent, so the follow can link the file instead", async () => {
+    axiosGet.mockRejectedValue(unavailable);
+    const adapter = setup();
+
+    const sent = adapter.sendFollowFile("report.pdf");
+    const settled = sent.then(
+      () => "delivered",
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+    await expect(
+      Promise.race([settled, Promise.resolve("still retrying")]),
+    ).resolves.toMatchObject({ status: 503 });
+    expect(axiosGet).toHaveBeenCalledTimes(RETRY_POLICY.OWN_API.retries + 1);
+    expect(adapter.sentFile).toBeNull();
+  });
+
+  it("captions a reply's file with the short link its writing tool attached", async () => {
+    // Regression: the runtime merge sent bot file messages without their heygaia.link.
+    axiosGet.mockResolvedValue({
+      data: new Uint8Array(PNG).buffer,
+      headers: { "content-type": "application/pdf" },
+    });
+    const adapter = setup();
+
+    await adapter.sendFollowFile("report.pdf", "https://heygaia.link/ab12cd");
+
+    expect(adapter.sentFile?.caption).toBe("https://heygaia.link/ab12cd");
+  });
+
+  it("fetches once and keeps retrying the upload while the platform rate-limits it", async () => {
+    axiosGet.mockResolvedValue({
+      data: new Uint8Array(PNG).buffer,
+      headers: { "content-type": "application/pdf" },
+    });
+    const adapter = setup();
+    adapter.uploadFailures = [rateLimited, rateLimited, rateLimited];
+
+    const sent = adapter.sendFollowFile("report.pdf");
+    // Each retry waits the platform's retry_after, then the PLATFORM_SEND backoff.
+    await vi.advanceTimersByTimeAsync(30_000);
+    await sent;
+
+    expect(axiosGet).toHaveBeenCalledTimes(1);
+    expect(adapter.sentFile?.filename).toBe("report.pdf");
+  });
+});
+
+describe("the file name a notice's image arrives under", () => {
+  beforeEach(() => {
+    axiosGet.mockReset();
+    axiosGet.mockResolvedValue({
+      data: new Uint8Array(PNG).buffer,
+      headers: { "content-type": "image/jpeg" },
+    });
+  });
+
+  it("names a brief's edition by its type, not by the signed URL's last segment", async () => {
+    // Regression: Telegram showed a tall brief as a download named "jpg?t=<token>",
+    // and with no image extension it never rendered a preview.
+    const adapter = setup();
+
+    await adapter.sendFollowPhoto(
+      `${API_BASE}/briefings/editions/k1/jpg?t=WyJrMSIsImpwZyJd`,
+    );
+
+    expect(adapter.sentFile?.filename).toBe("image.jpg");
+  });
+
+  it("keeps a URL's own file name when it has an extension", async () => {
+    const adapter = setup();
+
+    await adapter.sendFollowPhoto(`${API_BASE}/shots/c0de/step-3.png?sig=x`);
+
+    expect(adapter.sentFile?.filename).toBe("step-3.png");
+  });
 });

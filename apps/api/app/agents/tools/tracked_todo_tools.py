@@ -39,11 +39,14 @@ from app.constants.todos import (
     MAX_NEXT_CHECK_AHEAD,
     MAX_QUESTION_EXPIRY,
     NoReplyPlan,
+    TodoCompleter,
     WaitingOn,
 )
 from app.constants.trigger_gates import GateAuthor
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import get_user_id, read_agent_configurable
+from app.models.brief_settings_models import BriefFreeDelivery
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -51,14 +54,17 @@ from app.models.todo_models import (
     TodoDocument,
     TodoUpdate,
     UpdateFieldInputs,
-    default_notify_on_run,
+    default_delivery,
 )
 from app.models.trigger_gate_models import AuthoredGate, GateCondition
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
 )
+from app.services.briefing.held import release_on_tell_me_now
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.services.links.placeholders import LINK_NOTE, link_placeholder
+from app.services.links.service import attach_link
 from app.services.todo_activity import agent_actor, record_field_changes, record_waiting_change
 from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.todos.errors import (
@@ -88,12 +94,13 @@ from app.utils.canvas_vector_utils import search_canvas_context
 from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
-_NOTIFY_ON_RUN_DESC = (
-    "Whether a scheduled or triggered run may message the user's chat app when it "
-    "finds something that matters (routine runs never do). Default True, except for "
-    "a sub-todo, which reports to its parent's runs instead. The user's setting: set "
-    "it only when they ask to stop or resume hearing about this todo; a silent run "
-    "can still reach them with send_notification when something genuinely needs them."
+_DELIVERY_DESC = (
+    "Where a scheduled or triggered run's result goes: 'now' may message the user's chat "
+    "app when it finds something that matters (routine runs never do); 'silent' sends "
+    "nothing. Default 'now', except for a sub-todo, which reports to its parent's runs "
+    "instead. The user's setting: set it only when they ask to stop or resume hearing "
+    "about this todo; a silent run can still reach them with send_notification when "
+    "something genuinely needs them."
 )
 _PARENT_TODO_DESC = (
     "ID of the user's open tracked todo that owns this one as a sub-todo, when this is "
@@ -167,8 +174,7 @@ async def _references_refusal(
 
     A run reads its references' Learnings, so a foreign, untracked or mistyped id must not link.
     """
-    valid = [ref for ref in references if todo_repository.is_valid_id(ref)]
-    docs = await todo_repository.find_by_ids(user_id, valid)
+    docs = await todo_repository.find_by_ids(user_id, references)
     tracked = {doc.id for doc in docs if GAIA_TRACKED_LABEL in doc.labels and doc.id != todo_id}
     unknown = [ref for ref in references if ref not in tracked]
     if not unknown:
@@ -197,7 +203,6 @@ async def _unconnected_refusal(user_id: str, needs_integrations: list[str]) -> s
 
 async def _creation_refusal(
     config: RunnableConfig,
-    user_id: str,
     references: list[str] | None,
     parent_todo_id: str | None,
     initial_canvas: str | None,
@@ -208,6 +213,7 @@ async def _creation_refusal(
 
     A thread watch needs Gmail whether or not the caller listed it.
     """
+    user_id = get_user_id(config)
     if references and (refusal := await _references_refusal(user_id, references)):
         return refusal
     if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
@@ -294,9 +300,9 @@ async def create_tracked_todo(
         "or 'follow up if no reply' (expires in 2 weeks). "
         "Different from due_date: due_date means 'should be done by'; expires_at means 'no longer matters after'.",
     ] = None,
-    notify_on_run: Annotated[
-        bool | None,
-        _NOTIFY_ON_RUN_DESC,
+    delivery: Annotated[
+        BriefFreeDelivery | None,
+        _DELIVERY_DESC,
     ] = None,
     gmail_thread_id: Annotated[
         str | None,
@@ -379,8 +385,8 @@ async def create_tracked_todo(
     expires_at: ISO datetime string when this todo becomes irrelevant regardless of completion.
                 Different from due_date: due_date = deadline (overdue = still needs doing),
                 expires_at = relevance window (expired = no longer worth tracking).
-    notify_on_run: Whether each run's final message is delivered to the user's chat app.
-                On by default, off by default for a sub-todo.
+    delivery: Where each run's final message goes: 'now' (the user's chat app) or 'silent'.
+                'now' by default, 'silent' by default for a sub-todo.
     gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
                 watched both ways and allowed one open todo. If the thread already has
                 one, nothing is created and that todo comes back: update it instead. If
@@ -413,7 +419,6 @@ async def create_tracked_todo(
         return planned
     if refusal := await _creation_refusal(
         config,
-        user_id,
         references,
         parent_todo_id,
         initial_canvas,
@@ -434,7 +439,7 @@ async def create_tracked_todo(
             labels=labels,
             priority=priority,
             source_conversation_id=source_conversation_id,
-            notify_on_run=notify_on_run,
+            delivery=delivery,
             external_ref=external_ref,
             references=references,
             parent_todo_id=parent_todo_id,
@@ -528,11 +533,21 @@ async def complete_tracked_todo(
         )
 
     success = await tracked_todo_service.complete_tracked_todo(
-        todo_id=todo_id, user_id=user_id, summary=summary
+        todo_id=todo_id, user_id=user_id, summary=summary, by=TodoCompleter.GAIA
     )
     if not success:
         return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
-    return f"Tracked todo {todo_id} completed and archived."
+    # Linked here, not in the service: this is the one completion path that hands
+    # the result to the user. Sweeps, sub-todo cascades and the UI share nothing.
+    link = await attach_link(
+        user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
+    )
+    if link is None:
+        return f"Tracked todo {todo_id} completed and archived."
+    return (
+        f"Tracked todo {todo_id} completed and archived. {LINK_NOTE} Link to the result: "
+        f"{link_placeholder(link.target)}"
+    )
 
 
 async def _rollback_stale_move(user_id: str, todo_id: str, parent_todo_id: str) -> str | None:
@@ -570,6 +585,7 @@ async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: 
         await tracked_todo_service.schedule_execution(existing.id, update.scheduled_at)
     await record_field_changes(existing.id, existing.user_id, update, by=actor)
     await record_waiting_change(existing.id, existing.user_id, update, by=actor)
+    await release_on_tell_me_now(existing.user_id, [existing.id], update.delivery)
     # The link check and this write are two separate writes: when the parent
     # closed in between, the move is rolled back rather than completing the
     # user's open todo out from under them.
@@ -618,9 +634,9 @@ async def update_tracked_todo(
         "IDs of the user's other tracked todos to link; appended to existing references. "
         "Every run of this todo reads their Learnings.",
     ] = None,
-    notify_on_run: Annotated[
-        bool | None,
-        _NOTIFY_ON_RUN_DESC,
+    delivery: Annotated[
+        BriefFreeDelivery | None,
+        _DELIVERY_DESC,
     ] = None,
     parent_todo_id: Annotated[
         str | None, "Move this todo under that parent as its sub-todo. " + _PARENT_TODO_DESC
@@ -642,7 +658,7 @@ async def update_tracked_todo(
         recurrence: Set or clear recurrence pattern.
         expires_at: Set or clear the expiry datetime (when the todo becomes irrelevant).
         references: IDs of the user's tracked todos to link (appended to existing).
-        notify_on_run: Turn this todo's run-result delivery on or off.
+        delivery: Turn this todo's run-result delivery on ('now') or off ('silent').
         parent_todo_id: Make this todo a sub-todo of that parent.
     """
     user_id = get_user_id(config)
@@ -660,7 +676,7 @@ async def update_tracked_todo(
     if error := await apply_field_updates(inputs, user_id, update_fields, notes):
         return error
     plain_fields = {
-        "notify_on_run": notify_on_run,
+        "delivery": delivery,
         "parent_todo_id": parent_todo_id or None,
     }
     update_fields.update({name: value for name, value in plain_fields.items() if value is not None})
@@ -676,9 +692,9 @@ async def update_tracked_todo(
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
     if refusal := await _link_refusal(user_id, todo_id, references, parent_todo_id):
         return refusal
-    if parent_todo_id and notify_on_run is None:
+    if parent_todo_id and delivery is None:
         # Moved under a parent, a todo reports like a new sub-todo of its kind unless told otherwise.
-        update_fields["notify_on_run"] = default_notify_on_run(
+        update_fields["delivery"] = default_delivery(
             parent_todo_id=parent_todo_id, external_ref=existing.external_ref
         )
 

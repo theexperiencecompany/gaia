@@ -24,11 +24,14 @@ const { connection, channel, connect } = vi.hoisted(() => {
 
 vi.mock("amqplib", () => ({ connect }));
 
-import type {
-  OutboundAttachment,
-  OutboundReaction,
-} from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
+import type { ActiveBotConversation } from "../../../../../libs/shared/ts/src/api/generated";
+import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
+import {
+  BOT_OUTCOME,
+  type BotOutcome,
+  botRegistry,
+} from "../../../../../libs/shared/ts/src/bots/metrics";
 import type { OutboundNotifications } from "../../../../../libs/shared/ts/src/bots/types";
 import { hashLogIdentifier } from "../../../../../libs/shared/ts/src/bots/utils/logger";
 import { captureBotEvents } from "../helpers/capture-bot-event";
@@ -57,21 +60,18 @@ async function startAndCaptureHandler(
     isChannel: boolean,
   ) => Promise<void> = async () => undefined,
   gaiaApiUrl = "https://api.gaia.test",
-  deliverReaction: (
-    id: string,
-    reaction: OutboundReaction,
-    isChannel: boolean,
-  ) => Promise<void> = async () => undefined,
   notifications?: OutboundNotifications,
+  follow: (target: ActiveBotConversation) => Promise<void> = async () =>
+    undefined,
 ): Promise<Handler> {
   const consumer = new OutboundConsumer(
     platform,
     "amqp://test",
     deliver,
     deliverFile,
+    follow,
     gaiaApiUrl,
     reportFailure,
-    deliverReaction,
     notifications,
   );
   await consumer.start();
@@ -85,6 +85,19 @@ async function startAndCaptureHandler(
 async function deliverMessage(handle: Handler, msg: unknown): Promise<void> {
   handle(msg);
   await flush();
+}
+
+async function outboundCount(
+  platform: string,
+  outcome: BotOutcome,
+): Promise<number> {
+  const metric = botRegistry.getSingleMetric("gaia_bot_outbound_total");
+  const { values } = await (metric as NonNullable<typeof metric>).get();
+  return (
+    values.find(
+      (v) => v.labels.platform === platform && v.labels.outcome === outcome,
+    )?.value ?? 0
+  );
 }
 
 beforeEach(() => {
@@ -736,72 +749,6 @@ describe("OutboundConsumer message handling", () => {
     expect(channel.ack).toHaveBeenCalledWith(msg);
   });
 
-  it("routes a reaction to deliverReaction (not the text path) and acks", async () => {
-    const deliver = vi.fn().mockResolvedValue(undefined);
-    const deliverReaction = vi.fn().mockResolvedValue(undefined);
-    const handle = await startAndCaptureHandler(
-      "whatsapp",
-      deliver,
-      async () => undefined,
-      "https://api.gaia.test",
-      deliverReaction,
-    );
-    const msg = msgFor({
-      id: "1",
-      platform: "whatsapp",
-      destination_id: "1555",
-      reaction: { target_platform_message_id: "wamid.123", emoji: "👍" },
-      enqueued_at: "t",
-    });
-
-    await deliverMessage(handle, msg);
-
-    expect(deliverReaction).toHaveBeenCalledWith(
-      "1555",
-      { target_platform_message_id: "wamid.123", emoji: "👍" },
-      false,
-    );
-    expect(deliver).not.toHaveBeenCalled(); // no text bubble alongside the reaction
-    expect(channel.ack).toHaveBeenCalledWith(msg);
-  });
-
-  it("dead-letters a failed reaction WITHOUT requeue, even on first attempt", async () => {
-    // Attaching is idempotent upstream, but a failure already means the ack
-    // did not land — retrying the whole envelope would re-drive the attach
-    // against a target the platform just rejected. Dead-letter for inspection.
-    const deliverReaction = vi
-      .fn()
-      .mockRejectedValue(new Error("attach failed"));
-    const handle = await startAndCaptureHandler(
-      "whatsapp",
-      vi.fn().mockResolvedValue(undefined),
-      async () => undefined,
-      "https://api.gaia.test",
-      deliverReaction,
-    );
-    const msg = msgFor(
-      {
-        id: "1",
-        platform: "whatsapp",
-        destination_id: "1555",
-        reaction: { target_platform_message_id: "wamid.123", emoji: "👍" },
-        enqueued_at: "t",
-      },
-      false, // first attempt — still no requeue on the reaction path
-    );
-
-    await deliverMessage(handle, msg);
-
-    expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
-    expect(channel.ack).not.toHaveBeenCalled();
-    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        kind: "send_failed",
-        error_message: "attach failed",
-      }),
-    );
-  });
-
   it("delivers one chat's messages in published order while other chats proceed", async () => {
     const order: string[] = [];
     let releasePhoto: () => void = () => undefined;
@@ -852,6 +799,42 @@ describe("OutboundConsumer message handling", () => {
     await flush();
     expect(order).toEqual(["text:chat-b", "photo:chat-a", "text:chat-a"]);
   });
+
+  it("follows a wake for a reply cut inside its first bubble with its open messages", async () => {
+    const follow = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      vi.fn(),
+      undefined,
+      undefined,
+      undefined,
+      follow,
+    );
+    const msg = msgFor({
+      id: "wake-1",
+      platform: "telegram",
+      destination_id: "42",
+      follow: {
+        conversation_id: "conv-1",
+        platform_user_id: "42",
+        channel_id: null,
+        is_dm: true,
+        after_seq: 3,
+        partial_reply: { reply_id: "r1", bubbles: 0, open_message_ids: ["9"] },
+      },
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(follow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        partial_reply: { reply_id: "r1", bubbles: 0, open_message_ids: ["9"] },
+      }),
+    );
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(channel.nack).not.toHaveBeenCalled();
+  });
 });
 
 describe("OutboundConsumer outside a platform's messaging window", () => {
@@ -881,7 +864,6 @@ describe("OutboundConsumer outside a platform's messaging window", () => {
       deliver,
       async () => undefined,
       "https://api.gaia.test",
-      async () => undefined,
       notifications,
     );
     const msg = msgFor(twoBubbles);
@@ -906,13 +888,13 @@ describe("OutboundConsumer outside a platform's messaging window", () => {
       deliver,
       async () => undefined,
       "https://api.gaia.test",
-      async () => undefined,
       notifications,
     );
 
     await deliverMessage(handle, msgFor(twoBubbles));
 
-    expect(deliver).toHaveBeenCalledTimes(2);
+    // The second bubble follows the first after BUBBLE_PAUSE_MS.
+    await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(2));
     expect(notifications.deliver).not.toHaveBeenCalled();
   });
 
@@ -924,7 +906,6 @@ describe("OutboundConsumer outside a platform's messaging window", () => {
       deliver,
       async () => undefined,
       "https://api.gaia.test",
-      async () => undefined,
       notifications,
     );
     const msg = msgFor(twoBubbles);
@@ -954,6 +935,7 @@ describe("OutboundConsumer lifecycle", () => {
       "amqp://test",
       async () => undefined,
       async () => undefined,
+      async () => undefined,
       "https://api.gaia.test",
       reportFailure,
     );
@@ -966,5 +948,44 @@ describe("OutboundConsumer lifecycle", () => {
 
     expect(channel.consume).not.toHaveBeenCalled();
     expect(connection.close).toHaveBeenCalled();
+  });
+});
+
+describe("gaia_bot_outbound_total", () => {
+  const envelope = {
+    id: "1",
+    platform: "whatsapp",
+    destination_id: "1555",
+    text: "hi",
+    enqueued_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("counts a delivered message as ok", async () => {
+    const before = await outboundCount("whatsapp", BOT_OUTCOME.OK);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      vi.fn().mockResolvedValue(undefined),
+    );
+
+    await deliverMessage(handle, msgFor(envelope));
+
+    expect(await outboundCount("whatsapp", BOT_OUTCOME.OK)).toBe(before + 1);
+  });
+
+  it("counts a delivery that fails permanently as failed, not ok", async () => {
+    const okBefore = await outboundCount("whatsapp", BOT_OUTCOME.OK);
+    const failedBefore = await outboundCount("whatsapp", BOT_OUTCOME.FAILED);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      vi.fn().mockRejectedValue(new Error("chat not found")),
+    );
+
+    await deliverMessage(handle, msgFor(envelope, true));
+
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, false);
+    expect(await outboundCount("whatsapp", BOT_OUTCOME.FAILED)).toBe(
+      failedBefore + 1,
+    );
+    expect(await outboundCount("whatsapp", BOT_OUTCOME.OK)).toBe(okBefore);
   });
 });

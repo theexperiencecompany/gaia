@@ -10,7 +10,6 @@ vi.mock("@/features/integrations/hooks/useIntegrations", () => ({
   useIntegrations: () => ({
     integrations,
     connectIntegration: vi.fn(),
-    refetch: vi.fn(),
   }),
 }));
 

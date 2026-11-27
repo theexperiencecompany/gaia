@@ -83,11 +83,13 @@ concurrency:
 env:
   # Public origin whose /health (and /bots/<name>/health) the deploy checks.
   PROD_ORIGIN: https://api.heygaia.io
+  # Public web origin the post-deploy smoke reads pages from (the Cloudflare Worker).
+  PROD_WEB_ORIGIN: https://heygaia.io
 
 jobs:
   deploy:
     if: inputs.action == 'deploy' || inputs.action == 'verify'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
@@ -130,6 +132,20 @@ jobs:
         if: inputs.action == 'deploy'
         id: before
         run: bash scripts/ci/deploy.sh served-commit
+
+      # Everything the release needs before any new API or worker serves, as
+      # one-shot jobs of the image about to roll. First the release's data
+      # migrations, with the old build still serving; a failure stops the deploy
+      # here. Then the new API refuses to boot while a conversation holds data
+      # the conversation log does not match, so a check job looks for that work;
+      # only when it finds some are the old writers stopped for the catch-up,
+      # and the rollout below starts them on the new image.
+      - name: Migrate before the rollout
+        if: inputs.action == 'deploy'
+        id: migrate
+        env:
+          GAIA_IMAGE_TAG: ${{ inputs.apps_image_tag }}
+        run: bash scripts/ci/deploy.sh migrate
 
       - name: ${{ inputs.action == 'verify' && 'Render the stack (verify only)' || 'Deploy stack' }}
         env:
@@ -179,6 +195,12 @@ jobs:
           BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
         run: bash scripts/ci/deploy.sh verify-commit
 
+      # The image bakes the rules in at build time; this catches a build that
+      # shipped a different rule set than the repo's alert-rules.yaml.
+      - name: Verify Grafana serves the repo's alert rules
+        if: inputs.action == 'deploy' && inputs.grafana_image_tag != ''
+        run: bash scripts/ci/deploy.sh verify-alert-rules
+
       # Only after convergence proved the deploy healthy does :latest move —
       # this is what makes :latest "what prod runs" instead of "what was last
       # built". A failed deploy leaves :latest on the previous good images.
@@ -189,6 +211,17 @@ jobs:
           BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
           GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
         run: bash scripts/ci/deploy.sh retag from-env
+
+      # After the retag on purpose: nothing rolls a failed smoke back, so the release
+      # serves either way, and a deploy whose tag is empty resolves :latest — it must
+      # name what serves, or that deploy would roll the old image back onto data the
+      # new one migrated. Healthy containers serving the right commit still say
+      # nothing about a visitor: a public read that 5xxs, 429s or now wants auth
+      # passes every check above, so this reads prod from outside, anonymously.
+      - name: Smoke-test prod as an anonymous visitor
+        if: inputs.action == 'deploy'
+        id: smoke
+        run: bash scripts/ci/deploy.sh smoke
 
       - name: Push deploy annotation to Loki
         if: success() && inputs.action == 'deploy'
@@ -233,6 +266,8 @@ jobs:
           STATE: deploy_succeeded
           COMMIT: ${{ steps.verify.outputs.commit }}
           CHANGES: ${{ steps.changelog.outputs.changes }}
+          SMOKE_VERDICT: ${{ steps.smoke.outputs.verdict }}
+          SMOKE_SUMMARY: ${{ steps.smoke.outputs.summary }}
         run: |
           set -euo pipefail
           short="${COMMIT:0:8}"
@@ -240,9 +275,13 @@ jobs:
           # changelog can carry fifteen.
           cause=$(printf '%s\n' "$CHANGES" | head -n 2)
           [[ -n "$cause" ]] || cause=$(git log -1 --format=%s)
+          impact="$short is live; every service converged, /health confirms it and the anonymous smoke passed."
+          if [[ "$SMOKE_VERDICT" == warn ]]; then
+            impact="$short is live, but the anonymous smoke warned: $SMOKE_SUMMARY"
+          fi
           STATE=deploy_succeeded \
           SUBJECT="$short" \
-          IMPACT="$short is live; every service converged and /health confirms it." \
+          IMPACT="$impact" \
           CAUSE="$cause" \
           ACTION="nothing." \
             bash scripts/ci/deploy.sh notify
@@ -261,8 +300,38 @@ jobs:
           CLEARS_WHEN: a deploy that verifies the commit prod serves
         run: bash scripts/ci/deploy.sh notify
 
+      - name: Notify — pre-rollout migration failed
+        if: failure() && steps.migrate.outcome == 'failure'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: the release was not migrated
+          IMPACT: on the previous build; the migrate step log says whether writers it stopped came back.
+          CAUSE: the release's migrations, the conversation check or the catch-up job failed, so the new image was not rolled out
+          ACTION: read the job logs in the migrate step of this run.
+          CLEARS_WHEN: a deploy whose migrate step exits 0
+        run: bash scripts/ci/deploy.sh notify
+
+      # After a catch-up the old writers stay at 0 until the rollout starts them,
+      # and a Swarm rollback returns them to that 0-replica spec.
+      - name: Notify — writers left stopped
+        if: failure() && steps.migrate.outputs.writers_down == 'true' && steps.converge.outcome != 'success'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: the API may be down after the conversation catch-up
+          IMPACT: DOWN or partial — gaia-backend and arq_worker were stopped for the catch-up and the rollout after it failed.
+          CAUSE: the catch-up succeeded; the rollout of the new image did not converge
+          ACTION: redeploy, or run `docker service scale gaia-prod_gaia-backend=1 gaia-prod_arq_worker=1` on the VM.
+          CLEARS_WHEN: gaia-backend and arq_worker are Running again
+        run: bash scripts/ci/deploy.sh notify
+
       - name: Notify — Swarm auto-rollback
-        if: failure() && steps.converge.outputs.rolled_back == 'true'
+        if: failure() && steps.converge.outputs.rolled_back == 'true' && steps.migrate.outputs.writers_down != 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -278,7 +347,7 @@ jobs:
             bash scripts/ci/deploy.sh notify
 
       - name: Notify — convergence timeout
-        if: failure() && steps.converge.outputs.timed_out == 'true'
+        if: failure() && steps.converge.outputs.timed_out == 'true' && steps.migrate.outputs.writers_down != 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -291,8 +360,39 @@ jobs:
           CLEARS_WHEN: a later deploy converges every service
         run: bash scripts/ci/deploy.sh notify
 
+      # Nothing rolls a failed smoke back: the release keeps serving and :latest
+      # names it (the retag ran before the smoke). Rolling back is a person's call,
+      # and after a conversation catch-up it is not a safe one.
+      - name: Notify — live release fails public reads
+        if: failure() && steps.smoke.outputs.verdict == 'fail'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: deploy ${{ inputs.apps_image_tag || steps.verify.outputs.commit }} is live but fails public reads
+          IMPACT: degraded for anonymous visitors and web builds; production was NOT rolled back.
+          CAUSE: ${{ steps.smoke.outputs.summary }}
+          ACTION: ${{ steps.migrate.outputs.writers_down == 'true' && 'fix forward — this deploy ran the conversation catch-up, so a rollback would restore 0-replica writers on an image that may refuse the migrated conversations.' || 'roll back by hand with `gh workflow run deploy-swarm-prod.yml -f action=rollback -f rollback_mode=last`, or fix forward.' }}
+          CLEARS_WHEN: a deploy whose anonymous smoke passes
+        run: bash scripts/ci/deploy.sh notify
+
+      - name: Notify — anonymous smoke could not decide
+        if: failure() && steps.smoke.outcome == 'failure' && steps.smoke.outputs.verdict != 'fail'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: deploy ${{ inputs.apps_image_tag || steps.verify.outputs.commit }} is live; the anonymous smoke could not decide
+          IMPACT: unknown for visitors — the release converged and serves its commit; nothing was rolled back.
+          CAUSE: ${{ steps.smoke.outputs.summary || 'the smoke crashed before writing a verdict' }}
+          ACTION: read the smoke step of this run, then check prod from outside (`PROD_ORIGIN=https://api.heygaia.io PROD_WEB_ORIGIN=https://heygaia.io bash scripts/ci/deploy.sh smoke`).
+          CLEARS_WHEN: a deploy whose anonymous smoke decides
+        run: bash scripts/ci/deploy.sh notify
+
       - name: Notify — deploy failed
-        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true' && steps.verify.outcome != 'failure'
+        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true' && steps.verify.outcome != 'failure' && steps.migrate.outcome != 'failure' && steps.migrate.outputs.writers_down != 'true' && steps.smoke.outcome != 'failure'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -307,7 +407,7 @@ jobs:
 
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
@@ -457,7 +557,7 @@ jobs:
 
   notify-test:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'notify-test'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read

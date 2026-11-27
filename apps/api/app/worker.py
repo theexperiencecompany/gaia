@@ -14,14 +14,20 @@ from app.constants.delivery_alerts import (
     REFRESH_DELIVERY_INCIDENT_TASK,
 )
 from app.constants.email import SIGNUP_EMAIL_TASK
+from app.constants.notifications import (
+    DEFERRED_CHAT_MESSAGE_TASK,
+)
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.platform_links import DAY_ZERO_HELLO_TASK
+from app.constants.scouts import LEARN_SCOUT_TASK
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     PROVISION_INBOX_DESK_TASK,
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_TASK,
 )
+from app.constants.user_activity import REACTIVATE_USER_MAX_TRIES, REACTIVATE_USER_TASK
 from app.constants.waits import RESUME_WAITER_MAX_TRIES, RESUME_WAITER_TASK
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
@@ -52,18 +58,28 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
 )
+from app.workers.tasks.briefing_retention_tasks import sweep_expired_briefings
+from app.workers.tasks.conversation_retention_tasks import drop_expired_tool_outputs
+from app.workers.tasks.conversation_sweep_tasks import (
+    conversation_sweep_cron,
+    sweep_step_conversations,
+)
+from app.workers.tasks.day_zero_hello_tasks import send_day_zero_hello
 from app.workers.tasks.delivery_alert_tasks import (
     record_delivery_failure,
     refresh_delivery_incident_task,
 )
 from app.workers.tasks.device_tasks import warm_device_servers
-from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.inbox_desk_tasks import (
     provision_inbox_desk_task,
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
+from app.workers.tasks.proactive_delivery_tasks import (
+    deliver_deferred_chat_message,
+)
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
+from app.workers.tasks.scout_tasks import learn_scout_task
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
@@ -72,8 +88,8 @@ from app.workers.tasks.tracked_todo_tasks import (
     safety_net_check_orphaned_todos,
 )
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
+from app.workers.tasks.user_tasks import reactivate_user_task
 from app.workers.tasks.wait_tasks import resume_waiter
-from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
 # Rich tracebacks for anything that escapes to the top of this process, the same
 # way main.py sets them for the API process. Process policy, so it lives in the
@@ -89,8 +105,12 @@ init_sentry()
 # correlated worker_task event; cron jobs reuse these same wrapped functions.
 _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
-_sweep_hil_approvals = arq_task(sweep_hil_approvals)
+_sweep_step_conversations = arq_task(sweep_step_conversations)
 _check_inactive_users = arq_task(check_inactive_users)
+# Named from the constant mark_user_seen enqueues by, so the two cannot drift.
+_reactivate_user = func(
+    arq_task(reactivate_user_task), name=REACTIVATE_USER_TASK, max_tries=REACTIVATE_USER_MAX_TRIES
+)
 _process_workflow_generation_task = arq_task(process_workflow_generation_task)
 _execute_workflow_by_id = arq_task(execute_workflow_by_id)
 _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
@@ -114,6 +134,8 @@ _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 # Named from the constant its per-occurrence job ids are built from.
 _execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
 _provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
+# Named from the constant the connect path enqueues by.
+_learn_scout = func(arq_task(learn_scout_task), name=LEARN_SCOUT_TASK)
 _resume_waiter = func(
     arq_task(resume_waiter), name=RESUME_WAITER_TASK, max_tries=RESUME_WAITER_MAX_TRIES
 )
@@ -124,9 +146,12 @@ _maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
 _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
-_sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
+_sweep_expired_briefings = arq_task(sweep_expired_briefings)
+_drop_expired_tool_outputs = arq_task(drop_expired_tool_outputs)
+# Named from the constant platform linking enqueues it by, so the two cannot drift.
+_send_day_zero_hello = func(arq_task(send_day_zero_hello), name=DAY_ZERO_HELLO_TASK)
 # keep_result=0: the per-user job id means a kept result blocks re-enqueue for
 # an hour, including the hourly recovery sweep's retry of an ESP-rejected
 # delivery. Re-runs are made harmless by delivery stamps, not by the result.
@@ -142,6 +167,10 @@ _finish_tracked_todo_run = func(
     arq_task(finish_tracked_todo_run),
     name=TODO_RUN_FINISH_TASK,
     max_tries=TODO_RUN_FINISH_MAX_TRIES,
+)
+# Named from the constant post_to_platform_chat schedules quiet-hours deliveries by.
+_deliver_deferred_chat_message = func(
+    arq_task(deliver_deferred_chat_message), name=DEFERRED_CHAT_MESSAGE_TASK
 )
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
@@ -160,13 +189,17 @@ _refresh_delivery_incident = func(
     arq_task(refresh_delivery_incident_task), name=REFRESH_DELIVERY_INCIDENT_TASK
 )
 
-# Every job on the default queue. Browser jobs have their own worker
-# (app.workers.browser_worker), started from the worker lifecycle.
+# The arq entry point (arq app.worker.WorkerSettings) and the task list it registers.
+__all__ = ["TASK_FUNCTIONS", "WorkerSettings"]
+
+# Every job on the default queue. Browser jobs, brief fires and scout refreshes have their
+# own queue workers (app.workers.queue_workers), started from the worker lifecycle.
 TASK_FUNCTIONS: list[WorkerFunction] = [
-    _sweep_hil_approvals,
+    _sweep_step_conversations,
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
+    _reactivate_user,
     _run_nurture_sequence_task,
     _process_workflow_generation_task,
     _execute_workflow_by_id,
@@ -182,19 +215,23 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _execute_tracked_todo,
     _resume_tracked_todo,
     _finish_tracked_todo_run,
+    _deliver_deferred_chat_message,
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,
+    _send_day_zero_hello,
     _promote_usage_badges,
-    _sweep_dormant_user_workflows,
     _sweep_abandoned_imessage_registrations,
     _sweep_expired_memories,
+    _sweep_expired_briefings,
+    _drop_expired_tool_outputs,
     _deliver_signup_emails,
     _sweep_undelivered_signup_emails,
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
     _sync_paid_person_properties,
     _provision_inbox_desk,
+    _learn_scout,
     _resume_waiter,
     _record_delivery_failure,
     _refresh_delivery_incident,
@@ -202,13 +239,9 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
 WorkerSettings.functions = TASK_FUNCTIONS
 
 WorkerSettings.cron_jobs = [
-    cron(
-        # Every minute: HIL approvals must expire promptly — a stale pending
-        # approval hijacks the conversation's next messages and holds the
-        # executor's claim on the thread.
-        _sweep_hil_approvals,
-        second=0,
-    ),
+    # Every minute: a reply whose turn died mid-stream reads as failed, not in progress forever.
+    # Every 15s: a step-run conversation a dead process left is answered, and its lost work reported.
+    conversation_sweep_cron(),
     # Every few seconds: a browser job whose worker died is ended, and a result no
     # run was woken for is told, within moments rather than a lock's TTL.
     browser_reaper_cron(),
@@ -277,8 +310,8 @@ WorkerSettings.cron_jobs = [
     # Recovery safety net: re-enqueue due scheduled tasks whose ARQ job was lost
     # (Redis eviction/flush). Idempotent via the deterministic _job_id.
     cron(cast(WorkerCoroutine, _rescan_pending_scheduled_tasks), minute={0, 30}, second=0),
-    # Seed long-term memory for recently-active pre-launch users (capped per
-    # run; the marker makes it resume and pick up returning users).
+    # Seed long-term memory for active pre-launch users (capped per run; the
+    # marker makes it resume and pick up returning users).
     cron(
         _backfill_active_users,
         hour=4,  # Daily at 04:00 UTC (low traffic)
@@ -290,14 +323,6 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _promote_usage_badges),
         hour=5,  # Daily at 05:00 UTC
-        minute=0,
-        second=0,
-    ),
-    # Pause workflows owned by users who stopped using GAIA — they otherwise fire
-    # (and bill) forever. Undone on the user's next login, not by this sweep.
-    cron(
-        cast(WorkerCoroutine, _sweep_dormant_user_workflows),
-        hour=6,  # Daily at 06:00 UTC
         minute=0,
         second=0,
     ),
@@ -316,6 +341,22 @@ WorkerSettings.cron_jobs = [
         cast(WorkerCoroutine, _sweep_expired_memories),
         hour=2,  # Daily at 02:00 UTC, before the session/checkpoint prunes
         minute=0,
+        second=0,
+    ),
+    # Briefs past their year of retention, each with its edition image (a TTL index
+    # would strand the image). Daily, off the other 02:00 sweep's minute.
+    cron(
+        cast(WorkerCoroutine, _sweep_expired_briefings),
+        hour=2,
+        minute=45,
+        second=0,
+    ),
+    # Tool outputs and thinking on cards past their 30 days, the cards kept. Daily, between
+    # the 03:00 session prune and the 04:00 backfill.
+    cron(
+        cast(WorkerCoroutine, _drop_expired_tool_outputs),
+        hour=3,
+        minute=30,
         second=0,
     ),
 ]

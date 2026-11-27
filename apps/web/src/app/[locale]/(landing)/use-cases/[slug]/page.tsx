@@ -31,18 +31,12 @@ import {
   generateUseCaseStructuredData,
 } from "@/utils/seoUtils";
 
-const getExploreWorkflowsCached = cache((limit: number) =>
-  getExploreWorkflowsServer(limit),
-);
-
 interface PageProps {
   params: Promise<{ readonly slug: string }>;
 }
 
 /** The hero tile draws the workflow's icon at this size. */
 const HERO_ICON_SIZE = 26;
-
-export const revalidate = 3600; // Revalidate every hour
 
 async function allStaticParams() {
   const [explore, community] = await Promise.all([
@@ -70,7 +64,7 @@ export async function generateMetadata({
   const template = communityWorkflow
     ? findCopiedTemplate(
         communityWorkflow,
-        await getExploreWorkflowsCached(200),
+        await getExploreWorkflowsServer(200),
       )
     : undefined;
   return generateUseCaseMetadata(
@@ -109,7 +103,7 @@ const resolveUseCase = cache(async (slug: string): Promise<ResolvedUseCase> => {
     slug.startsWith("wf_") && !!canonicalSlug && canonicalSlug !== slug;
 
   {
-    const workflows = await getExploreWorkflowsCached(200);
+    const workflows = await getExploreWorkflowsServer(200);
     const found = workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
       if (isLegacyId(found.slug)) {
@@ -218,7 +212,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   const display = displayFromResolved(useCase, communityWorkflow);
   const structuredData = generateUseCaseStructuredData({ ...display, slug });
   const [explore, community] = await Promise.all([
-    getExploreWorkflowsCached(200),
+    getExploreWorkflowsServer(200),
     getCommunityWorkflowsServer(COMMUNITY_PAGE_SIZE),
   ]);
   // The newest community workflows join the rotation, one request per page, so each is linked from its neighbours.

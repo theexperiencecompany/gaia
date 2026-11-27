@@ -21,6 +21,8 @@ from datetime import UTC, datetime, timedelta
 import json
 import re
 
+from pydantic import ValidationError
+
 from app.models.playbook_models import (
     ASK_KEY,
     TIME_KEY,
@@ -290,7 +292,7 @@ def resolve_value(value: object, context: RunContext) -> object:
             fix="fill the step's ask slots before resolving its arguments",
         )
     if is_time_slot(value):
-        return _render_time_slot(TimeSlot.model_validate(value), context.now)
+        return _render_time_slot(_stored_time_slot(value), context.now)
     if isinstance(value, Mapping):
         return {str(key): resolve_value(item, context) for key, item in value.items()}
     if isinstance(value, list):
@@ -304,6 +306,22 @@ def resolve_value(value: object, context: RunContext) -> object:
     return PLACEHOLDER_TOKEN.sub(lambda match: _render(_resolve_token(match, context)), value)
 
 
+def _not_a_time(placeholder: object) -> PlaceholderError:
+    return PlaceholderError(
+        message=f"{placeholder} is not a time placeholder",
+        why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
+        fix="write the time as $today + 1d 09:00 or similar",
+    )
+
+
+def _stored_time_slot(value: Mapping[str, object]) -> TimeSlot:
+    # A playbook stored before the grammar tightened still reaches a replay.
+    try:
+        return TimeSlot.model_validate(value)
+    except ValidationError as unreadable:
+        raise _not_a_time(repr(value.get(TIME_KEY))) from unreadable
+
+
 def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
     """Return the slot's instant in its layout.
 
@@ -312,11 +330,7 @@ def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
     """
     match = PLACEHOLDER_TOKEN.fullmatch(slot.placeholder)
     if match is None:
-        raise PlaceholderError(
-            message=f"{slot.placeholder} is not a time placeholder",
-            why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
-            fix="write the time as $today + 1d 09:00 or similar",
-        )
+        raise _not_a_time(slot.placeholder)
     moment = _resolve_moment(match, now)
     if renders_in_utc(slot.format):
         moment = moment.astimezone(UTC)
@@ -365,8 +379,10 @@ def _resolve_moment(match: re.Match[str], now: datetime) -> datetime:
         moment = now - offset if match.group("sign") == "-" else now + offset
     clock = match.group("clock")
     if clock is not None:
-        hour, minute = clock.split(":")
-        moment = moment.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+        hour, minute, second = (*clock.split(":"), "0")[:3]
+        moment = moment.replace(
+            hour=int(hour), minute=int(minute), second=int(second), microsecond=0
+        )
     return moment
 
 
@@ -446,7 +462,7 @@ def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> 
     if tool_name not in last_run:
         return None
     recorded = last_run[tool_name]
-    value, found = _walk(recorded, rest)
+    value, found = walk_path(recorded, rest)
     if found:
         return value
     raise PlaceholderError(
@@ -461,7 +477,7 @@ def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> 
 
 
 def _resolve_required(token: str, root: object, path: str, where: str) -> object:
-    value, found = _walk(root, path)
+    value, found = walk_path(root, path)
     if not found:
         raise PlaceholderError(
             message=f"{token} is not in {where}",
@@ -471,7 +487,7 @@ def _resolve_required(token: str, root: object, path: str, where: str) -> object
     return value
 
 
-def _walk(root: object, path: str) -> tuple[object, bool]:
+def walk_path(root: object, path: str) -> tuple[object, bool]:
     """Follow a dotted path through mappings and lists. (value, found)."""
     current = root
     if not path:

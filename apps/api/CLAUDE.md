@@ -41,21 +41,13 @@ The agent system uses two compiled LangGraph graphs registered via `GraphManager
 
 Both graphs are built in `app/agents/core/graph_builder/build_graph.py` and registered during startup via `build_graphs()`.
 
-### Agent Execution Modes
+### Conversation runtime
 
-`app/agents/core/agent.py` exposes two entry points that share `_core_agent_logic()`:
+A conversation is an append-only log run by one step (`app/services/conversation/`, design in the plan `conversation-runtime.md`):
 
-- `call_agent()` — returns `AsyncGenerator` for SSE streaming (chat endpoint)
-- `call_agent_silent()` — returns `(message, tool_data)` tuple (workflows, background tasks)
-
-### Streaming Architecture
-
-Chat streaming is **decoupled from the HTTP connection** (see `app/api/v1/endpoints/chat.py`):
-
-1. Endpoint launches an `asyncio.Task` that runs LangGraph and publishes SSE chunks to a Redis channel.
-2. The HTTP response subscribes to that Redis channel and forwards chunks.
-3. If the client disconnects, the background task keeps running and saves the conversation to MongoDB.
-4. Stream cancellation via `POST /api/v1/cancel-stream/{stream_id}` sets a Redis flag that the background task checks.
+1. `POST /api/v1/conversations/{id}/messages` appends the user's message and returns 202 with its `seq`; the step answers it in the background.
+2. `GET /api/v1/conversations/{id}/events?wire=<1|2>&after=<seq>` streams the conversation's screen as SSE: the items the server projects from the log, then their patches, the deltas of the reply being written, and the state. `wire` names the frame shapes the client reads (`EventsWire`): 1 sends whole items carrying their cards twice (`tool_data` and `timeline`) and is what a client built before wire 2 gets; 2 sends cards once, as `timeline`, a change to an item the connection already sent as a `screen_patch` naming the copy it was written against (`base`), and a reply's cards as a `timeline` delta (`patched_wire.py`). `after` is the log head the client's copy reached on this stream (an item frame's `head`; of the frames one entry produces only the last names that entry, so a client cut off between them resumes from before it): the opening `screen` frame then holds only what is new or changed since, running work's cards included, plus the newest user message (a chat platform shows typing on it), when the Redis stream still vouches for that head (`event_stream._held_at`); otherwise it holds the whole newest page.
+3. `POST /api/v1/conversations/{id}/stop` logs a Stop; the step cancels the reply and the work it covers.
 
 ### Lazy Provider System
 
@@ -199,8 +191,7 @@ and the OpenAPI schema:
   request and an unpaid shell load would mint a pile of single-use links nobody
   asked for. Clients mint on user intent, from
   `POST /api/v1/payments/checkout-session`. The bots do not read this body at
-  all — the bot chat turn renders its own paywall notice with its own link
-  (`endpoints/bot.py::_bot_upgrade_url`).
+  all — `POST /bot/messages` refuses an unentitled turn with its own 402.
 - **A plan read that fails is a 503, not a 402.** "We could not read your plan"
   is not "you are not subscribed", and answering 402 there showed every paying
   user a paywall during a Redis blip.
@@ -621,7 +612,6 @@ All of these call `_require_mount()` in `app/services/storage/juicefs.py`:
 - `write_session_file` — user file uploads from the chat UI
 - `ensure_user_workspace` — first-time workspace bootstrap for a user
 - `write_skill_file` / `ensure_user_skills_dir` — installing skills to the user's workspace
-- The artifact watcher in `app/services/sandbox/artifact_watcher.py` — needs to tail `/mnt/jfs/.accesslog`
 - Any service path under `app/services/storage/sessions/` that touches the FS
 
 If you hit `JuiceFSUnavailable` while running natively, **that is expected** — the fix is to switch to `mise dev:vm`, not to "fix" the error. Do not silence the exception, do not add a no-op fallback, do not stub `_is_mounted` to return `True`. The mount being missing is a load-bearing signal that JuiceFS-dependent features need the dockered API.
@@ -647,7 +637,7 @@ Secrets in production are injected from **Infisical** before Pydantic validates 
 
 ### Dev auth bypass (`DEV_AUTH_BYPASS_EMAIL`)
 
-When `DEV_AUTH_BYPASS_EMAIL=<email>` is set (development only), every request is authenticated as that Mongo user with no WorkOS session — `WorkOSAuthMiddleware` short-circuits before any cookie handling. This is how agents (and you) drive the full app end to end locally without logging in: point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app just works. **Don't set it in `apps/api/.env`** — it stays commented there so a bare `mise dev` is the real WorkOS login flow. Enable the bypass with the `--agent` flag (real LLM) or `--sim` (scripted LLM) on `mise dev` (native) or `mise dev:vm` (dockered API + JuiceFS); each exports `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-dev@gaia.local}` for you and refuses to run under `ENV=production` (`scripts/dev/assert-not-prod.sh`, backed by the `get_settings()` guard). For the full operating cookbook (boot matrix, mint/seed/impersonate curls, driving the API/browser/bots), see the **`driving-gaia`** skill.
+When `DEV_AUTH_BYPASS_EMAIL=<email>` is set (development only), every request is authenticated as that Mongo user with no WorkOS session — `WorkOSAuthMiddleware` short-circuits before any cookie handling. This is how agents (and you) drive the full app end to end locally without logging in: point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app just works. **Don't set it in `apps/api/.env`** — it stays commented there so a bare `mise dev` is the real WorkOS login flow. Enable the bypass with the `--agent` flag (real LLM) or `--sim` (scripted LLM) on `mise dev` (native) or `mise dev:vm` (dockered API + JuiceFS); each exports `DEV_AUTH_BYPASS_EMAIL=$DEV_USER` for you (`DEV_USER` is defined once in `mise.toml` [env], default the Resend test address `delivered+dev@resend.dev` — dev shares the production Resend account, so a fake domain would hard-bounce) and refuses to run under `ENV=production` (`scripts/dev/assert-not-prod.sh`, backed by the `get_settings()` guard). For the full operating cookbook (boot matrix, mint/seed/impersonate curls, driving the API/browser/bots), see the **`driving-gaia`** skill.
 
 Related: `GAIA_SIM_MODE=1` (`mise dev --sim`) routes every LLM call to the local scripted stub — use it to verify *plumbing* (tool flow, streaming, persistence) deterministically; never to judge real model behavior (prompts, tool selection, tone). The skill has the full use/don't-use table. Production refuses to boot with it set.
 
@@ -663,7 +653,7 @@ Related: `GAIA_SIM_MODE=1` (`mise dev --sim`) routes every LLM call to the local
 
 ## Providers & credentials (self-host)
 
-- **One read path.** Every provider key (LLMs, search, email, Composio, Cloudinary, Google OAuth, ...) is read through `app/services/providers/provider_credentials_service.py` — `resolve()` / `resolved_config()`, stored instance credential first, then env. Never read a provider key straight off `settings`.
+- **One read path.** Every provider key (LLMs, search, email, Composio, Cloudinary, ...) is read through `app/services/providers/provider_credentials_service.py` — `resolve()` / `resolved_config()`, stored instance credential first, then env. Never read a provider key straight off `settings`.
 - **One write path.** Saves go through `provider_setup_service.py` (`merge_provider_credential` / `save_provider_credential`), which applies the preset and the SSRF check on base URLs; a save publishes an invalidation every pod applies (`core/runtime_config_subscriber.py`).
 - **One spec per provider**: `app/services/providers/provider_registry.py` `PROVIDER_SPECS` holds each `CredentialProviderName`'s card (`ProviderPreset`: copy, endpoint defaults, takes_key / takes_model / managed_at, favicon), its env fallback, the fields a usable config needs (`is_usable`, shared by `/setup/status` and the LLM client) and its lazy-provider registry key. `app/constants/providers.py` holds the enum, the custom card's `CUSTOM_PRESETS`, and `ProviderFeature` / `PROVIDER_FEATURES`. The setup endpoints are `api/v1/endpoints/setup*.py`; the web renders every card from `GET /setup/catalog`.
 - **Model lanes**: `agents/llm/lane.py` (`resolve_lane`) picks which configured provider serves comms, executor and one-shot uses; `agents/llm/client.py` builds the models.

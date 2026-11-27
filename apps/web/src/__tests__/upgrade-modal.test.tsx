@@ -116,8 +116,8 @@ describe("UpgradeModal", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).not.toBeNull();
 
-    // HeroUI's default close (×) button is hidden — the only exits are
-    // subscribe and the quiet logout link.
+    // HeroUI's default close (×) button is hidden — the exits are subscribe,
+    // the plans page and the quiet logout link.
     expect(screen.queryByRole("button", { name: /close/i })).toBeNull();
 
     expect(
@@ -376,6 +376,19 @@ describe("UpgradeModal", () => {
       "paywall:modal_viewed",
       expect.anything(),
     );
+  });
+
+  it("offers the plans page as a way out of the wall", async () => {
+    useUpgradeModalStore
+      .getState()
+      .openModal(undefined, { source: "composer_submit" });
+    render(<UpgradeModal />, { wrapper: withQueryClient });
+
+    await screen.findByRole("dialog");
+
+    expect(
+      screen.getByRole("link", { name: /see all plans/i }).getAttribute("href"),
+    ).toBe("/pricing");
   });
 
   it("logs out via the quiet text link, not by closing the modal", async () => {

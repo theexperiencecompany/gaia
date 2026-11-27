@@ -14,7 +14,9 @@
   "vars": {
     // "enforce" or "report-only": whether the worker's nonce CSP blocks or only reports
     // (scripts/inline-worker-css.mjs). A dashboard edit flips it now; the next deploy restores this value.
-    "CSP_MODE": "report-only"
+    "CSP_MODE": "report-only",
+    // Read per request by src/middleware.ts: the host whose /<slug> paths are share links.
+    "GAIA_LINK_HOST": "heygaia.link"
   },
   // Co-locate the worker near R2 (the incremental cache it waits on) instead of
   // near the user, to cut the R2-read wall-time. Cloudflare auto-disables it if
@@ -44,6 +46,11 @@
       {
         "name": "NEXT_CACHE_DO_QUEUE",
         "class_name": "DOQueueHandler"
+      },
+      // When each public page route was last cleared (open-next.config.ts tagCache).
+      {
+        "name": "NEXT_TAG_CACHE_DO_SHARDED",
+        "class_name": "DOShardedTagCache"
       }
     ]
   },
@@ -52,6 +59,12 @@
       "tag": "v1",
       "new_sqlite_classes": [
         "DOQueueHandler"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "DOShardedTagCache"
       ]
     }
   ],

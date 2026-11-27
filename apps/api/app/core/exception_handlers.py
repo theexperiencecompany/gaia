@@ -17,6 +17,7 @@ from app.constants.http import CLIENT_CLOSED_REQUEST_STATUS
 from app.core.unhandled_errors import capture_unhandled_exception, internal_error_response
 from app.schemas.errors import ErrorEnvelope, ValidationIssue, error_response
 from app.utils.errors import AppError
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
 
@@ -30,7 +31,7 @@ async def app_error_handler(request: Request, exc: AppError) -> Response:
     failure: dict[str, Any] = {
         "error": exc.to_dict(),
         "status_code": exc.status_code,
-        "path": request.url.path,
+        "path": loggable_request_path(request),
         "method": request.method,
     }
     if exc.status_code >= 500:
@@ -70,7 +71,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     failure: dict[str, Any] = {
         "status_code": exc.status_code,
         "detail": exc.detail,
-        "path": request.url.path,
+        "path": loggable_request_path(request),
         "method": request.method,
     }
     # Only an explicit `raise ... from e` counts: __context__ is set by any
@@ -96,7 +97,7 @@ async def client_disconnect_handler(request: Request, exc: ClientDisconnect) -> 
     wide_log.warning(
         "client_disconnected",
         error_type=type(exc).__name__,
-        path=request.url.path,
+        path=loggable_request_path(request),
         method=request.method,
     )
     return Response(status_code=CLIENT_CLOSED_REQUEST_STATUS)

@@ -9,17 +9,21 @@ selected every project, so a JS bump ran all five Python slices.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-import subprocess
+import re
 
+from doc_shape import mapping, sequence
 from lib import nx_affected
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+DETECT_TASK_GATE = re.compile(r"contains\(fromJSON\(needs\.detect\.outputs\.tasks\), '([\w:-]+)'\)")
 
 PYTHON = {"api", "shared-python", "voice-agent"}
 JS = {
+    "artifact-validate",
+    "artifacts",
     "bot-discord",
     "bot-harness",
     "bot-imessage",
@@ -31,6 +35,7 @@ JS = {
     "desktop",
     "mobile",
     "shared-typescript",
+    "usercontent-worker",
     "wake-word",
     "web",
 }
@@ -45,15 +50,7 @@ CODE_TARGETS = ("build", "lint", "test", "type-check")
 
 
 def affected_tasks(*args: str) -> set[str]:
-    out = subprocess.run(
-        ["pnpm", "exec", "nx", "affected", "-t", *CODE_TARGETS, "--explain=stdout", *args],
-        cwd=REPO_ROOT,
-        env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    return set(json.loads(out[out.index("{") :])["affected"])
+    return set(nx_affected.explain(list(CODE_TARGETS), list(args)))
 
 
 def affected(*args: str) -> set[str]:
@@ -168,3 +165,101 @@ def test_a_failing_nx_command_raises_with_what_nx_said() -> None:
     ) as failed:
         nx_affected._nx("show", "project", "no-such-project")
     assert "no-such-project" in str(failed.value).split("\n", 1)[1]
+
+
+# ── the verified tier: a master push the merge queue already passed ─────────
+
+
+def _check(
+    task: str,
+    job: str,
+    events: tuple[str, ...] | None = None,
+    branch: str | None = None,
+    runner: str = "nx",
+) -> nx_affected.Check:
+    return nx_affected.Check(
+        task=task, job=job, check=task.split(":", 1)[1], area="build",
+        events=events, branch=branch, reuse=True, runner=runner,
+    )  # fmt: skip
+
+
+VERIFIED_CHECKS = {
+    c.task: c
+    for c in [
+        _check("ci:ruff", "lint-python"),
+        _check("web:build", "ts-build-test"),
+        _check("ci:web-bundle", "web-build"),
+        _check("ci:analytics-sync", "lint-mixed", events=("push",), branch="master", runner="step"),
+        _check("ci:analytics-check", "lint-mixed"),
+        _check("api:test", "test-python"),
+        _check("web:e2e-screen", "web-e2e-screen"),
+        _check("bot-harness:e2e", "bot-harness-e2e"),
+        _check("ci:desktop-package-deps", "desktop-build", events=("merge_group", "push")),
+    ]
+}
+
+
+@pytest.fixture
+def verified_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(nx_affected, "checks", lambda: VERIFIED_CHECKS)
+    monkeypatch.setattr(nx_affected, "release_groups", lambda _selection: [])
+
+
+def _published(tier: str) -> dict[str, object]:
+    selection = nx_affected.Selection(tasks={task: [] for task in VERIFIED_CHECKS})
+    published = nx_affected.outputs(selection, "push", "master", tier)
+    return {key: json.loads(value) for key, value in published.items()}
+
+
+@pytest.mark.usefixtures("verified_checks")
+def test_a_verified_push_keeps_only_the_shipped_bundle_and_the_master_only_publishing() -> None:
+    published = _published("verified")
+
+    assert published["tasks"] == ["ci:analytics-sync", "ci:web-bundle", "web:build"]
+    assert published["jobs"] == ["lint-mixed", "web-build"]
+    assert published["job_tasks"] == {
+        "lint-mixed": ["ci:analytics-sync"],
+        "web-build": ["ci:web-bundle"],
+    }
+
+
+@pytest.mark.usefixtures("verified_checks")
+def test_the_full_tier_keeps_every_affected_check() -> None:
+    published = _published("full")
+
+    assert published["tasks"] == sorted(VERIFIED_CHECKS)
+    jobs = sequence(published["jobs"])
+    assert {
+        "test-python",
+        "ts-build-test",
+        "web-e2e-screen",
+        "bot-harness-e2e",
+        "desktop-build",
+    } <= set(jobs)
+
+
+def _production_deploy_gates() -> dict[str, list[str]]:
+    """Map each ci.yml production job to the affected tasks its `if:` waits on."""
+    ci = mapping(yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()))
+    jobs = {name: mapping(job) for name, job in mapping(ci["jobs"]).items()}
+    return {
+        name: DETECT_TASK_GATE.findall(str(job.get("if", "")))
+        for name, job in jobs.items()
+        if job.get("environment") == "production"
+    }
+
+
+@pytest.mark.usefixtures("verified_checks")
+def test_a_verified_push_keeps_every_task_a_production_deploy_waits_on() -> None:
+    """Regression: a verified push dropped usercontent-worker:build, so the Worker never deployed."""
+    gates = _production_deploy_gates()
+    assert gates.get("deploy-usercontent-worker"), (
+        "the Worker deploy no longer gates on detect's tasks"
+    )
+    for job, tasks in gates.items():
+        for task in tasks:
+            selection = nx_affected.Selection(tasks={task: []})
+            published = json.loads(
+                nx_affected.outputs(selection, "push", "master", "verified")["tasks"]
+            )
+            assert published == [task], f"{job} waits on {task}, which a verified push drops"

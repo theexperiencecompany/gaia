@@ -56,8 +56,8 @@ ROOT_MISE = REPO_ROOT / "mise.toml"
 PNPM_LOCK = REPO_ROOT / "pnpm-lock.yaml"
 SETUP_UV = REPO_ROOT / ".github/actions/setup-uv/action.yml"
 ACTION_SURFACES = (
-    *sorted((REPO_ROOT / ".github/workflows").glob("*.yml")),
-    *sorted((REPO_ROOT / ".github/actions").glob("*/action.yml")),
+    *sorted((REPO_ROOT / ".github/workflows").glob("*.y*ml")),
+    *sorted((REPO_ROOT / ".github/actions").glob("*/action.y*ml")),
 )
 # A remote action or reusable workflow pinned by a full commit SHA; a local one
 # (./…) and a digest-pinned docker:// image need no pin of their own.
@@ -75,12 +75,14 @@ NODE_MIRRORS = (
     (REPO_ROOT / "infra/docker/ci-base.Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/web/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
+    (REPO_ROOT / "apps/api/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
 )
 # Every Dockerfile that must take its tag from the ARG rather than restating it.
 NODE_DOCKERFILES = (
     REPO_ROOT / "infra/docker/ci-base.Dockerfile",
     REPO_ROOT / "apps/web/Dockerfile",
     REPO_ROOT / "apps/bots/Dockerfile",
+    REPO_ROOT / "apps/api/Dockerfile",
 )
 # Bounded set of files that could reintroduce a hardcoded node version.
 NODE_LITERAL_SCAN = (
@@ -202,7 +204,7 @@ def _node_version() -> str | None:
 
 # ── pnpm: package.json#packageManager is the declaration ─────────────────────
 # corepack already treats that field as the source of truth, so the rest are
-# mirrors. Three of them cannot derive (the Dockerfiles run `corepack prepare`
+# mirrors. Four of them cannot derive (the Dockerfiles run `corepack prepare`
 # before package.json is in the image, and ci-base has no repo at all), so the
 # guard ties them back the same way it does for node.
 _PNPM_PACKAGE_MANAGER = re.compile(r'"packageManager"\s*:\s*"pnpm@(\d+\.\d+\.\d+)"')
@@ -213,6 +215,7 @@ _PNPM_MIRRORS = (
     ),
     (REPO_ROOT / "apps/web/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
+    (REPO_ROOT / "apps/api/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
 )
 _PNPM_ACTION_SETUP = "pnpm/action-setup"
 
@@ -709,6 +712,63 @@ def _unpinned_action_violations() -> list[Violation]:
     return out
 
 
+# ── Hosted runner image: one declaration, every literal label agrees ─────────
+# ubuntu-latest rolled to 26.04 job by job and broke the Playwright install
+# (merge-queue run 45079269367). The release is declared once, in runner.py
+# (it routes every select-runner pool); a literal runs-on in a workflow cannot
+# read it, so each must name the same release and none may name a *-latest.
+HOSTED_IMAGE_DECLARATION = REPO_ROOT / "scripts/ci/runner.py"
+RUNNER_LABEL_SURFACES = (
+    *ACTION_SURFACES,
+    *sorted((REPO_ROOT / "scripts/ci").rglob("*.py")),
+    *sorted((REPO_ROOT / "scripts/ci").rglob("*.sh")),
+)
+_HOSTED_IMAGE = re.compile(r'^HOSTED_LINUX_IMAGE = "ubuntu-(\d{2}\.\d{2})"$', re.MULTILINE)
+_LATEST_LABEL = re.compile(r"\b(?:ubuntu|macos|windows)-latest[\w-]*")
+_UBUNTU_LABEL = re.compile(r"\bubuntu-(\d{2}\.\d{2})\b")
+
+
+def _runner_label_violations() -> list[Violation]:
+    declared = _HOSTED_IMAGE.search(HOSTED_IMAGE_DECLARATION.read_text(encoding="utf-8"))
+    if declared is None:
+        return [
+            Violation(
+                path=HOSTED_IMAGE_DECLARATION,
+                line=1,
+                detail='no HOSTED_LINUX_IMAGE = "ubuntu-NN.NN" declaration',
+                fix="declare the GitHub-hosted Linux image once, as HOSTED_LINUX_IMAGE",
+            )
+        ]
+    release = declared.group(1)
+    out = []
+    for surface in RUNNER_LABEL_SURFACES:
+        lines = surface.read_text(encoding="utf-8").splitlines()
+        for n, line in enumerate(lines, 1):
+            if line.lstrip().startswith("#"):
+                continue
+            code = line.split("#", 1)[0]
+            for match in _LATEST_LABEL.finditer(code):
+                out.append(
+                    Violation(
+                        path=surface,
+                        line=n,
+                        detail=f"{match.group(0)} is a moving image label",
+                        fix="name the versioned image (ubuntu-NN.NN, macos-NN, windows-YYYY…)",
+                    )
+                )
+            for match in _UBUNTU_LABEL.finditer(code):
+                if match.group(1) != release:
+                    out.append(
+                        Violation(
+                            path=surface,
+                            line=n,
+                            detail=f"{match.group(0)} differs from HOSTED_LINUX_IMAGE (ubuntu-{release})",
+                            fix="move every hosted Linux label and HOSTED_LINUX_IMAGE in one commit",
+                        )
+                    )
+    return out
+
+
 ROOT_PYPROJECT = REPO_ROOT / "pyproject.toml"
 # Where a Python tool gets invoked: a `uvx tool@x` there would be a second pin.
 UVX_SURFACES = (
@@ -834,6 +894,7 @@ def main(argv: list[str]) -> int:
     violations.extend(_stray_version_file_violations())
     violations.extend(_eas_cli_violations())
     violations.extend(_unpinned_action_violations())
+    violations.extend(_runner_label_violations())
     violations.extend(_uvx_violations())
     violations.extend(_hook_toolchain_violations())
 

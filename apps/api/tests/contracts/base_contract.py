@@ -42,6 +42,14 @@ class UserScopedRepositoryContract:
     async def test_get_missing_id_returns_none(self, repo):
         assert await repo.get("0" * 24, user_id="u1") is None
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("doc_id", ["", "not-an-id"])
+    async def test_a_malformed_id_names_no_document(self, repo, make_update, doc_id: str):
+        """Regression for #1136: an empty todo id raised bson's InvalidId and ended the agent turn."""
+        assert await repo.get(doc_id, user_id="u1") is None
+        assert await repo.update(doc_id, user_id="u1", update=make_update()) is None
+        assert await repo.delete(doc_id, user_id="u1") is False
+
     async def test_cross_user_isolation_on_get_update_delete(self, repo, make_doc, make_update):
         created = await repo.create(make_doc(user_id="owner"))
         assert await repo.get(created.id, user_id="attacker") is None
@@ -151,6 +159,21 @@ class UserScopedRepositoryContract:
         # documents (the repo one and the direct insert) become visible.
         await repo.create(make_doc(user_id=user))
         assert len(await self.list_via_cache(repo, user)) == 4
+
+    async def test_one_users_write_orphans_only_that_users_query_caches(
+        self, repo, make_doc, raw_collection
+    ):
+        await repo.create(make_doc(user_id="writer"))
+        await repo.create(make_doc(user_id="bystander"))
+        assert len(await self.list_via_cache(repo, "writer")) == 1
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
+        for user in ("writer", "bystander"):
+            await raw_collection.insert_one(make_doc(user_id=user).model_dump(exclude={"id"}))
+
+        await repo.create(make_doc(user_id="writer"))
+
+        assert len(await self.list_via_cache(repo, "writer")) == 3
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
 
     async def test_redis_down_degrades_to_mongo_not_error(self, repo, make_doc, monkeypatch):
         from app.db.redis import redis_cache

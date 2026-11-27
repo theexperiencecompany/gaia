@@ -1,0 +1,87 @@
+"""Daily brief and weekly recap events."""
+
+from typing import ClassVar, Literal
+
+from shared.py.analytics.catalog.base import ServerEvent
+from shared.py.analytics.catalog.properties import Identifier
+
+__all__ = [
+    "BriefBlockKindName",
+    "BriefingDayZeroHelloSent",
+    "BriefingKindName",
+    "BriefingOpened",
+    "BriefingPostmarksViewed",
+    "BriefingProvisioned",
+    "BriefingSent",
+]
+
+BriefingKindName = Literal["daily", "weekly"]
+#: The kinds of block a composed brief holds.
+BriefBlockKindName = Literal["lead", "items", "chart", "quote", "progress", "note"]
+#: Whether a brief went out as a drawn edition or as the plain note a quiet day sends.
+BriefFormName = Literal["edition", "quiet_note"]
+
+
+class BriefingSent(ServerEvent):
+    """A brief was stored and delivered; which edition it was drawn in and where it went."""
+
+    event: ClassVar[str] = "briefing:sent"
+    budget_per_user_day: ClassVar[int] = 4
+
+    kind: BriefingKindName
+    form: BriefFormName
+    #: None for a quiet note, which is drawn in no family.
+    family: Identifier | None
+    mood: Identifier
+    item_count: int
+    channel_count: int
+    #: Items the user's connected-app scouts found needing them.
+    signal_count: int
+    stamp_collected: bool
+    #: The composition's blocks in reading order, by kind.
+    block_kinds: list[BriefBlockKindName]
+    chart_count: int
+    #: Everything the brief could have placed, and the numeric series among it.
+    pool_item_count: int
+    series_count: int
+    #: Apps the brief read.
+    source_count: int
+    #: Code salvaged the composition, or the voice, after the model's last answer failed its check.
+    composition_salvaged: bool
+    voice_salvaged: bool
+
+
+class BriefingOpened(ServerEvent):
+    """A user opened one of their briefs on its own page for the first time."""
+
+    event: ClassVar[str] = "briefing:opened"
+    budget_per_user_day: ClassVar[int] = 4
+
+    kind: BriefingKindName
+
+
+class BriefingPostmarksViewed(ServerEvent):
+    """A user opened Postmarks, the collection of Air Mail city stamps from their briefs."""
+
+    event: ClassVar[str] = "briefing:postmarks_viewed"
+    budget_per_user_day: ClassVar[int] = 20
+
+    collected: int
+    total: int
+
+
+class BriefingProvisioned(ServerEvent):
+    """The daily brief and weekly recap schedules were created for a user."""
+
+    event: ClassVar[str] = "briefing:provisioned"
+    budget_per_user_day: ClassVar[int] = 2
+
+
+class BriefingDayZeroHelloSent(ServerEvent):
+    """GAIA's first text reached a freshly linked chat platform."""
+
+    event: ClassVar[str] = "briefing:day_zero_hello_sent"
+    budget_per_user_day: ClassVar[int] = 2
+
+    platform: Identifier
+    has_goal: bool

@@ -17,6 +17,7 @@ import type {
   Action,
   OnboardingState,
 } from "@/features/onboarding/state/types";
+import type { Message } from "@/features/onboarding/types";
 
 function apply(state: OnboardingState, ...actions: Action[]): OnboardingState {
   return actions.reduce(reducer, state);
@@ -27,6 +28,7 @@ const answeredQuestions = apply(
   { type: "answer", field: FIELD_NAMES.PROFESSION, value: "founder" },
   { type: "toggleNeed", value: "inbox" },
   { type: "submitNeeds" },
+  { type: "answer", field: FIELD_NAMES.HEARD_FROM, value: "friend" },
   { type: "preferencesPersisted" },
 );
 
@@ -44,6 +46,13 @@ describe("onboarding stage machine", () => {
 
     state = apply(state, { type: "toggleNeed", value: "inbox" });
     state = apply(state, { type: "submitNeeds" });
+    expect(getStage(state, paid)).toBe("questions");
+
+    state = apply(state, {
+      type: "answer",
+      field: FIELD_NAMES.HEARD_FROM,
+      value: "friend",
+    });
     expect(getStage(state, paid)).toBe("questions");
 
     state = apply(state, { type: "preferencesPersisted" });
@@ -174,6 +183,9 @@ describe("Q2 multi-select", () => {
   });
 });
 
+const transcriptText = (message: Message): string[] =>
+  message.type === "bot" ? message.lines : [message.content];
+
 describe("transcript", () => {
   it("shows the profession label and the selected need labels", () => {
     const messages = getMessages({
@@ -182,7 +194,7 @@ describe("transcript", () => {
       selectedNeeds: answeredQuestions.selectedNeeds,
       otherNeed: "",
     });
-    const contents = messages.map((m) => m.content);
+    const contents = messages.flatMap(transcriptText);
     expect(contents).toContain("Founder / CEO");
     expect(contents).toContain("Inbox out of control");
   });
@@ -193,7 +205,7 @@ describe("transcript", () => {
       questionIndex: answeredQuestions.questionIndex,
       selectedNeeds: answeredQuestions.selectedNeeds,
       otherNeed: "chasing invoices",
-    }).map((m) => m.content);
+    }).flatMap(transcriptText);
     expect(contents.some((c) => c.startsWith("Founder, got it."))).toBe(true);
     expect(contents).toContain("Inbox out of control, chasing invoices");
   });
@@ -209,7 +221,7 @@ describe("transcript", () => {
       questionIndex: state.questionIndex,
       selectedNeeds: state.selectedNeeds,
       otherNeed: "",
-    }).map((m) => m.content);
+    }).flatMap(transcriptText);
     expect(contents).not.toContain("Inbox out of control");
   });
 });

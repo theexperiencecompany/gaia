@@ -14,15 +14,17 @@
  * @module
  */
 
+import { randomUUID } from "node:crypto";
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
   type BotLogger,
   buildAuthLinkMessage,
+  type ConversationSurface,
   createBotLogger,
   extractSubcommandArgs,
-  handleStreamingChat,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
@@ -31,8 +33,10 @@ import {
   type RichMessageTarget,
   richMessageToMarkdown,
   type SentMessage,
+  withTimeout,
 } from "@gaia/shared/bots";
 import type { PlatformEmulation } from "./emulation";
+import type { PlatformOutage } from "./scenario.types";
 import type { TranscriptRecorder } from "./transcript";
 
 /**
@@ -43,6 +47,9 @@ import type { TranscriptRecorder } from "./transcript";
  */
 const HARNESS_SERVER_PORT = 0;
 
+/** How long a turn may keep answering before the harness fails it: a long research turn fits. */
+const TURN_SETTLE_TIMEOUT_MS = 10 * 60_000;
+
 /** Options accepted by {@link HarnessAdapter.simulateMessage}. */
 export interface SimulateOptions {
   /** Channel/conversation id; defaults to the user id (DM-style). */
@@ -51,23 +58,23 @@ export interface SimulateOptions {
   attachments?: BotFileData[];
 }
 
-/**
- * A single delivered bubble, tracked during one streaming turn so the harness
- * can (a) apply the emulated platform's edit-vs-send-new semantics and (b) emit
- * a `split` event describing the final multi-bubble layout.
- */
-interface Bubble {
-  id: string;
-  text: string;
-}
-
 export class HarnessAdapter extends BaseBotAdapter {
   readonly platform: PlatformName;
   protected readonly defaultServerPort = HARNESS_SERVER_PORT;
   private readonly emulation: PlatformEmulation;
   private readonly transcript: TranscriptRecorder;
   private readonly adapterLogger: BotLogger;
-  private nextMessageId = 1;
+  /** What is left of a scripted outage: the platform refuses this many more sends and edits. */
+  private outage: PlatformOutage | null = null;
+  /** A react call held open, as a bot dies inside it: a restart turn kills the bot there. */
+  private reactionHold: {
+    started: () => void;
+    die: ((error: Error) => void) | null;
+  } | null = null;
+  /** The boot's resume of conversations still answering; settled before boot starts one. */
+  private resumed: Promise<void> = Promise.resolve();
+  // Platform message ids are deduplicated per conversation, so each run names its own.
+  private readonly runId = randomUUID().slice(0, 8);
 
   protected override readonly consumesOutbound: boolean;
 
@@ -165,12 +172,22 @@ export class HarnessAdapter extends BaseBotAdapter {
     destinationId: string,
     platformMessageId: string,
     emoji: string,
+    _isChannel: boolean,
+    replaces: string | null,
   ): Promise<ReactionOutcome> {
+    const hold = this.reactionHold;
+    if (hold && !hold.die) {
+      return new Promise((_resolve, reject) => {
+        hold.die = reject;
+        hold.started();
+      });
+    }
     this.transcript.record({
       type: "reaction",
       destinationId,
       targetMessageId: platformMessageId,
       emoji,
+      replaces,
     });
     return Promise.resolve(REACTION_OUTCOME.ATTACHED);
   }
@@ -180,18 +197,18 @@ export class HarnessAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Injects one inbound message as `userId`, routing it through the real shared
-   * pipeline exactly as the Telegram/WhatsApp adapters route inbound text:
-   * a `/command` (other than `/gaia`) dispatches through the unified command
-   * system; everything else (including `/gaia <text>`) streams a chat turn.
+   * Injects one inbound message as `userId`, recorded the moment it arrives, and
+   * resolves once it is handled: a chat message is posted, in arrival order,
+   * and followed in the background, as every real adapter does. {@link conversationsIdle} waits for
+   * the replies.
    */
-  async simulateMessage(
+  simulateMessage(
     userId: string,
     text: string,
     options: SimulateOptions = {},
   ): Promise<void> {
     const channelId = options.channelId ?? userId;
-    const messageId = `in${this.nextMessageId++}`;
+    const messageId = this.transcript.newMessageId(`in-${this.runId}-`);
     this.transcript.record({
       type: "inbound",
       userId,
@@ -199,7 +216,90 @@ export class HarnessAdapter extends BaseBotAdapter {
       messageId,
       text,
     });
+    return this.arrivals.run(userId, () =>
+      this.handleInbound(userId, channelId, messageId, text, options),
+    );
+  }
 
+  /** Records the boot's resume of the conversations still answering, so a turn can wait for it. */
+  protected override resumeFollows(): Promise<void> {
+    this.resumed = super.resumeFollows();
+    return this.resumed;
+  }
+
+  /** Hold the next react call open, placing nothing; resolves once one is held. */
+  holdNextReaction(): Promise<void> {
+    return new Promise((started) => {
+      this.reactionHold = { started, die: null };
+    });
+  }
+
+  /** End the held react call as the bot process dying inside it would: nothing after it runs. */
+  dieInHeldReaction(): void {
+    this.reactionHold?.die?.(
+      new Error("bot process died inside the react call"),
+    );
+  }
+
+  /** From now, the platform refuses the next `outage.failures` sends and edits with `outage.status`. */
+  startOutage(outage: PlatformOutage): void {
+    this.outage = { ...outage };
+  }
+
+  /**
+   * Throws the platform's error while a scripted outage lasts, shaped as
+   * grammY's GrammyError: a `description` and the HTTP status as `error_code`.
+   */
+  private refuseDuringOutage(call: "send" | "edit"): void {
+    if (!this.outage || this.outage.failures <= 0) return;
+    this.outage.failures -= 1;
+    const { status } = this.outage;
+    this.transcript.record({ type: "platform-failure", call, status });
+    const description = `Bad Gateway: the platform answered ${status}`;
+    throw Object.assign(
+      new Error(`Call to '${call}Message' failed! (${status}: ${description})`),
+      { error_code: status, description },
+    );
+  }
+
+  /**
+   * Waits until every followed conversation is idle, or parked on approvals GAIA asked
+   * the user about, which it records as an awaiting-approval event each. A conversation
+   * still answering after timeoutMs fails the turn instead of hanging the run.
+   */
+  async settleTurn(timeoutMs = TURN_SETTLE_TIMEOUT_MS): Promise<void> {
+    // A booted bot resumes in the background; its follows count once they start.
+    await this.resumed;
+    const awaited = await withTimeout(
+      this.conversationsSettled(),
+      timeoutMs,
+      `the conversation was still answering after ${timeoutMs} ms`,
+    );
+    for (const { conversationId, approvals } of awaited) {
+      this.transcript.record({
+        type: "awaiting-approval",
+        conversationId,
+        approvals: approvals.map(({ approval_id, description }) => ({
+          approvalId: approval_id,
+          headline: description.headline,
+        })),
+      });
+    }
+  }
+
+  /**
+   * Routes one inbound message through the real shared pipeline exactly as the
+   * Telegram/WhatsApp adapters route inbound text: a `/command` (other than
+   * `/gaia`) dispatches through the unified command system; everything else
+   * (including `/gaia <text>`) streams a chat turn.
+   */
+  private async handleInbound(
+    userId: string,
+    channelId: string,
+    messageId: string,
+    text: string,
+    options: SimulateOptions,
+  ): Promise<void> {
     if (text.startsWith("/")) {
       const withoutSlash = text.slice(1);
       const spaceIndex = withoutSlash.indexOf(" ");
@@ -220,7 +320,7 @@ export class HarnessAdapter extends BaseBotAdapter {
         );
         return;
       }
-      await this.streamTurn(
+      await this.postTurn(
         userId,
         channelId,
         messageId,
@@ -230,7 +330,7 @@ export class HarnessAdapter extends BaseBotAdapter {
       return;
     }
 
-    await this.streamTurn(
+    await this.postTurn(
       userId,
       channelId,
       messageId,
@@ -240,100 +340,20 @@ export class HarnessAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Streams one chat turn through the shared {@link handleStreamingChat},
-   * recording every bubble the emulated platform would deliver. The callbacks
-   * receive text already converted by the platform's markdown converter (the
-   * shared streamer renders at its single chokepoint), so the transcript stores
-   * exactly what the platform SDK would receive.
+   * Posts one chat message through the shared {@link BaseBotAdapter.postAndFollow},
+   * recording every message the emulated platform would show. Text reaches the
+   * surface already converted by the platform's markdown converter, so the
+   * transcript stores exactly what the platform SDK would receive.
    */
-  private async streamTurn(
+  private postTurn(
     userId: string,
     channelId: string,
     inboundMessageId: string,
     message: string,
     attachments: BotFileData[] = [],
   ): Promise<void> {
-    this.transcript.record({ type: "typing", state: "start" });
-
-    const bubbles: Bubble[] = [];
-    let current: Bubble | null = null;
-
-    /** Records a fresh bubble and makes it current. */
-    const openBubble = (text: string, isError?: boolean): Bubble => {
-      const bubble: Bubble = { id: `m${this.nextMessageId++}`, text };
-      bubbles.push(bubble);
-      current = bubble;
-      this.transcript.record({
-        type: "send",
-        messageId: bubble.id,
-        text,
-        length: text.length,
-        ...(isError ? { isError } : {}),
-      });
-      return bubble;
-    };
-
-    /** Updates the current bubble in place, or opens one if none exists. */
-    const writeCurrent = (text: string, isError?: boolean): void => {
-      if (!current) {
-        openBubble(text, isError);
-        return;
-      }
-      // No in-place edit support (WhatsApp): an "edit" is a new message.
-      if (!this.emulation.supportsEdit) {
-        openBubble(text, isError);
-        return;
-      }
-      current.text = text;
-      this.transcript.record({
-        type: "edit",
-        messageId: current.id,
-        text,
-        length: text.length,
-        ...(isError ? { isError } : {}),
-      });
-    };
-
-    const editMessage = (text: string): Promise<void> => {
-      writeCurrent(text);
-      return Promise.resolve();
-    };
-
-    const sendNewMessage = (
-      text: string,
-    ): Promise<(t: string) => Promise<void>> => {
-      const bubble = openBubble(text);
-      return Promise.resolve((updated: string) => {
-        // Edit the bubble this send opened (respecting edit support).
-        if (this.emulation.supportsEdit) {
-          bubble.text = updated;
-          this.transcript.record({
-            type: "edit",
-            messageId: bubble.id,
-            text: updated,
-            length: updated.length,
-          });
-        } else {
-          openBubble(updated);
-        }
-        return Promise.resolve();
-      });
-    };
-
-    const onAuthError = (authUrl: string): Promise<void> => {
-      // Every real adapter renders buildAuthLinkMessage through the platform
-      // converter before delivering it; do the same so the transcript matches.
-      writeCurrent(this.emulation.render(buildAuthLinkMessage(authUrl)));
-      return Promise.resolve();
-    };
-
-    const onGenericError = (formattedError: string): Promise<void> => {
-      writeCurrent(formattedError, true);
-      return Promise.resolve();
-    };
-
-    await handleStreamingChat(
-      this.gaia,
+    const surface = this.conversationSurface(channelId);
+    return this.postAndFollow(
       {
         message,
         platform: this.platform,
@@ -344,26 +364,87 @@ export class HarnessAdapter extends BaseBotAdapter {
           ? { fileIds: attachments.map((a) => a.fileId), fileData: attachments }
           : {}),
       },
-      editMessage,
-      sendNewMessage,
-      onAuthError,
-      onGenericError,
-      this.emulation.streaming,
-      this.analyticsFor(userId),
-      (emoji: string) =>
-        this.reactToMessage(channelId, inboundMessageId, emoji),
+      surface,
+      async (authUrl: string) => {
+        // Every real adapter renders buildAuthLinkMessage through the platform converter.
+        await surface.send(
+          this.emulation.render(buildAuthLinkMessage(authUrl)),
+          null,
+        );
+      },
     );
+  }
 
-    this.transcript.record({ type: "typing", state: "stop" });
+  protected async resumeSurface({
+    platform_user_id: userId,
+    channel_id: channelId,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    return this.conversationSurface(channelId ?? userId);
+  }
 
-    if (bubbles.length > 1) {
+  /**
+   * The emulated chat a conversation follows into. Without edit support
+   * (WhatsApp, iMessage) an "edit" is a new message.
+   */
+  private conversationSurface(channelId: string): ConversationSurface {
+    const record = (text: string, replyTo: string | null): string => {
+      this.refuseDuringOutage("send");
+      const id = this.transcript.newMessageId("m");
       this.transcript.record({
-        type: "split",
-        segmentCount: bubbles.length,
-        segmentLengths: bubbles.map((b) => b.text.length),
-        limit: this.emulation.limit,
+        type: "send",
+        messageId: id,
+        text,
+        length: text.length,
+        ...(replyTo ? { replyTo } : {}),
       });
-    }
+      return id;
+    };
+    const bubble = (id: string) => ({
+      id,
+      // A refused call rejects, as a platform SDK's does.
+      edit: (updated: string) =>
+        new Promise<void>((resolve) => {
+          if (!this.emulation.supportsEdit) {
+            record(updated, null);
+          } else {
+            this.refuseDuringOutage("edit");
+            this.transcript.record({
+              type: "edit",
+              messageId: id,
+              text: updated,
+              length: updated.length,
+            });
+          }
+          resolve();
+        }),
+    });
+    return {
+      send: (text, replyTo) =>
+        new Promise((resolve) => resolve(bubble(record(text, replyTo)))),
+      reopen: (id) => ({
+        ...bubble(id),
+        delete: () => {
+          this.transcript.record({ type: "delete", messageId: id });
+          return Promise.resolve();
+        },
+      }),
+      react: (platformMessageId, emoji, replaces) =>
+        this.reactToMessage(
+          channelId,
+          platformMessageId,
+          emoji,
+          false,
+          replaces,
+        ),
+      startTyping: (answering) => {
+        this.transcript.record({
+          type: "typing",
+          state: "start",
+          ...(answering ? { answering } : {}),
+        });
+        return () => this.transcript.record({ type: "typing", state: "stop" });
+      },
+    };
   }
 
   /**
@@ -393,7 +474,7 @@ export class HarnessAdapter extends BaseBotAdapter {
 
       send: (text: string): Promise<SentMessage> => {
         const rendered = this.emulation.render(text);
-        const id = `m${this.nextMessageId++}`;
+        const id = this.transcript.newMessageId("m");
         this.transcript.record({
           type: "send",
           messageId: id,
@@ -406,7 +487,7 @@ export class HarnessAdapter extends BaseBotAdapter {
       sendEphemeral: (text: string): Promise<SentMessage> => {
         const rendered = this.emulation.render(text);
         this.transcript.record({ type: "ephemeral", text: rendered });
-        return Promise.resolve(makeSent(`e${this.nextMessageId++}`));
+        return Promise.resolve(makeSent(this.transcript.newMessageId("e")));
       },
 
       sendRich: (message: RichMessage): Promise<SentMessage> => {
@@ -416,7 +497,7 @@ export class HarnessAdapter extends BaseBotAdapter {
           title: message.title,
           text: rendered,
         });
-        return Promise.resolve(makeSent(`r${this.nextMessageId++}`));
+        return Promise.resolve(makeSent(this.transcript.newMessageId("r")));
       },
 
       startTyping: () => {

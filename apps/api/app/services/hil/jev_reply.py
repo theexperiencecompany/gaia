@@ -7,6 +7,8 @@ Question text lives in prompts.py, the line in constants/hil.py — both tuned
 through the hil-reply calibration suite, never by hand here.
 """
 
+from collections.abc import Mapping
+
 from app.constants.hil import (
     HIL_CLASSIFIER_MAX_ARG_CHARS,
     HIL_JEV_REPLY_APPROVE_LINE,
@@ -38,14 +40,13 @@ def _question(number: int) -> dict[str, object]:
 
 
 def reply_state(
-    message: str, action_details: list[str], history: list[MessageDict] | None
+    message: str, actions: Mapping[int, str], history: list[MessageDict] | None
 ) -> dict[str, object]:
-    """Build the Decisions state: the reply, the numbered actions, and any recent turns."""
+    """Build the Decisions state: the reply, each action under the number the user was shown, and recent turns."""
     state: dict[str, object] = {
         "reply": message,
         "pending_actions": [
-            {"number": number, "action": detail}
-            for number, detail in enumerate(action_details, start=1)
+            {"number": number, "action": detail} for number, detail in actions.items()
         ],
     }
     # Absent rather than empty: an empty list reads as missing evidence.
@@ -61,19 +62,19 @@ def reply_state(
 
 
 async def ask_jev_reply(
-    message: str, action_details: list[str], history: list[MessageDict] | None
+    message: str, actions: Mapping[int, str], history: list[MessageDict] | None
 ) -> tuple[list[JevReplyVerdict], int, int]:
-    """One Decisions call: a verdict per pending action, plus (in, out) tokens.
+    """One Decisions call: a verdict per pending action, in actions' order, plus (in, out) tokens.
 
     Raises on transport failure or a malformed answer; the caller falls back.
     """
-    names = [f"{HIL_JEV_REPLY_QUESTION_PREFIX}{n}" for n in range(1, len(action_details) + 1)]
+    names = {number: f"{HIL_JEV_REPLY_QUESTION_PREFIX}{number}" for number in actions}
     body = await post_decisions(
-        reply_state(message, action_details, history),
-        {name: _question(number) for number, name in enumerate(names, start=1)},
+        reply_state(message, actions, history),
+        {name: _question(number) for number, name in names.items()},
     )
     verdicts = []
-    for name in names:
+    for name in names.values():
         answer = body.choice(name, tuple(ReplyChoice), label="reply ")
         verdicts.append(
             JevReplyVerdict(

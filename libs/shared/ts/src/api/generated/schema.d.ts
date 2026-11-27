@@ -39,11 +39,9 @@ export interface paths {
         put?: never;
         /**
          * Post Approval Decision
-         * @description Apply a button decision and resume the paused run.
+         * @description Commit a button decision in the conversation log and wake the work it answers.
          *
-         *     ``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or
-         *     :class:`ApprovalRequestForbiddenError` (403) — both ``AppError`` subclasses — so
-         *     late/duplicate or cross-user deliveries can't double-resolve a request.
+         *     An approval already decided commits nothing and says how it ended, so the client shows that instead of the tap.
          */
         post: operations["approvals_post_approval_decision"];
         delete?: never;
@@ -65,9 +63,7 @@ export interface paths {
          * Post Batch Decision
          * @description Decide several pending approvals in one submission (the batch review).
          *
-         *     Per-item outcomes: one already-decided or expired approval never fails the
-         *     rest. Only the first resolvable decision dispatches the paused executor; the
-         *     join round it wakes collects the remaining decisions durably.
+         *     Each item commits exactly once in the log; one already decided or expired never fails the rest.
          */
         post: operations["approvals_post_batch_decision"];
         delete?: never;
@@ -115,6 +111,46 @@ export interface paths {
          *     tool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).
          */
         put: operations["approvals_set_tool_approval"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact
+         * @description One of the user's artifacts, program included.
+         */
+        get: operations["artifacts_get_artifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{artifact_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact Pdf
+         * @description One of the user's artifacts as an A4 PDF.
+         */
+        get: operations["artifacts_get_artifact_pdf"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -319,7 +355,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/bot/chat-stream": {
+    "/api/v1/bot/conversations/{conversation_id}/delivered": {
         parameters: {
             query?: never;
             header?: never;
@@ -327,12 +363,32 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
         /**
-         * Streaming Bot Chat
-         * @description Stream a chat response as Server-Sent Events.
+         * Record Bot Delivery
+         * @description Move the conversation's bot cursor to what its follower put on the platform.
          */
-        post: operations["bot_bot_chat_stream"];
+        put: operations["bot_record_delivered"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bot/conversations/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Active Bot Conversations
+         * @description The platform's conversations still answering or working, with the seq to follow after.
+         */
+        get: operations["bot_list_active_conversations"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -419,6 +475,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a Bot Message
+         * @description Accept a message into the session's conversation; follow its events stream for the reply.
+         */
+        post: operations["bot_bot_send_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/redeem-link-code": {
         parameters: {
             query?: never;
@@ -479,6 +555,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Bot Conversation
+         * @description Stop everything the session's conversation is running, keeping the session.
+         */
+        post: operations["bot_stop_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/transcribe": {
         parameters: {
             query?: never;
@@ -513,6 +609,154 @@ export interface paths {
          * @description Disconnect a platform account from the linked GAIA user.
          */
         post: operations["bot_unlink_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Briefings
+         * @description One page of the user's briefings archive (daily + weekly) as their cards, newest first.
+         */
+        get: operations["briefings_list_briefings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/{briefing_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Briefing
+         * @description Return one of the user's briefs; the first open marks it and emits briefing:opened.
+         */
+        get: operations["briefings_get_briefing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/editions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Briefing Editions
+         * @description Every daily edition family a brief can draw, and whether the user keeps it on or favours it.
+         */
+        get: operations["briefings_read_briefing_editions"];
+        /**
+         * Update Briefing Editions
+         * @description Replace which daily edition families are off or favourited; at least one must stay on.
+         */
+        put: operations["briefings_update_briefing_editions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/editions/{key}/{variant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Edition Image
+         * @description Serve a brief's edition image to whoever holds its signed URL; anything else is a 404.
+         */
+        get: operations["briefings_get_edition_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/postmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Postmarks
+         * @description The Air Mail city stamps the user has collected, each linked to its brief.
+         */
+        get: operations["briefings_get_postmarks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Briefing Schedule
+         * @description How often the user's briefs come, the daily brief's hour on their clock, and whether they run.
+         */
+        get: operations["briefings_read_briefing_schedule"];
+        /**
+         * Update Briefing Schedule
+         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.
+         */
+        put: operations["briefings_update_briefing_schedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/stamps/{slug}.webp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stamp Art
+         * @description Serve a catalogued city's web-sized stamp art, the same file for everyone; any other slug is a 404.
+         */
+        get: operations["briefings_get_stamp_art"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -917,46 +1161,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cancel-stream/{stream_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel Stream Endpoint
-         * @description Cancel a running stream owned by the requesting user.
-         */
-        post: operations["chat_cancel_stream_endpoint"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat-stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Chat Stream Endpoint
-         * @description Stream a chat turn. Continues in the background if the client disconnects.
-         */
-        post: operations["chat_chat_stream_endpoint"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/conversations": {
         parameters: {
             query?: never;
@@ -994,11 +1198,7 @@ export interface paths {
         };
         /**
          * Get Conversation Endpoint
-         * @description Retrieve a specific conversation by its ID.
-         *
-         *     The stored document itself: ``ConversationDocument`` is ``extra="allow"``,
-         *     so stray/legacy top-level fields the row carries still reach the client
-         *     verbatim, while the declared fields give the schema its shape.
+         * @description Retrieve a conversation's head fields with the newest page of its screen.
          */
         get: operations["conversations_get_conversation_endpoint"];
         put?: never;
@@ -1008,6 +1208,26 @@ export interface paths {
          * @description Delete a specific conversation by its ID.
          */
         delete: operations["conversations_delete_conversation_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/barge-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Barge In Endpoint
+         * @description Record that the user spoke over a voice reply and how much of it they heard.
+         */
+        post: operations["conversations_barge_in_endpoint"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1033,6 +1253,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entries Before Endpoint
+         * @description Page a conversation's log back from before_seq, never starting inside an open reply, task or approval.
+         */
+        get: operations["conversations_get_entries_before_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Conversation Events Endpoint
+         * @description Stream the conversation's screen as SSE: what a client at entry after lacks, then patches and live deltas.
+         *
+         *     after is the log head of the last item frame the client applied from this stream, 0 when it
+         *     holds nothing. wire names the newest frame shapes the client reads.
+         */
+        get: operations["conversations_conversation_events_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -1041,12 +1304,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
         /**
-         * Update Messages Endpoint
-         * @description Update the messages of a conversation.
+         * Send Message Endpoint
+         * @description Accept a message into a conversation the step runs; its reply arrives on the events stream.
          */
-        put: operations["conversations_update_messages_endpoint"];
-        post?: never;
+        post: operations["conversations_send_message_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1093,6 +1356,26 @@ export interface paths {
         patch: operations["conversations_mark_as_read_endpoint"];
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Message Endpoint
+         * @description Answer one of the conversation's user messages again; the new reply arrives on the events stream.
+         */
+        post: operations["conversations_retry_message_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/star": {
         parameters: {
             query?: never;
@@ -1107,6 +1390,26 @@ export interface paths {
          */
         put: operations["conversations_star_conversation_endpoint"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Conversation Endpoint
+         * @description Stop everything running for a conversation: its reply in flight, executor, subagents, approvals and browser job.
+         */
+        post: operations["conversations_stop_conversation_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1144,7 +1447,7 @@ export interface paths {
         put?: never;
         /**
          * Batch Sync Conversations Endpoint
-         * @description Batch sync conversations - returns only stale conversations with messages.
+         * @description Return the conversations the client holds stale, each with its newest page of items.
          */
         post: operations["conversations_batch_sync_conversations_endpoint"];
         delete?: never;
@@ -1447,7 +1750,7 @@ export interface paths {
          *     Args:
          *         request (Request): The FastAPI request object (required for rate limiting).
          *         data (URLRequest): The URL request containing an array of URLs.
-         *         user_id (str): The authenticated user's id (contact lookups are per-user).
+         *         caller (Caller): A signed-in user, or GAIA's web server (which gets web URLs only).
          *
          *     Returns:
          *         MultiURLResponse: The metadata for all URLs.
@@ -1890,31 +2193,9 @@ export interface paths {
         };
         /**
          * Get My Integrations Endpoint
-         * @description The current user's full integration catalog (platform + their custom),
-         *     each with connection status and tool count. One call replaces the old
-         *     /config + /status + /users/me/integrations merge.
+         * @description The current user's full integration catalog (platform + their custom), each with its one connection status.
          */
         get: operations["integrations_get_my_integrations_endpoint"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/me/snapshot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get My Integrations Snapshot Endpoint
-         * @description Return the workspace catalog without waiting for connection checks.
-         */
-        get: operations["integrations_get_my_integrations_snapshot_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2003,26 +2284,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/integrations/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Integration Statuses Endpoint
-         * @description Refresh connection state independently from the fast catalog snapshot.
-         */
-        get: operations["integrations_get_integration_statuses_endpoint"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/integrations/users/me/integrations": {
         parameters: {
             query?: never;
@@ -2063,6 +2324,239 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/l": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Short Link Route
+         * @description Share an artifact you own: its live link, minted with the given settings when none is live.
+         *
+         *     Turns sharing back on for a target its owner had stopped sharing. The
+         *     target's own read under your account is the ownership check.
+         */
+        post: operations["short_links_create_short_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Short Link Route
+         * @description Open a link: its target's public view and any framed content, or the denial the viewer sees.
+         */
+        get: operations["short_links_resolve_short_link_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Link Settings Route
+         * @description Change who one of your live links opens for, or when it expires.
+         */
+        patch: operations["short_links_update_link_settings_route"];
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/content-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Content Token Route
+         * @description Sign a short-lived URL that loads the link's file from the content origin, after the link's access check.
+         */
+        post: operations["short_links_content_token_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Link File Route
+         * @description Save the file behind a link: always an attachment, so it never renders on this origin.
+         */
+        get: operations["short_links_download_link_file_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Link Preview Meta Route
+         * @description What a chat preview or the page's metadata may show for a link, for anyone. No auth.
+         */
+        get: operations["short_links_link_preview_meta_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Open Route
+         * @description Open the link from the viewer's browser once the page shows: what they see, counted as an open.
+         *
+         *     Not the resolve: public pages resolve during SSR, where neither the viewer's
+         *     session nor their browser is visible, and unfurl bots resolve them too.
+         */
+        post: operations["short_links_record_open_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Short Link Pdf Route
+         * @description What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for.
+         */
+        get: operations["short_links_get_short_link_pdf_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Link Route
+         * @description Report a link that breaks GAIA's terms; enough distinct reporters suspend it.
+         */
+        post: operations["short_links_report_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Link Route
+         * @description Replace one of your live links with a new URL; the old one stops opening at once.
+         */
+        post: operations["short_links_rotate_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get Share State Route
+         * @description Say whether one of your artifacts is shared, with its live link and settings. Never mints one.
+         *
+         *     A POST only because a target is a structured reference, which a query string cannot carry.
+         */
+        post: operations["short_links_get_share_state_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/unshare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Sharing Route
+         * @description Stop sharing one of your artifacts: its link goes dead immediately, and GAIA
+         *     attaches no new one until you share it again. Idempotent; says whether a link died.
+         */
+        post: operations["short_links_stop_sharing_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lab/events": {
         parameters: {
             query?: never;
@@ -2089,8 +2583,10 @@ export interface paths {
         };
         /**
          * Mcp Oauth Callback
-         * @description Handle OAuth callback from MCP server.
+         * @description Handle OAuth callback from MCP server, for the user its state was minted for.
          *
+         *     The flow must come back to a browser that started it: one signed in as that user, or,
+         *     with no session (a chat app's connect link), the browser the connect link was opened in.
          *     Handles both success (with code) and error responses from OAuth server.
          */
         get: operations["mcp_mcp_oauth_callback"];
@@ -4478,30 +4974,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stream/{stream_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Subscribe Executor Stream
-         * @description Subscribe to a background executor SSE stream by stream_id.
-         *
-         *     Used by the frontend to receive live tool events for queued executor tasks.
-         *     The stream_id is delivered via the `executor.stream_started` WebSocket event.
-         *     Verifies stream ownership before allowing subscription.
-         */
-        get: operations["chat_subscribe_executor_stream"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/support/rate-limit-status": {
         parameters: {
             query?: never;
@@ -5096,6 +5568,9 @@ export interface paths {
         /**
          * Upload File Endpoint
          * @description Upload a file, persist metadata, and generate embeddings for images.
+         *
+         *     A client that cancelled while the file was being stored never learns its id, so
+         *     the stored file is deleted here instead of being left orphaned.
          */
         post: operations["file_upload_file_endpoint"];
         delete?: never;
@@ -5284,7 +5759,10 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Logout user and return logout URL for frontend redirection.
+         * @description Log the user out and return where the browser goes next.
+         *
+         *     return_url, a path on this site, is for switching accounts: the identity
+         *     provider's logout lands on the sign-in page, which then returns there.
          */
         post: operations["user_logout"];
         delete?: never;
@@ -5879,6 +6357,12 @@ export interface components {
             success: boolean;
         };
         /**
+         * ActionResult
+         * @description What happened to an approved action; none until it starts.
+         * @enum {string}
+         */
+        ActionResult: "executing" | "executed" | "failed" | "unknown";
+        /**
          * ActionStyle
          * @description Visual emphasis for a notification action button.
          * @enum {string}
@@ -5890,6 +6374,29 @@ export interface components {
          * @enum {string}
          */
         ActionType: "redirect" | "api_call" | "modal";
+        /**
+         * ActiveBotConversation
+         * @description A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.
+         *
+         *     partial_reply names the reply just past it that the bot had sent only its first bubbles of, so a
+         *     restarted follower sends the rest and repeats none; owed_reactions are the reactions it has
+         *     not placed yet, on messages at or below after_seq too.
+         */
+        ActiveBotConversation: {
+            /** After Seq */
+            after_seq: number;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Is Dm */
+            is_dm: boolean;
+            /** Owed Reactions */
+            owed_reactions: components["schemas"]["MessageReaction"][];
+            partial_reply: components["schemas"]["PartialReply"] | null;
+            /** Platform User Id */
+            platform_user_id: string;
+        };
         /**
          * ActivityDay
          * @description One UTC day of the heatmap: actions plus the tokens they burned.
@@ -5956,11 +6463,7 @@ export interface components {
         };
         /** AddUserIntegrationResponse */
         AddUserIntegrationResponse: {
-            /**
-             * Connectionstatus
-             * @enum {string}
-             */
-            connectionStatus: "created" | "connected" | "expired";
+            connectionStatus: components["schemas"]["IntegrationStatus"];
             /** Integrationid */
             integrationId: string;
             /** Message */
@@ -6010,6 +6513,12 @@ export interface components {
             success_message?: string | null;
         };
         /**
+         * ApprovalDecider
+         * @description Who approved or denied: the user, or auto mode's intent judge.
+         * @enum {string}
+         */
+        ApprovalDecider: "user" | "auto";
+        /**
          * ApprovalDecisionRequest
          * @description Body for a button approval decision (approve/deny, with scope and feedback).
          */
@@ -6027,21 +6536,176 @@ export interface components {
              * @enum {string}
              */
             scope?: "once" | "always_tool";
-            /** V */
-            v?: number | null;
         };
         /**
          * ApprovalDecisionResponse
          * @description Result of relaying an approval decision to the awaiting gate.
          */
         ApprovalDecisionResponse: {
-            /** Reason */
-            reason?: string | null;
-            /** Status */
-            status?: string | null;
+            action?: components["schemas"]["ActionResult"] | null;
+            outcome?: components["schemas"]["ApprovalOutcome"] | null;
+            reason?: components["schemas"]["DecisionRefusal"] | null;
             /** Success */
             success: boolean;
         };
+        /**
+         * ApprovalDescription
+         * @description A gated call in plain words, rendered the same by web cards and bot prompts.
+         */
+        ApprovalDescription: {
+            /** Action */
+            action: string;
+            /** Change Note */
+            change_note?: string | null;
+            /** Changes */
+            changes?: components["schemas"]["ApprovalDetail"][];
+            /** Confirm */
+            confirm: string;
+            /** Details */
+            details: components["schemas"]["ApprovalDetail"][];
+            /** Headline */
+            headline: string;
+            /** Question */
+            question?: string | null;
+        };
+        /**
+         * ApprovalDetail
+         * @description One labelled fact about a gated call, e.g. To: bob@x.com.
+         */
+        ApprovalDetail: {
+            /**
+             * Expandable
+             * @default false
+             */
+            expandable?: boolean;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * ApprovalNotification
+         * @description A gated action waiting on the user's approval, in the conversation its card waits in.
+         */
+        ApprovalNotification: {
+            /** Approval Id */
+            approval_id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "approval";
+        };
+        /**
+         * ApprovalOutcome
+         * @description How an approval ended; an approval with no outcome is still pending.
+         * @enum {string}
+         */
+        ApprovalOutcome: "approved" | "denied" | "expired" | "cancelled" | "withdrawn";
+        /**
+         * ApprovalRequested
+         * @description Live work paused on the user's approval: everything its card shows.
+         */
+        ApprovalRequested: {
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Auto Reason */
+            auto_reason: string | null;
+            description: components["schemas"]["ApprovalDescription"];
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Gated Tool Name
+             * @default
+             */
+            gated_tool_name: string;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /** Integration Name */
+            integration_name: string | null;
+            /**
+             * Kind
+             * @default approval_requested
+             * @constant
+             */
+            kind: "approval_requested";
+            /** Number */
+            number: number | null;
+            /** Task Id */
+            task_id: string;
+            /**
+             * Tool Call Id
+             * @default
+             */
+            tool_call_id: string;
+        };
+        /**
+         * ApprovalRequestEntry
+         * @description An approval card: the screen draws one per ApprovalRequested entry, ended by its decision entries.
+         */
+        ApprovalRequestEntry: {
+            data: components["schemas"]["ApprovalRequestEntryData"];
+            /** Timestamp */
+            timestamp: string;
+            /** Tool Category */
+            tool_category: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
+         * ApprovalRequestEntryData
+         * @description Inner ``data`` object of a HIL ``approval_request`` entry.
+         */
+        ApprovalRequestEntryData: {
+            action?: components["schemas"]["ActionResult"] | null;
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks?: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Asked At */
+            asked_at?: string | null;
+            /** Auto Reason */
+            auto_reason: string | null;
+            decider?: components["schemas"]["ApprovalDecider"] | null;
+            description: components["schemas"]["ApprovalDescription"];
+            /** Feedback */
+            feedback: string | null;
+            /** Gated Tool Name */
+            gated_tool_name: string;
+            /** Integration Name */
+            integration_name: string | null;
+            outcome: components["schemas"]["ApprovalOutcome"] | null;
+            status: components["schemas"]["ApprovalStatus"];
+            /** Tool Call Id */
+            tool_call_id: string;
+        };
+        /**
+         * ApprovalStatus
+         * @description Where an approval stands, as the conversation log has it: the one status every surface renders.
+         * @enum {string}
+         */
+        ApprovalStatus: "waiting" | "approved" | "approved_with_change" | "denied" | "expired" | "cancelled" | "withdrawn";
         /**
          * ApprovePairingRequest
          * @description The signed-in browser approves a pairing by its short user_code.
@@ -6067,11 +6731,17 @@ export interface components {
             size_bytes: number;
         };
         /**
+         * ArtifactKind
+         * @description What the artifact is; each kind has its own generated prompt
+         *     (apps/api/app/agents/prompts/artifacts/<kind>.txt, from libs/artifacts/src/kinds.ts).
+         * @enum {string}
+         */
+        ArtifactKind: "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
+        /**
          * ArtifactRegistryEntry
          * @description One element of ``ConversationDocument.artifacts``.
          *
-         *     ``app.services.chat.artifacts_registry`` owns every write of this shape; the
-         *     conversation document stores it and mirrors it verbatim to the client.
+         *     The conversation document stores it and mirrors it verbatim to the client.
          *     ``mtime`` is a Unix timestamp, matching what every publisher in
          *     :mod:`app.services.artifact_events` stamps. ``body`` is present only for
          *     small textual artifacts inlined at write time.
@@ -6254,6 +6924,26 @@ export interface components {
             skipped_count: number;
         };
         /**
+         * BargeInAccepted
+         * @description The barge-in is durable at seq; a resend for the same reply returns the first seq.
+         */
+        BargeInAccepted: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * BargeInRequest
+         * @description The user spoke over a voice reply, having heard its text up to heard_through characters.
+         */
+        BargeInRequest: {
+            /** Heard Through */
+            heard_through: number;
+            /** Reply Id */
+            reply_id: string;
+        };
+        /**
          * BatchApprovalDecisionRequest
          * @description Body for deciding several pending approvals in one submission.
          */
@@ -6283,22 +6973,19 @@ export interface components {
             decision: "approve" | "deny";
             /** Feedback */
             feedback?: string | null;
-            /** V */
-            v?: number | null;
         };
         /**
          * BatchDecisionOutcome
          * @description Per-approval outcome of a batch decision.
          */
         BatchDecisionOutcome: {
+            action?: components["schemas"]["ActionResult"] | null;
             /** Approval Id */
             approval_id: string;
-            /** Reason */
-            reason?: string | null;
+            outcome?: components["schemas"]["ApprovalOutcome"] | null;
+            reason?: components["schemas"]["DecisionRefusal"] | null;
             /** Resolved */
             resolved: boolean;
-            /** Status */
-            status?: string | null;
         };
         /**
          * BatchEventCreateFailure
@@ -6398,10 +7085,6 @@ export interface components {
          * @description The conversations a client's sync request found stale.
          */
         BatchSyncResponse: {
-            /** Active Streams */
-            active_streams: {
-                [key: string]: string;
-            };
             /** Conversations */
             conversations: components["schemas"]["ConversationSyncRow"][];
             /** Missing */
@@ -6423,7 +7106,7 @@ export interface components {
         };
         /**
          * BlogPost
-         * @description Blog post response model with proper ID handling.
+         * @description Blog post response model.
          */
         BlogPost: {
             /** Author Details */
@@ -6598,6 +7281,77 @@ export interface components {
             platform_user_id: string;
         };
         /**
+         * BotDeliveryRecorded
+         * @description Whether the report moved the cursor; False for one behind what is already recorded.
+         */
+        BotDeliveryRecorded: {
+            /** Recorded */
+            recorded: boolean;
+        };
+        /**
+         * BotDeliveryReport
+         * @description What a bot follower put on the platform: every item through delivered_seq, plus partial_reply.
+         *
+         *     placed_reactions are the reactions it placed (or sent as text) since its last report.
+         */
+        BotDeliveryReport: {
+            /** Delivered Seq */
+            delivered_seq: number;
+            partial_reply?: components["schemas"]["PartialReply"] | null;
+            /** Placed Reactions */
+            placed_reactions?: components["schemas"]["MessageReaction"][];
+            platform: components["schemas"]["ConversationSource"];
+        };
+        /**
+         * BotMessageAccepted
+         * @description A bot message accepted, with the token the bot follows the events stream with.
+         *
+         *     after_seq, partial_reply and owed_reactions are where the follow starts: the session's delivery
+         *     cursor while it still owes anything, else just before the message.
+         */
+        BotMessageAccepted: {
+            /** After Seq */
+            after_seq: number;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Message Id */
+            message_id: string;
+            /** Owed Reactions */
+            owed_reactions: components["schemas"]["MessageReaction"][];
+            partial_reply: components["schemas"]["PartialReply"] | null;
+            /** Seq */
+            seq: number;
+            /** Session Token */
+            session_token: string;
+        };
+        /**
+         * BotSessionRequest
+         * @description Names one bot session: a platform user in a DM or in one channel.
+         */
+        BotSessionRequest: {
+            /**
+             * Channel Id
+             * @description Channel/group ID (None for DM)
+             */
+            channel_id?: string | null;
+            /**
+             * Is Dm
+             * @description Whether this conversation is a direct message. Discord and Slack DM channel ids differ from the user id, so the server cannot tell a DM from a channel without this.
+             * @default false
+             */
+            is_dm?: boolean;
+            /**
+             * Platform
+             * @description Platform name (discord, slack, etc.)
+             */
+            platform: string;
+            /**
+             * Platform User Id
+             * @description User's ID on the platform
+             */
+            platform_user_id: string;
+        };
+        /**
          * BotSettingsResponse
          * @description Response model for user settings. When authenticated=False only that field is relevant.
          */
@@ -6627,6 +7381,486 @@ export interface components {
              * @description User's display name (null if not set)
              */
             user_name?: string | null;
+        };
+        /**
+         * BriefAction
+         * @description What a brief item asks the reader to do; set only on items that need them.
+         * @enum {string}
+         */
+        BriefAction: "approve" | "reply" | "review" | "retry" | "read" | "attend";
+        /**
+         * BriefCard
+         * @description A brief folded to its card: what the archive, a postmark, the notification and GAIA's chat message show.
+         */
+        BriefCard: {
+            /** Briefing Id */
+            briefing_id: string;
+            /**
+             * Date
+             * @description User-local YYYY-MM-DD.
+             */
+            date: string;
+            /** @description The edition image; None for a quiet note. */
+            edition: components["schemas"]["EditionImage"] | null;
+            /**
+             * Edition Name
+             * @description The daily edition family's name; None for the weekly recap and a quiet note.
+             */
+            edition_name: string | null;
+            /** Headline */
+            headline: string;
+            kind: components["schemas"]["BriefingKind"];
+            /**
+             * Needs You Count
+             * @description Items in the brief's Needs you section, as its edition lists them.
+             */
+            needs_you_count: number;
+            /**
+             * Stamp City Name
+             * @description Air Mail only: the stamp city's name.
+             */
+            stamp_city_name: string | null;
+        };
+        /**
+         * BriefDeliveryWorkflow
+         * @description A workflow whose results wait for the brief.
+         */
+        BriefDeliveryWorkflow: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefDeliveryWorkflowsConflict
+         * @description The 409 body when briefs cannot turn off: the workflows still delivering to the brief.
+         */
+        BriefDeliveryWorkflowsConflict: {
+            /**
+             * Code
+             * @description Machine-readable error code.
+             */
+            code?: string | null;
+            /**
+             * Errors
+             * @description Field-level failures; present only on 422.
+             */
+            errors?: components["schemas"]["ValidationIssue"][] | null;
+            /** Fix */
+            fix?: string | null;
+            /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
+             * Message
+             * @description Human-readable description of the failure.
+             */
+            message: string;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
+            /** Why */
+            why?: string | null;
+            /** Workflows */
+            workflows: components["schemas"]["BriefDeliveryWorkflow"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * BriefEditionNotification
+         * @description What a daily brief's or weekly recap's notification carries, for the in-app card and the email.
+         */
+        BriefEditionNotification: {
+            /**
+             * Brief Url
+             * @description The brief's heygaia.link.
+             */
+            brief_url: string;
+            card: components["schemas"]["BriefCard"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "briefing_daily" | "briefing_weekly";
+        };
+        /**
+         * BriefForm
+         * @description What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.
+         * @enum {string}
+         */
+        BriefForm: "edition" | "quiet_note";
+        /**
+         * BriefingEdition
+         * @description One daily edition family, and where the user put it.
+         */
+        BriefingEdition: {
+            choice: components["schemas"]["EditionChoice"];
+            family: components["schemas"]["EditionFamily"];
+            /** Name */
+            name: string;
+        };
+        /**
+         * BriefingEditions
+         * @description Every daily edition family a brief can draw, and where the user put each.
+         */
+        BriefingEditions: {
+            /** Editions */
+            editions: components["schemas"]["BriefingEdition"][];
+        };
+        /**
+         * BriefingEditionsUpdate
+         * @description Where the user puts each daily edition family; a family not named stays in the rotation.
+         */
+        BriefingEditionsUpdate: {
+            /** Choices */
+            choices: {
+                [key: string]: components["schemas"]["EditionChoice"];
+            };
+        };
+        /**
+         * BriefingEvent
+         * @description One calendar event on the user's own clock, read from their calendar.
+         */
+        BriefingEvent: {
+            /** Calendar */
+            calendar?: string | null;
+            /** Date */
+            date: string;
+            /** End */
+            end?: string | null;
+            /**
+             * Guests
+             * @default 0
+             */
+            guests?: number;
+            /** Location */
+            location?: string | null;
+            /** Organizer */
+            organizer?: string | null;
+            /** @default own */
+            response?: components["schemas"]["CalendarResponse"];
+            /** Start */
+            start?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefingFrequency
+         * @description How often the user wants briefs: the one setting the briefing workflows follow.
+         * @enum {string}
+         */
+        BriefingFrequency: "daily" | "weekdays" | "weekly_only" | "off";
+        /**
+         * BriefingItem
+         * @description A single line inside a section, optionally bound to a todo.
+         *
+         *     It either asks something of the reader (action) or reports where a thing got to
+         *     (outcome), never both, under a short title and at most one detail line.
+         */
+        BriefingItem: {
+            action: components["schemas"]["BriefAction"] | null;
+            /** App */
+            app: string | null;
+            /**
+             * Count
+             * @default 1
+             */
+            count: number;
+            /** Detail */
+            detail: string | null;
+            /** @default note */
+            kind: components["schemas"]["ItemState"];
+            /** Link */
+            link: string | null;
+            /** Offer */
+            offer: string | null;
+            outcome: components["schemas"]["BriefOutcome"] | null;
+            /** People */
+            people: string[];
+            /** Source */
+            source: string | null;
+            /** Text */
+            text: string;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * BriefingKind
+         * @description Which brief a run makes; keys the payload variant and the one-per-day constraint.
+         * @enum {string}
+         */
+        BriefingKind: "daily" | "weekly";
+        /**
+         * BriefingListResponse
+         * @description One page of the archive, newest first, and where the next page starts.
+         */
+        BriefingListResponse: {
+            /** Briefings */
+            briefings: components["schemas"]["BriefCard"][];
+            /**
+             * Next Cursor
+             * @description Pass as before to read the next page; None on the last page.
+             */
+            next_cursor: string | null;
+        };
+        /**
+         * BriefingMood
+         * @description The hero treatment a brief is drawn with; the voice picks one of the daily moods.
+         * @enum {string}
+         */
+        BriefingMood: "clear" | "packed" | "idle" | "winback" | "weekly";
+        /**
+         * BriefingPayload
+         * @description The structured briefing the run emits and every channel renders.
+         */
+        BriefingPayload: {
+            /**
+             * Artwork Id
+             * @description Exhibition, Broadsheet and Almanac editions only: the painting (an artworks/artworks.json slug) this brief hangs, so a re-render hangs it again.
+             */
+            artwork_id: string | null;
+            /**
+             * Blocks
+             * @description The brief as GAIA composed it, in reading order: each lead or items block names its section; charts, quotes, progress and notes carry their data. Empty on legacy rows.
+             */
+            blocks: (components["schemas"]["SectionBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["QuoteBlock"] | components["schemas"]["ProgressBlock"] | components["schemas"]["NoteBlock"])[];
+            /**
+             * Calendar
+             * @description Today's calendar events, in start order.
+             */
+            calendar: components["schemas"]["BriefingEvent"][];
+            /** Caption */
+            caption: string;
+            /** Date */
+            date: string;
+            /** @default edition */
+            form: components["schemas"]["BriefForm"];
+            /**
+             * Generated At
+             * @description User-local generation time, e.g. "6:02 AM".
+             */
+            generated_at: string | null;
+            /** Headline */
+            headline: string;
+            /**
+             * Hue
+             * @default 0
+             */
+            hue: number;
+            /** Kicker */
+            kicker: string;
+            /** Lede */
+            lede: string;
+            /**
+             * Message
+             * @description The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.
+             */
+            message: string | null;
+            mood: components["schemas"]["BriefingMood"];
+            /** @description Set when this brief's stamp is one the user had not collected before. */
+            new_stamp: components["schemas"]["NewStamp"] | null;
+            /**
+             * Recipient Name
+             * @description The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.
+             */
+            recipient_name: string | null;
+            /** Sections */
+            sections: components["schemas"]["BriefingSection"][];
+            /**
+             * Sources Read
+             * @description The apps the brief read, by display name.
+             */
+            sources_read: string[];
+            /** Sources Unavailable */
+            sources_unavailable: components["schemas"]["UnreadSource"][];
+            /**
+             * Stamp City
+             * @description Air Mail editions only: the city stamp (a stamps/cities.json slug) this brief carried. The Postmarks page reads it.
+             */
+            stamp_city: string | null;
+            /** Stats */
+            stats: components["schemas"]["BriefingStat"][];
+            tallies: components["schemas"]["BriefingTallies"] | null;
+            /** @description The edition template family this brief was drawn in, persisted so the archive re-renders identically forever; None for a quiet note, which is drawn in none. */
+            template_family: components["schemas"]["EditionFamily"] | null;
+            /**
+             * Uncomposed
+             * @description Everything the brief read that the composition left out, for its full page.
+             */
+            uncomposed: components["schemas"]["BriefPoolItem"][];
+            /**
+             * Undrawn
+             * @description Composed blocks the drawn edition cannot draw in its idiom (a chart on the Menu), moved out of blocks onto the brief's full page.
+             */
+            undrawn: (components["schemas"]["SectionBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["QuoteBlock"] | components["schemas"]["ProgressBlock"] | components["schemas"]["NoteBlock"])[];
+            week: components["schemas"]["BriefingWeek"] | null;
+        };
+        /**
+         * BriefingScheduleState
+         * @description The stored schedule and whether it runs: briefs on a schedule are a Pro feature.
+         */
+        BriefingScheduleState: {
+            /**
+             * Daily Brief Lands At
+             * @description The local time the daily brief lands, past quiet hours; None without one.
+             */
+            daily_brief_lands_at: string | null;
+            /** @default daily */
+            frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Has Daily Brief
+             * @description The schedule's frequency runs a daily brief.
+             */
+            has_daily_brief: boolean;
+            /**
+             * Hour
+             * @default 8
+             */
+            hour?: number;
+            /**
+             * Next Daily Brief At
+             * @description When the next daily brief runs (UTC); None while no daily brief runs.
+             */
+            next_daily_brief_at: string | null;
+            /**
+             * Paused For Plan
+             * @description The schedule sends briefs, but none run: the user is not on Pro.
+             */
+            paused_for_plan: boolean;
+        };
+        /**
+         * BriefingScheduleUpdate
+         * @description A new briefing schedule; turning briefs off also says where brief-delivery workflows go.
+         */
+        BriefingScheduleUpdate: {
+            /** @default daily */
+            frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Hour
+             * @default 8
+             */
+            hour?: number;
+            /**
+             * Workflow Deliveries
+             * @description New delivery per workflow id, for workflows that deliver to the brief
+             */
+            workflow_deliveries?: {
+                [key: string]: "now" | "silent";
+            };
+        };
+        /**
+         * BriefingSection
+         * @description A group of items under the heading GAIA gave it, numbered in reading order.
+         */
+        BriefingSection: {
+            /** Items */
+            items: components["schemas"]["BriefingItem"][];
+            /** Numeral */
+            numeral: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefingStat
+         * @description One tuple in the stat row (e.g. value="12" label="drafts staged").
+         */
+        BriefingStat: {
+            /** Delta */
+            delta: string | null;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * BriefingTallies
+         * @description Completed-todo counts behind the brief, computed from the todos store —
+         *     never parsed back out of stat labels, so every renderer agrees with them.
+         */
+        BriefingTallies: {
+            /** Done By Gaia */
+            done_by_gaia: number;
+            /** Done By You */
+            done_by_you: number;
+        };
+        /**
+         * BriefingView
+         * @description A brief as its owner opens it: its card, the stored brief, and what its edition left out.
+         */
+        BriefingView: {
+            card: components["schemas"]["BriefCard"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Delivered Channels */
+            delivered_channels: string[];
+            left_out: components["schemas"]["EditionLeftOut"];
+            /** Opened At */
+            opened_at: string | null;
+            payload: components["schemas"]["BriefingPayload"];
+        };
+        /**
+         * BriefingWeek
+         * @description The real week behind the weekly recap: Monday-to-Sunday completions and the
+         *     calendar ahead. Every field is counted or read, never estimated.
+         */
+        BriefingWeek: {
+            /** Ahead */
+            ahead?: components["schemas"]["BriefingEvent"][];
+            /** Days */
+            days: components["schemas"]["BriefingWeekDay"][];
+        };
+        /**
+         * BriefingWeekDay
+         * @description Todos completed on one day of the week, by owner.
+         */
+        BriefingWeekDay: {
+            /** Gaia */
+            gaia: number;
+            /** You */
+            you: number;
+        };
+        /**
+         * BriefNoteNotification
+         * @description What a quiet note's notification carries: its kind alone, as it has no edition and no link.
+         */
+        BriefNoteNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "briefing_note";
+        };
+        /**
+         * BriefOutcome
+         * @description The state a reported brief item reached; set only on items that need nothing from the reader.
+         * @enum {string}
+         */
+        BriefOutcome: "approved" | "landed" | "drafted" | "booked" | "sent" | "finished" | "started" | "changed" | "failed";
+        /**
+         * BriefPoolItem
+         * @description A pool item the composition left out, in its source's own words, for the full brief page.
+         */
+        BriefPoolItem: {
+            /** App */
+            app: string;
+            /** Detail */
+            detail: string | null;
+            kind: components["schemas"]["ItemState"];
+            /** Title */
+            title: string;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Url */
+            url: string | null;
         };
         /**
          * BrowserImportRequest
@@ -6680,6 +7914,12 @@ export interface components {
          */
         BrowserSessionStatus: "running" | "completed" | "failed" | "cancelled";
         /**
+         * BrowserStopOutcome
+         * @description What a stop came to, as the job's ending of record says.
+         * @enum {string}
+         */
+        BrowserStopOutcome: "stopped" | "already_ended";
+        /**
          * BrowserTaskFrame
          * @description One recap frame: a step screenshot plus what the agent was doing.
          */
@@ -6714,6 +7954,21 @@ export interface components {
             success: boolean;
             /** Task */
             task: string;
+        };
+        /**
+         * BubbleTextDelta
+         * @description More text for one bubble of the reply; a bubble past the last opens it.
+         */
+        BubbleTextDelta: {
+            /** Bubble */
+            bubble: number;
+            /** Text */
+            text: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "bubble_text";
         };
         /**
          * BudgetWindow
@@ -6928,6 +8183,8 @@ export interface components {
          *     ``GET /calendar/events``).
          */
         CalendarEventsResponse: {
+            /** Calendars Failed */
+            calendars_failed?: string[];
             /** Calendars Truncated */
             calendars_truncated: string[];
             /** Events */
@@ -7006,20 +8263,35 @@ export interface components {
             message: string;
         };
         /**
-         * CancelStreamResponse
-         * @description Outcome of a stream-cancellation request.
-         *
-         *     ``error`` is set only when the stream could not be cancelled at all (it was
-         *     never started, or already expired from Redis).
+         * CalendarResponse
+         * @description How the calendar's owner stands on an event: their own, accepted, tentative or unanswered.
+         * @enum {string}
          */
-        CancelStreamResponse: {
-            /** Error */
-            error?: string | null;
-            /** Stream Id */
-            stream_id: string;
-            /** Success */
-            success: boolean;
+        CalendarResponse: "own" | "accepted" | "tentative" | "needs_action" | "declined";
+        /**
+         * CardsDelta
+         * @description The reply's cards as they now stand, as the timeline they fold to; wire 2 sends a TimelineDelta instead.
+         */
+        CardsDelta: {
+            timeline: components["schemas"]["ToolTimeline"];
+            /**
+             * Tool Data
+             * @deprecated
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cards";
         };
+        /**
+         * ChangeOp
+         * @description How one change alters the JSON at its path.
+         * @enum {string}
+         */
+        ChangeOp: "set" | "append" | "remove";
         /**
          * ChangePasswordRequest
          * @description Body of ``PATCH /api/v1/auth/password`` — rotates the caller's own
@@ -7081,6 +8353,10 @@ export interface components {
         /**
          * ChannelPreferences
          * @description User notification channel preferences.
+         *
+         *     One field per ``USER_CONFIGURABLE_CHANNELS`` member; the fields are spelled out
+         *     so FastAPI and mypy see real types, and a unit test pins the set against the
+         *     enum so the two cannot drift.
          */
         ChannelPreferences: {
             /**
@@ -7088,6 +8364,16 @@ export interface components {
              * @default true
              */
             discord: boolean;
+            /**
+             * Email
+             * @default true
+             */
+            email: boolean;
+            /**
+             * Imessage
+             * @default true
+             */
+            imessage: boolean;
             /**
              * Slack
              * @default true
@@ -7106,11 +8392,15 @@ export interface components {
         };
         /**
          * ChannelPreferencesUpdate
-         * @description Request body for updating channel preferences.
+         * @description Request body for updating channel preferences; omitted channels are untouched.
          */
         ChannelPreferencesUpdate: {
             /** Discord */
             discord?: boolean | null;
+            /** Email */
+            email?: boolean | null;
+            /** Imessage */
+            imessage?: boolean | null;
             /** Slack */
             slack?: boolean | null;
             /** Telegram */
@@ -7126,6 +8416,30 @@ export interface components {
             /** Priority */
             priority: ("whatsapp" | "telegram" | "discord" | "slack" | "imessage")[];
         };
+        /**
+         * ChartBlock
+         * @description A chart over real series, with the title and takeaway GAIA wrote for it.
+         */
+        ChartBlock: {
+            chart: components["schemas"]["ChartKind"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "chart";
+            /** Series */
+            series: components["schemas"]["DataSeries"][];
+            /** Takeaway */
+            takeaway: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ChartKind
+         * @description How a chart draws its series.
+         * @enum {string}
+         */
+        ChartKind: "bar" | "line" | "spark" | "stacked_bar";
         /**
          * CheckoutSource
          * @description Where in the product a checkout was started.
@@ -7462,6 +8776,19 @@ export interface components {
             toolsCount: number | null;
         };
         /**
+         * ContentTokenResponse
+         * @description A short-lived URL that loads a link's content from the content origin.
+         */
+        ContentTokenResponse: {
+            /** Content Url */
+            content_url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
          * ConversationActionResponse
          * @description Acknowledgement for a conversation-scoped action that reports back which
          *     conversation it applied to — delete, rename, mark read/unread.
@@ -7483,64 +8810,31 @@ export interface components {
             description?: string | null;
         };
         /**
-         * ConversationDocument
-         * @description A conversation and its embedded message history as stored in MongoDB.
+         * ConversationEntriesPage
+         * @description A page of the conversation's screen, oldest first: the items its log page projects to.
          *
-         *     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
-         *     ``metadata``) so a full-document read returns them verbatim, matching the
-         *     pre-repository behaviour.
+         *     state is the head's, so a page alone shows the loading row, live work and approvals;
+         *     cursor is the seq an older page is read before, set exactly when has_older.
          */
-        ConversationDocument: {
-            /** Artifacts */
-            artifacts?: components["schemas"]["ArtifactRegistryEntry"][];
-            /** Conversation Id */
-            conversation_id: string;
-            /** Createdat */
-            createdAt?: string | null;
+        ConversationEntriesPage: {
+            /** Cursor */
+            cursor: number | null;
             /**
-             * Description
-             * @default New Chat
-             */
-            description?: string;
-            /**
-             * Has Live Approval
+             * Has Older
              * @default false
              */
-            has_live_approval?: boolean;
-            /**
-             * Id
-             * @default
-             */
-            id?: string;
-            /**
-             * Is Onboarding Demo
-             * @default false
-             */
-            is_onboarding_demo?: boolean;
-            /**
-             * Is System Generated
-             * @default false
-             */
-            is_system_generated?: boolean | null;
-            /**
-             * Is Unread
-             * @default false
-             */
-            is_unread?: boolean | null;
-            /** Messages */
-            messages?: components["schemas"]["MessageModelOutput"][];
-            source?: components["schemas"]["ConversationSource"] | null;
-            /** Starred */
-            starred?: boolean | null;
-            system_purpose?: components["schemas"]["SystemPurpose"] | null;
-            /** Todo Id */
-            todo_id?: string | null;
-            /** Updatedat */
-            updatedAt?: string | null;
-            /** User Id */
-            user_id: string;
-        } & {
-            [key: string]: unknown;
+            has_older: boolean;
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            state: components["schemas"]["StateFrame"];
+        };
+        /**
+         * ConversationEvent
+         * @description One frame on a conversation's events stream: the screen, a patch to it, or a live delta.
+         */
+        ConversationEvent: {
+            /** Frame */
+            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ScreenPatchFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
         };
         /**
          * ConversationListResponse
@@ -7561,17 +8855,17 @@ export interface components {
         };
         /**
          * ConversationMessageHit
-         * @description A single conversation message tagged with its conversation id — the shape of
-         *     the pinned-messages and message-search results.
+         * @description A message's screen item, as the conversation's screen shows it, tagged with its conversation id.
          */
         ConversationMessageHit: {
             /** Conversation Id */
             conversation_id: string;
-            message: components["schemas"]["MessageModelOutput"];
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["NoticeItem"];
         };
         /**
          * ConversationModel
-         * @description A chat conversation and its display/system metadata.
+         * @description A conversation to create: its id and the display/system metadata it starts with.
          */
         ConversationModel: {
             /** Conversation Id */
@@ -7596,7 +8890,7 @@ export interface components {
              * @default false
              */
             is_unread?: boolean | null;
-            source?: components["schemas"]["ConversationSource"] | null;
+            source: components["schemas"]["ConversationSource"];
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
         };
         /**
@@ -7604,21 +8898,36 @@ export interface components {
          * @description Client or channel a conversation originated from.
          * @enum {string}
          */
-        ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "workflow_system" | "background";
+        ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "voice" | "workflow_system" | "background";
+        /**
+         * ConversationStopResponse
+         * @description A conversation-level Stop: the work it stopped.
+         */
+        ConversationStopResponse: {
+            /**
+             * Conversation Id
+             * @description The conversation stopped; None when a bot chat had none yet.
+             */
+            conversation_id: string | null;
+            work: components["schemas"]["WorkCancelled"];
+        };
         /**
          * ConversationSummary
          * @description The projected conversation-list row — every field the web list consumes,
          *     without the heavy ``messages`` array.
          */
         ConversationSummary: {
+            /**
+             * Awaiting Approval
+             * @default false
+             */
+            awaiting_approval: boolean;
             /** Conversation Id */
             conversation_id: string;
             /** Createdat */
             createdAt: string | null;
             /** Description */
             description: string | null;
-            /** Has Live Approval */
-            has_live_approval: boolean | null;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */
@@ -7629,6 +8938,11 @@ export interface components {
             system_purpose: components["schemas"]["SystemPurpose"] | null;
             /** Updatedat */
             updatedAt: string | null;
+            /**
+             * Url
+             * @description Return the conversation's web app page, built here so no client spells the route itself.
+             */
+            readonly url: string;
             /** User Id */
             user_id: string;
         } & {
@@ -7646,34 +8960,59 @@ export interface components {
         };
         /**
          * ConversationSyncRow
-         * @description One batch-sync row — the conversation's client-visible fields plus its full
-         *     message history and artifact registry.
+         * @description One batch-sync row: the conversation's client-visible fields, its newest page of items and its artifacts.
          */
         ConversationSyncRow: {
             /** Artifacts */
             artifacts: components["schemas"]["ArtifactRegistryEntry"][];
+            /**
+             * Awaiting Approval
+             * @default false
+             */
+            awaiting_approval: boolean;
             /** Conversation Id */
             conversation_id: string;
             /** Createdat */
             createdAt: string | null;
+            /** Cursor */
+            cursor: number | null;
             /** Description */
             description: string;
-            /** Has Live Approval */
-            has_live_approval: boolean | null;
+            /**
+             * Has Older
+             * @default false
+             */
+            has_older: boolean;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */
             is_unread: boolean | null;
-            /** Messages */
-            messages: components["schemas"]["MessageModelOutput"][];
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            /** Listed */
+            listed: boolean;
             source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
+            state: components["schemas"]["StateFrame"];
             system_purpose: components["schemas"]["SystemPurpose"] | null;
             /** Todo Id */
             todo_id: string | null;
             /** Updatedat */
             updatedAt: string | null;
+        };
+        /**
+         * ConversationUpdatedFrame
+         * @description The conversation's own metadata changed: its title, once generated from the first message.
+         */
+        ConversationUpdatedFrame: {
+            /** Description */
+            description: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "conversation_updated";
         };
         /**
          * CreateCheckoutSessionRequest
@@ -7933,6 +9272,8 @@ export interface components {
          * @description Request model for creating a new workflow.
          */
         CreateWorkflowRequest: {
+            /** @description How a finished run's result reaches the user. Required: every creator (the user, the agent from the user's intent, a system definition) decides it explicitly. */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Short optional display description (1-2 sentences)
@@ -7971,12 +9312,6 @@ export interface components {
              */
             is_system_workflow?: boolean;
             /**
-             * Notify On Completion
-             * @description Whether GAIA sends the automatic completion notification when a run finishes.
-             * @default true
-             */
-            notify_on_completion?: boolean;
-            /**
              * Prompt
              * @description Detailed execution instructions for the AI
              */
@@ -8014,7 +9349,7 @@ export interface components {
          * @description A provider the credential store can hold, in display order.
          * @enum {string}
          */
-        CredentialProviderName: "cloudflare" | "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "exa" | "brave" | "searxng" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl" | "openweather" | "llamaparse" | "github";
+        CredentialProviderName: "cloudflare" | "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "exa" | "brave" | "searxng" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "firecrawl" | "openweather" | "llamaparse" | "github";
         /**
          * CredentialSource
          * @description Where a provider's active credential comes from: a saved one wins over env.
@@ -8064,6 +9399,39 @@ export interface components {
             toolsCount?: number | null;
         };
         /**
+         * DataSeries
+         * @description Numeric history from one real source, counted or summed by code.
+         */
+        DataSeries: {
+            /**
+             * App
+             * @description The source's display name
+             */
+            app: string;
+            /** Id */
+            id: string;
+            /**
+             * Label
+             * @description What is counted: "Emails handled", "Meeting hours"
+             */
+            label: string;
+            /** Points */
+            points: components["schemas"]["SeriesPoint"][];
+            shape: components["schemas"]["SeriesShape"];
+            /**
+             * Shown Not Total
+             * @default false
+             */
+            shown_not_total: boolean;
+            /** Source */
+            source: string;
+            /**
+             * Unit
+             * @description What one y counts: "emails", "hours", "USD"; None when the source gives none
+             */
+            unit: string | null;
+        };
+        /**
          * DeactivationReason
          * @description Why the system paused a reminder or deactivated a workflow.
          *
@@ -8072,6 +9440,12 @@ export interface components {
          * @enum {string}
          */
         DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found" | "member_removed" | "trigger_retired";
+        /**
+         * DecisionRefusal
+         * @description Why a decision did not commit.
+         * @enum {string}
+         */
+        DecisionRefusal: "already_decided" | "not_found" | "forbidden" | "error";
         /**
          * DegradedHealthResponse
          * @description The 503 body returned when the event loop is lagged past the threshold.
@@ -8528,6 +9902,12 @@ export interface components {
          */
         DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "timeout";
         /**
+         * DisplayState
+         * @description The one status a client shows for a conversation.
+         * @enum {string}
+         */
+        DisplayState: "idle" | "thinking" | "working" | "awaiting_approval";
+        /**
          * DodoWebhookAckResponse
          * @description Acknowledgement returned to Dodo once a webhook has been accepted.
          */
@@ -8545,6 +9925,79 @@ export interface components {
              */
             status?: "success";
         };
+        /**
+         * DormantTodosNotification
+         * @description The digest of the user's todos left idle.
+         */
+        DormantTodosNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "dormant_todos";
+            /** Todo Count */
+            todo_count: number;
+        };
+        /**
+         * EditionChoice
+         * @description Where the user put a daily edition family: in the rotation, out of it, or a favourite.
+         * @enum {string}
+         */
+        EditionChoice: "on" | "off" | "favourite";
+        /**
+         * EditionFamily
+         * @description Every edition family a brief is drawn in, one per vendored explorer template.
+         *
+         *     WEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone
+         *     carries a city stamp. The editions package checks this set against the templates at import.
+         * @enum {string}
+         */
+        EditionFamily: "almanac" | "band" | "boardingpass" | "broadsheet" | "exhibition" | "flightplan" | "gradient" | "instrument" | "invoice" | "librarycard" | "memo" | "menu" | "metromap" | "playfair" | "postal" | "receipt" | "swiss" | "weekly";
+        /**
+         * EditionImage
+         * @description A brief's edition as a surface loads it: its signed URL, its fold and its paper.
+         */
+        EditionImage: {
+            /**
+             * Fold
+             * @description Share of the edition's height where its letter folds.
+             */
+            fold: number | null;
+            /**
+             * Image Url
+             * @description A signed URL that loads the edition image for a year.
+             */
+            image_url: string;
+            /**
+             * Paper
+             * @description The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.
+             */
+            paper: number[] | null;
+        };
+        /**
+         * EditionLeftOut
+         * @description What the rendered edition left to the brief's page, listed under it.
+         */
+        EditionLeftOut: {
+            /**
+             * Events
+             * @description The day's events past the rows it prints.
+             */
+            events: components["schemas"]["BriefingEvent"][];
+            /**
+             * Items
+             * @description The sections the edition could not draw, then the rows past its own.
+             */
+            items: components["schemas"]["BriefingItem"][];
+            /** Uncomposed */
+            uncomposed: components["schemas"]["UncomposedItem"][];
+        };
+        /**
+         * EditionVariant
+         * @description One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide.
+         * @enum {string}
+         */
+        EditionVariant: "png" | "jpg";
         /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
@@ -8684,6 +10137,12 @@ export interface components {
             success: boolean;
         };
         /**
+         * EventsWire
+         * @description How the events stream writes its frames for one connection; a client names the newest it reads.
+         * @enum {integer}
+         */
+        EventsWire: 1 | 2;
+        /**
          * EventUpdateRequest
          * @description Request to update one event's fields, identified by id and calendar.
          */
@@ -8714,6 +10173,12 @@ export interface components {
             /** Updated timezone offset in (+|-)HH:MM format */
             timezone_offset?: string | null;
         };
+        /**
+         * FailureReason
+         * @description Why a reply failed; a client words the line it shows under the reply from it.
+         * @enum {string}
+         */
+        FailureReason: "model_error" | "step_limit" | "server_restart";
         /**
          * FeaturePeriodUsage
          * @description One feature's usage within one window (day or month).
@@ -8939,17 +10404,17 @@ export interface components {
             collapsed_at?: string | null;
         };
         /**
-         * FoldedCards
-         * @description Cards a detached run closed before the message they fold into was saved; its save takes them.
+         * FollowUpsDelta
+         * @description The suggestions offered under the reply.
          */
-        FoldedCards: {
-            /** Cards */
-            cards?: components["schemas"]["ToolDataEntry"][];
+        FollowUpsDelta: {
+            /** Follow Up Actions */
+            follow_up_actions: string[];
             /**
-             * Since
-             * Format: date-time
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
-            since: string;
+            type: "follow_up_actions";
         };
         /**
          * GateAuthor
@@ -9201,6 +10666,17 @@ export interface components {
             trigger_name: "gmail_new_message";
         };
         /**
+         * GmailPersonalizedNotification
+         * @description GAIA personalised itself from the user's Gmail.
+         */
+        GmailPersonalizedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gmail_personalized";
+        };
+        /**
          * GmailPollInboxConfig
          * @description Config for interval-based Gmail polling.
          *
@@ -9220,6 +10696,36 @@ export interface components {
              * @enum {string}
              */
             trigger_name: "gmail_poll_inbox";
+        };
+        /**
+         * GoalState
+         * @description A goal the user stated, and the work linked to it, counted from their todos.
+         */
+        GoalState: {
+            /** Done */
+            done: number;
+            /**
+             * Done By Gaia
+             * @default 0
+             */
+            done_by_gaia: number;
+            /**
+             * Done By You
+             * @default 0
+             */
+            done_by_you: number;
+            /** Id */
+            id: string;
+            /** Linked */
+            linked: string[];
+            /** Open */
+            open: number;
+            /** Since */
+            since: string | null;
+            /** Stalled */
+            stalled: string[];
+            /** Statement */
+            statement: string;
         };
         /**
          * GoogleCalendarEventDateTime
@@ -9249,6 +10755,8 @@ export interface components {
          *     client reads.
          */
         GoogleCalendarEventResource: {
+            /** Attendees */
+            attendees?: components["schemas"]["GoogleCalendarPerson"][] | null;
             /** Calendarid */
             calendarId?: string | null;
             /** Calendartitle */
@@ -9262,6 +10770,9 @@ export interface components {
             htmlLink?: string | null;
             /** Id */
             id?: string | null;
+            /** Location */
+            location?: string | null;
+            organizer?: components["schemas"]["GoogleCalendarPerson"] | null;
             /** Recurrence */
             recurrence?: string[] | null;
             start?: components["schemas"]["GoogleCalendarEventDateTime"] | null;
@@ -9290,6 +10801,30 @@ export interface components {
             primary?: boolean | null;
             /** Summary */
             summary?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * GoogleCalendarPerson
+         * @description An event's organizer or one of its attendees; Google marks the calendar's owner self.
+         */
+        GoogleCalendarPerson: {
+            /** Displayname */
+            displayName?: string | null;
+            /** Email */
+            email?: string | null;
+            /**
+             * Resource
+             * @default false
+             */
+            resource?: boolean;
+            /** Responsestatus */
+            responseStatus?: string | null;
+            /**
+             * Self
+             * @default false
+             */
+            self?: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -9425,13 +10960,19 @@ export interface components {
             version: string;
         };
         /**
+         * HeardFrom
+         * @description Where the user says they first heard about GAIA (onboarding Q3, one pick).
+         * @enum {string}
+         */
+        HeardFrom: "friend" | "twitter" | "linkedin" | "youtube" | "tiktok" | "instagram" | "reddit" | "product_hunt" | "hacker_news" | "google" | "ai_assistant" | "newsletter" | "podcast" | "github" | "discord" | "somewhere_else";
+        /**
          * HILPreferencesResponse
          * @description A user's HIL preferences as returned by the preferences endpoints.
          */
         HILPreferencesResponse: {
             /**
              * Mode
-             * @default always_allow
+             * @default auto
              * @enum {string}
              */
             mode: "always_allow" | "always_ask" | "auto";
@@ -9712,7 +11253,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /**
@@ -9764,6 +11305,21 @@ export interface components {
             useCases?: string[];
         };
         /**
+         * IntegrationExpiredNotification
+         * @description An integration whose connection expired, and how many workflows it paused.
+         */
+        IntegrationExpiredNotification: {
+            /** Integration Id */
+            integration_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "integration_expired";
+            /** Paused Workflows */
+            paused_workflows: number;
+        };
+        /**
          * IntegrationFAQ
          * @description A single FAQ entry for the integration detail page.
          */
@@ -9798,11 +11354,8 @@ export interface components {
              * @description Integration name
              */
             name: string;
-            /**
-             * Status
-             * @description Integration status: 'created' or 'connected'
-             */
-            status: string;
+            /** @description Integration connection status */
+            status: components["schemas"]["IntegrationStatus"];
         };
         /**
          * IntegrationRef
@@ -9850,7 +11403,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /** Publishedat */
@@ -9876,18 +11429,11 @@ export interface components {
             integrations: components["schemas"]["IntegrationConfigItem"][];
         };
         /**
-         * IntegrationStatusesResponse
-         * @description Current connection status map, fetched independently of the catalog.
+         * IntegrationStatus
+         * @description Connection state of a user's integration, as stored and sent to clients.
+         * @enum {string}
          */
-        IntegrationStatusesResponse: {
-            /**
-             * Statuses
-             * @description Connection state keyed by integration id
-             */
-            statuses: {
-                [key: string]: boolean;
-            };
-        };
+        IntegrationStatus: "created" | "connected" | "expired";
         /** IntegrationSuccessResponse */
         IntegrationSuccessResponse: {
             /** Integrationid */
@@ -9973,6 +11519,25 @@ export interface components {
             id: string;
         };
         /**
+         * ItemChange
+         * @description One change to the JSON a client already holds; path walks keys and list indices from its root.
+         */
+        ItemChange: {
+            op: components["schemas"]["ChangeOp"];
+            /** Path */
+            path: (string | number)[];
+            value: components["schemas"]["JsonValue"];
+        };
+        /**
+         * ItemState
+         * @description How an item stands: a GAIA action, a user ask, a look-back, work that failed, a plain note.
+         *
+         *     An item's text is only its title, so no renderer repeats its state.
+         * @enum {string}
+         */
+        ItemState: "gaia" | "you" | "lookback" | "failed" | "note";
+        JsonValue: unknown;
+        /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
          */
@@ -10034,6 +11599,66 @@ export interface components {
             trigger_name: "linear_issue_updated";
         };
         /**
+         * LinkAccess
+         * @description Who a link opens for.
+         * @enum {string}
+         */
+        LinkAccess: "public" | "unlisted" | "owner";
+        /**
+         * LinkContent
+         * @description The bytes a link frames from the content origin; the page asks for a content token to load them.
+         */
+        LinkContent: {
+            /** Content Id */
+            content_id: string;
+            /** Mime */
+            mime: string;
+            render: components["schemas"]["RenderMode"];
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
+         * LinkDenial
+         * @description Why a link did not open; each is one ErrorEnvelope code and one page the viewer sees.
+         * @enum {string}
+         */
+        LinkDenial: "link_not_found" | "link_revoked" | "link_expired" | "link_removed" | "link_target_deleted" | "link_sign_in_required" | "link_forbidden";
+        /**
+         * LinkDenialEnvelope
+         * @description A link denial's body: code names the page the viewer sees.
+         */
+        LinkDenialEnvelope: {
+            code: components["schemas"]["LinkDenial"];
+            /**
+             * Errors
+             * @description Field-level failures; present only on 422.
+             */
+            errors?: components["schemas"]["ValidationIssue"][] | null;
+            /** Fix */
+            fix?: string | null;
+            /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
+             * Message
+             * @description Human-readable description of the failure.
+             */
+            message: string;
+            /** Signed In As */
+            signed_in_as?: string | null;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
+            /** Why */
+            why?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * LinkedUsersResponse
          * @description Response model for the list of platform_user_ids linked on a platform.
          */
@@ -10043,6 +11668,23 @@ export interface components {
              * @description platform_user_ids of accounts linked to the platform.
              */
             platform_user_ids?: string[];
+        };
+        /**
+         * LinkEnvelope
+         * @description What opening a link returns: its access level, the target's public view and any framed content.
+         */
+        LinkEnvelope: {
+            access: components["schemas"]["LinkAccess"];
+            content: components["schemas"]["LinkContent"] | null;
+            /** Downloadable */
+            downloadable: boolean;
+            /** Is Owner */
+            is_owner: boolean;
+            /** Owner Target */
+            owner_target: (components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"]) | null;
+            target_type: components["schemas"]["ShortLinkTargetType"];
+            /** View */
+            view: components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicWorkspaceFile"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];
         };
         /**
          * LinkPlatformRequest
@@ -10082,6 +11724,53 @@ export interface components {
             status: string;
         };
         /**
+         * LinkPreviewMeta
+         * @description What a chat preview or a page's metadata may show for a link, by its access level and state.
+         *
+         *     title and description are real content only for a live public or unlisted
+         *     link; any other link carries the kind line or the dead-link line. image_url
+         *     is None when the preview card is generated from these fields.
+         */
+        LinkPreviewMeta: {
+            access: components["schemas"]["LinkAccess"] | null;
+            /** Description */
+            description: string;
+            /** Image Url */
+            image_url: string | null;
+            /** Indexable */
+            indexable: boolean;
+            /** Live */
+            live: boolean;
+            target_type: components["schemas"]["ShortLinkTargetType"] | null;
+            /** Title */
+            title: string;
+        };
+        /** LinkReportRequest */
+        LinkReportRequest: {
+            reason: components["schemas"]["ReportReason"];
+            /** Turnstile Token */
+            turnstile_token?: string | null;
+        };
+        /**
+         * LinkSettings
+         * @description Who a link opens for and until when.
+         */
+        LinkSettings: {
+            /** @default unlisted */
+            access?: components["schemas"]["LinkAccess"];
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /**
+         * LinkSettingsUpdate
+         * @description Owner changes to a live link; an omitted field keeps its value.
+         */
+        LinkSettingsUpdate: {
+            access?: components["schemas"]["LinkAccess"] | null;
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /**
          * LinkTokenInfoResponse
          * @description Response model for the link-token confirmation page's display metadata.
          */
@@ -10103,6 +11792,16 @@ export interface components {
             username: string | null;
         };
         /**
+         * LiveTask
+         * @description One live background task, shown as one work bubble.
+         */
+        LiveTask: {
+            /** Awaiting Approval */
+            awaiting_approval: boolean;
+            /** Task Id */
+            task_id: string;
+        };
+        /**
          * LiveViewTokenResponse
          * @description A short-lived takeover token for opening the cross-origin live view.
          */
@@ -10114,6 +11813,63 @@ export interface components {
             expires_in: number;
             /** Token */
             token: string;
+        };
+        /**
+         * LoadedConversation
+         * @description A conversation as a load returns it: its head's fields and the newest page of its screen.
+         */
+        LoadedConversation: {
+            /** Artifacts */
+            artifacts: components["schemas"]["ArtifactRegistryEntry"][];
+            /** Conversation Id */
+            conversation_id: string;
+            /** Createdat */
+            createdAt: string | null;
+            /** Cursor */
+            cursor: number | null;
+            /**
+             * Description
+             * @default New Chat
+             */
+            description: string;
+            /**
+             * Has Older
+             * @default false
+             */
+            has_older: boolean;
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Is Onboarding Demo
+             * @default false
+             */
+            is_onboarding_demo: boolean;
+            /**
+             * Is System Generated
+             * @default false
+             */
+            is_system_generated: boolean | null;
+            /**
+             * Is Unread
+             * @default false
+             */
+            is_unread: boolean | null;
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            source: components["schemas"]["ConversationSource"];
+            /** Starred */
+            starred: boolean | null;
+            state: components["schemas"]["StateFrame"];
+            system_purpose: components["schemas"]["SystemPurpose"] | null;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Updatedat */
+            updatedAt: string | null;
+            /** User Id */
+            user_id: string;
         };
         /**
          * LoginRequest
@@ -10789,6 +12545,17 @@ export interface components {
             total_memories: number;
         };
         /**
+         * MemoryReadyNotification
+         * @description The user's memory was seeded from their past conversations.
+         */
+        MemoryReadyNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "memory_ready";
+        };
+        /**
          * MemoryRelationType
          * @description How a memory version relates to its parent in the supersession chain.
          * @enum {string}
@@ -10877,14 +12644,16 @@ export interface components {
             tree: components["schemas"]["MemoryTreeNode"][];
         };
         /**
-         * MessageDict
-         * @description One chat turn as {role, content} for LLM history payloads.
+         * MessageAccepted
+         * @description The message is durable at seq; its reply arrives on the conversation's events stream.
          */
-        MessageDict: {
-            /** Content */
-            content: string;
-            /** Role */
-            role: string;
+        MessageAccepted: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Message Id */
+            message_id: string;
+            /** Seq */
+            seq: number;
         };
         /** MessageFeedbackRequest */
         MessageFeedbackRequest: {
@@ -10912,140 +12681,14 @@ export interface components {
             trace_id?: string | null;
         };
         /**
-         * MessageKind
-         * @description What a bot message IS beyond its text, set when comms' intent is known at
-         *     creation and would otherwise be unrecoverable from the body alone (a deliberate
-         *     one-emoji acknowledgement reads identically to a coincidental one-emoji reply).
-         * @enum {string}
+         * MessageReaction
+         * @description GAIA's emoji on one user message, by the message's id.
          */
-        MessageKind: "text" | "emoji_ack";
-        /**
-         * MessageModel
-         * @description A single chat message with its content, attachments and tool data.
-         */
-        MessageModelInput: {
-            /** Date */
-            date?: string | null;
-            /** Disclaimer */
-            disclaimer?: string | null;
-            /** Error */
-            error?: string | null;
-            /** File */
-            file?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /** Filename */
-            filename?: string | null;
-            /** Filetype */
-            filetype?: string | null;
-            /** First Contact */
-            first_contact?: boolean | null;
-            /** Follow Up Actions */
-            follow_up_actions?: string[] | null;
-            image_data?: components["schemas"]["ImageData"] | null;
-            /** @default text */
-            kind?: components["schemas"]["MessageKind"];
+        MessageReaction: {
+            /** Emoji */
+            emoji: string;
             /** Message Id */
-            message_id?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Pinned */
-            pinned?: boolean | null;
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            /** Reacts To Message Id */
-            reacts_to_message_id?: string | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Response */
-            response: string;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
-            /** Stopped */
-            stopped?: boolean | null;
-            /** Subtype */
-            subtype?: string | null;
-            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
-            /** Tool Data */
-            tool_data?: components["schemas"]["ToolDataEntry"][] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Type */
-            type: string;
-        };
-        /**
-         * MessageModel
-         * @description A single chat message with its content, attachments and tool data.
-         */
-        MessageModelOutput: {
-            /** Date */
-            date?: string | null;
-            /** Disclaimer */
-            disclaimer?: string | null;
-            /** Error */
-            error?: string | null;
-            /** File */
-            file?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /** Filename */
-            filename?: string | null;
-            /** Filetype */
-            filetype?: string | null;
-            /** First Contact */
-            first_contact?: boolean | null;
-            /** Follow Up Actions */
-            follow_up_actions?: string[] | null;
-            image_data?: components["schemas"]["ImageData"] | null;
-            /** @default text */
-            kind?: components["schemas"]["MessageKind"];
-            /** Message Id */
-            message_id?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Pinned */
-            pinned?: boolean | null;
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            /** Reacts To Message Id */
-            reacts_to_message_id?: string | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Response */
-            response: string;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
-            /** Stopped */
-            stopped?: boolean | null;
-            /** Subtype */
-            subtype?: string | null;
-            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
-            /** Tool Data */
-            tool_data?: components["schemas"]["ToolDataEntry"][] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Type */
-            type: string;
+            message_id: string;
         };
         /**
          * MessageRequest
@@ -11056,70 +12699,14 @@ export interface components {
             message: string;
         };
         /**
-         * MessageRequestWithHistory
-         * @description Chat-stream request carrying the full message history and attachments.
-         */
-        MessageRequestWithHistory: {
-            /** Comms Model */
-            comms_model?: string | null;
-            /** Conversation Id */
-            conversation_id?: string | null;
-            /** Executor Model */
-            executor_model?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /**
-             * Is Onboarding Demo
-             * @default false
-             */
-            is_onboarding_demo?: boolean;
-            /**
-             * Is Retry
-             * @default false
-             */
-            is_retry?: boolean;
-            /** Message */
-            message: string;
-            /** Messages */
-            messages: components["schemas"]["MessageDict"][];
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Turn Id */
-            turn_id?: string | null;
-            /**
-             * Use Default Models
-             * @default true
-             */
-            use_default_models?: boolean;
-            /**
-             * Voice Mode
-             * @default false
-             */
-            voice_mode?: boolean;
-        };
-        /**
          * MessageSearchResult
          * @description A message hit from keyword search, with its highlighting snippet.
          */
         MessageSearchResult: {
             /** Conversation Id */
             conversation_id: string;
-            message: components["schemas"]["MessageModelOutput"];
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["NoticeItem"];
             /** Snippet */
             snippet: string;
         };
@@ -11231,7 +12818,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /**
@@ -11254,22 +12841,18 @@ export interface components {
              * @enum {string}
              */
             source: "platform" | "custom";
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "connected" | "created" | "expired" | "not_connected";
+            /** Status */
+            status: components["schemas"]["IntegrationStatus"] | "not_connected";
             /**
              * Toolcount
              * @default 0
              */
             toolCount?: number;
+            toolsSetup?: components["schemas"]["ToolsSetup"] | null;
         };
         /**
          * MyIntegrationsResponse
-         * @description The full integration catalog personalized for one user (platform + their
-         *     own custom integrations), each carrying connection status. Replaces the
-         *     client-side merge of /config + /status + /users/me/integrations.
+         * @description The full integration catalog personalized for one user (platform + their own custom), each with its connection status.
          */
         MyIntegrationsResponse: {
             /** Integrations */
@@ -11279,6 +12862,39 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * NewStamp
+         * @description A city stamp the user collected for the first time with this brief.
+         */
+        NewStamp: {
+            /** City */
+            city: string;
+            /**
+             * Collected
+             * @description Stamps collected, this one included.
+             */
+            collected: number;
+            /** Country */
+            country: string;
+            /**
+             * Total
+             * @description How many city stamps can be collected.
+             */
+            total: number;
+        };
+        /**
+         * NoteBlock
+         * @description A pattern GAIA noticed, a heads-up or a suggestion, rendered from its slots.
+         */
+        NoteBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "note";
+            /** Text */
+            text: string;
         };
         /** NoteModel */
         NoteModel: {
@@ -11320,6 +12936,39 @@ export interface components {
             plaintext: string;
             /** Snippet */
             snippet: string;
+        };
+        /**
+         * NoticeItem
+         * @description A proactive message delivered outside a reply.
+         */
+        NoticeItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Bubbles */
+            bubbles: string[];
+            /** Follow Up Actions */
+            follow_up_actions: string[];
+            /** Id */
+            id: string;
+            /** Image Url */
+            image_url: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "notice";
+            /** Seq */
+            seq: number;
+            timeline: components["schemas"]["ToolTimeline"];
+            /**
+             * Tool Data
+             * @deprecated
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * NotificationAction
@@ -11406,6 +13055,8 @@ export interface components {
             actions?: components["schemas"]["NotificationAction"][] | null;
             /** Body */
             body: string;
+            /** Email Subject */
+            email_subject?: string | null;
             /** Rich Content */
             rich_content?: {
                 [key: string]: unknown;
@@ -11467,17 +13118,21 @@ export interface components {
             /** Channels */
             channels?: components["schemas"]["ChannelConfig"][];
             content: components["schemas"]["NotificationContent"];
+            /** Conversation Id */
+            conversation_id?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at?: string;
+            /** Details */
+            details?: (components["schemas"]["BriefEditionNotification"] | components["schemas"]["BriefNoteNotification"] | components["schemas"]["TodoNotification"] | components["schemas"]["TodoFailedNotification"] | components["schemas"]["TodoTriggerFiredNotification"] | components["schemas"]["DormantTodosNotification"] | components["schemas"]["ReminderNotification"] | components["schemas"]["WorkflowCompletedNotification"] | components["schemas"]["WorkflowFailedNotification"] | components["schemas"]["WorkflowPausedNotification"] | components["schemas"]["IntegrationExpiredNotification"] | components["schemas"]["SystemWorkflowsProvisionedNotification"] | components["schemas"]["MemoryReadyNotification"] | components["schemas"]["GmailPersonalizedNotification"] | components["schemas"]["ApprovalNotification"]) | null;
             /** Id */
-            id?: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            id: string;
+            /** Message */
+            message?: string | null;
+            /** @default routine */
+            message_class?: components["schemas"]["ProactiveMessageClass"];
             /**
              * Priority
              * @default 3
@@ -11528,7 +13183,7 @@ export interface components {
          * @description Originating system or feature that produced the notification.
          * @enum {string}
          */
-        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger";
+        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger" | "approval";
         /**
          * NotificationStatus
          * @description Lifecycle state of a notification record.
@@ -11548,7 +13203,7 @@ export interface components {
          *     Distinct from ``NotificationRecord``: the record is the stored document (it
          *     nests the whole ``original_request``), while this is the flat shape the web
          *     and mobile clients actually read — ``content``/``source``/``type``/
-         *     ``metadata`` are lifted out of the request, and the channel entries are
+         *     ``details`` are lifted out of the request, and the channel entries are
          *     projected. It mirrors ``NotificationRecord`` in the frontend's
          *     ``notificationTypes.ts``.
          *
@@ -11567,12 +13222,10 @@ export interface components {
             created_at: string;
             /** Delivered At */
             delivered_at?: string | null;
+            /** Details */
+            details?: (components["schemas"]["BriefEditionNotification"] | components["schemas"]["BriefNoteNotification"] | components["schemas"]["TodoNotification"] | components["schemas"]["TodoFailedNotification"] | components["schemas"]["TodoTriggerFiredNotification"] | components["schemas"]["DormantTodosNotification"] | components["schemas"]["ReminderNotification"] | components["schemas"]["WorkflowCompletedNotification"] | components["schemas"]["WorkflowFailedNotification"] | components["schemas"]["WorkflowPausedNotification"] | components["schemas"]["IntegrationExpiredNotification"] | components["schemas"]["SystemWorkflowsProvisionedNotification"] | components["schemas"]["MemoryReadyNotification"] | components["schemas"]["GmailPersonalizedNotification"] | components["schemas"]["ApprovalNotification"]) | null;
             /** Id */
             id: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
             /** Read At */
             read_at?: string | null;
             source: components["schemas"]["NotificationSourceEnum"];
@@ -11675,12 +13328,14 @@ export interface components {
         };
         /**
          * OnboardingAnswers
-         * @description The wizard's answers — Q1 (profession) and Q2 (needs).
+         * @description The wizard's answers — Q1 (profession), Q2 (needs) and Q3 (where they heard of GAIA).
          *
          *     The name is derived from the email server-side, so it is not submitted;
          *     nothing else is generated at onboarding, so nothing else is collected.
          */
         OnboardingAnswers: {
+            /** @description Where the user says they first heard about GAIA (onboarding Q3) */
+            heard_from?: components["schemas"]["HeardFrom"] | null;
             /**
              * Language
              * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
@@ -11736,6 +13391,8 @@ export interface components {
         };
         /** OnboardingPreferences */
         OnboardingPreferences: {
+            /** @description Where the user says they first heard about GAIA (onboarding Q3) */
+            heard_from?: components["schemas"]["HeardFrom"] | null;
             /**
              * Language
              * @description The user's browser language as a primary subtag ("de", "pt"), set at onboarding
@@ -11767,6 +13424,8 @@ export interface components {
          * @description The onboarding submission: the answers again, plus the browser's timezone.
          */
         OnboardingRequest: {
+            /** @description Where the user says they first heard about GAIA (onboarding Q3) */
+            heard_from?: components["schemas"]["HeardFrom"] | null;
             /**
              * Language
              * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
@@ -11825,13 +13484,8 @@ export interface components {
              * @description Whether onboarding was successful
              */
             success: boolean;
-            /**
-             * User
-             * @description Updated user data
-             */
-            user: {
-                [key: string]: unknown;
-            } | null;
+            /** @description Updated user data */
+            user: components["schemas"]["OnboardingUser"];
         };
         /**
          * OnboardingStatusResponse
@@ -11861,6 +13515,35 @@ export interface components {
          * @enum {string}
          */
         OnboardingStep: "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
+        /**
+         * OnboardingUser
+         * @description The user an onboarding write updated: its id and the onboarding state it left.
+         */
+        OnboardingUser: {
+            onboarding: components["schemas"]["OnboardingStatusResponse"];
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * OpenUIArtifactResponse
+         * @description An artifact as its owner's viewer loads it.
+         */
+        OpenUIArtifactResponse: {
+            /** Conversation Id */
+            conversation_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Program */
+            program: string;
+            /** Title */
+            title: string;
+        };
         /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
@@ -11907,6 +13590,21 @@ export interface components {
              * @description Total number of items
              */
             total: number;
+        };
+        /**
+         * PartialReply
+         * @description A reply a bot follower had put only part of on the platform.
+         *
+         *     bubbles are final; open_message_ids are the platform messages of the next bubble, still being
+         *     written, which a restarted follower finishes by editing instead of posting again.
+         */
+        PartialReply: {
+            /** Bubbles */
+            bubbles: number;
+            /** Open Message Ids */
+            open_message_ids?: string[];
+            /** Reply Id */
+            reply_id: string;
         };
         /** PaymentVerificationResponse */
         PaymentVerificationResponse: {
@@ -12277,10 +13975,63 @@ export interface components {
             status: "pending" | "approved" | "expired";
         };
         /**
+         * Postmark
+         * @description One collected Air Mail stamp: its city, where it sits, and the card of the brief it first came on.
+         *
+         *     The card carries that brief's edition, so the page can ready the letter before the
+         *     stamp is pressed without fetching the brief, which would mark it opened.
+         */
+        Postmark: {
+            card: components["schemas"]["BriefCard"];
+            /** City */
+            city: string;
+            /** City Slug */
+            city_slug: string;
+            /** Country */
+            country: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Stamp Url */
+            stamp_url: string;
+        };
+        /**
+         * PostmarksResponse
+         * @description The user's stamp collection, first arrival first.
+         */
+        PostmarksResponse: {
+            /** Postmarks */
+            postmarks: components["schemas"]["Postmark"][];
+            /**
+             * Total
+             * @description How many city stamps can be collected.
+             */
+            total: number;
+        };
+        /**
          * Priority
          * @enum {string}
          */
         Priority: "high" | "medium" | "low" | "none";
+        /**
+         * ProactiveMessageClass
+         * @description What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.
+         * @enum {string}
+         */
+        ProactiveMessageClass: "routine" | "user_timed" | "user_triggered" | "urgent";
+        /**
+         * ProgressBlock
+         * @description Where one of the user's goals stands.
+         */
+        ProgressBlock: {
+            goal: components["schemas"]["GoalState"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "progress";
+        };
         /**
          * ProjectCreate
          * @description Model for creating projects
@@ -12541,6 +14292,28 @@ export interface components {
             ok: boolean;
         };
         /**
+         * PublicBriefing
+         * @description A brief's front page, all anyone but its owner sees: never an item, a calendar entry or the edition.
+         *
+         *     The edition image draws every item, so it stays with the owner (BriefingView) too.
+         */
+        PublicBriefing: {
+            /** Date */
+            date: string;
+            /** Full Url */
+            full_url?: string | null;
+            /** Headline */
+            headline: string;
+            /** Kicker */
+            kicker: string;
+            kind: components["schemas"]["BriefingKind"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "briefing";
+        };
+        /**
          * PublicHoloCardResponse
          * @description Public-facing subset of a user's profile, keyed by user id (``card_id``).
          *
@@ -12634,6 +14407,29 @@ export interface components {
             tools?: components["schemas"]["IntegrationTool"][];
         };
         /**
+         * PublicOpenUIArtifact
+         * @description An artifact create_artifact made: its program, which the page renders as data.
+         */
+        PublicOpenUIArtifact: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Program */
+            program: string;
+            /** Shared By */
+            shared_by: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "openui_artifact";
+            /** Title */
+            title: string;
+        };
+        /**
          * PublicSupportRequestCreate
          * @description A contact-form request that may come from a visitor with no GAIA session.
          */
@@ -12665,6 +14461,24 @@ export interface components {
             turnstile_token: string;
             /** @description Type of request (support or feature) */
             type: components["schemas"]["SupportRequestType"];
+        };
+        /**
+         * PublicTodoDeliverable
+         * @description A tracked todo's result: its title and the deliverable facet of its
+         *     canvas (``canvas_markdown.deliverable_markdown``), never the working sections.
+         */
+        PublicTodoDeliverable: {
+            /** Completed */
+            completed: boolean;
+            /** Content */
+            content: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "todo_deliverable";
+            /** Title */
+            title: string;
         };
         /**
          * PublicWorkflowCard
@@ -12708,6 +14522,33 @@ export interface components {
             trigger_config: components["schemas"]["TriggerConfig"] | null;
         };
         /**
+         * PublicWorkflowRun
+         * @description One workflow execution's outcome.
+         */
+        PublicWorkflowRun: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "success" | "failed" | "skipped";
+            /** Summary */
+            summary: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "workflow_run";
+            /** Workflow Title */
+            workflow_title: string;
+        };
+        /**
          * PublicWorkflowsResponse
          * @description Response model for listing public workflows.
          */
@@ -12736,6 +14577,30 @@ export interface components {
             id: string;
             /** Title */
             title: string;
+        };
+        /**
+         * PublicWorkspaceFile
+         * @description A file GAIA wrote in a conversation's workspace, as its link pinned it.
+         *
+         *     text is the file's text when it is shown as text (code, markdown, and HTML
+         *     source where the instance has no content origin); the page renders it
+         *     itself. Every other file is framed from the content origin (LinkEnvelope.content)
+         *     or offered as a download.
+         */
+        PublicWorkspaceFile: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "workspace_file";
+            /** Text */
+            text: string | null;
         };
         /** PublishIntegrationResponse */
         PublishIntegrationResponse: {
@@ -12820,6 +14685,53 @@ export interface components {
             start_hour: number;
         };
         /**
+         * QuoteBlock
+         * @description Someone's own words, set apart.
+         */
+        QuoteBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "quote";
+            quote: components["schemas"]["QuoteSpan"];
+        };
+        /**
+         * QuoteSpan
+         * @description Someone's own words, verbatim as their app holds them, with who wrote them and where.
+         */
+        QuoteSpan: {
+            /** App */
+            app: string;
+            /** Author */
+            author: string;
+            /** Id */
+            id: string;
+            /** Item Id */
+            item_id: number;
+            /** Source */
+            source: string;
+            /** Text */
+            text: string;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * Reaction
+         * @description An emoji on a user message; a field updated in place, never a state change.
+         */
+        Reaction: {
+            by: components["schemas"]["ReactionBy"];
+            /** Emoji */
+            emoji: string;
+        };
+        /**
+         * ReactionBy
+         * @description Which mind put a reaction on a message: the instant classifier or the chat model.
+         * @enum {string}
+         */
+        ReactionBy: "jev" | "chat_model";
+        /**
          * ReadinessResponse
          * @description ``GET /health/ready``: whether every backing service answered a real request.
          */
@@ -12876,6 +14788,19 @@ export interface components {
             tool_category?: string;
             /** Tool Name */
             tool_name: string;
+        };
+        /**
+         * RecordTarget
+         * @description A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id.
+         */
+        RecordTarget: {
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "briefing" | "openui_artifact" | "todo_deliverable" | "workflow_run";
         };
         /**
          * RecurrenceData
@@ -13075,6 +15000,19 @@ export interface components {
             policy: components["schemas"]["RegistrationPolicy"];
         };
         /**
+         * ReminderNotification
+         * @description A reminder that came due.
+         */
+        ReminderNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reminder";
+            /** Reminder Id */
+            reminder_id: string;
+        };
+        /**
          * ReminderResponse
          * @description Response model for reminder operations.
          *
@@ -13141,6 +15079,98 @@ export interface components {
             user_id: string;
         };
         /**
+         * RenderMode
+         * @description How a snapshot's bytes are shown, which fixes the headers the content origin serves them with.
+         * @enum {string}
+         */
+        RenderMode: "frame_active" | "image" | "image_svg" | "pdf" | "text" | "media" | "download";
+        /**
+         * ReplyDeltaFrame
+         * @description Streamed content of one comms attempt; reply_id is None until its reply entry exists.
+         */
+        ReplyDeltaFrame: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Index */
+            index: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reply_delta";
+            /** Payload */
+            payload: components["schemas"]["BubbleTextDelta"] | components["schemas"]["CardsDelta"] | components["schemas"]["TimelineDelta"] | components["schemas"]["FollowUpsDelta"];
+            /** Reply Id */
+            reply_id: string | null;
+        };
+        /**
+         * ReplyFile
+         * @description A session artifact a reply delivers, addressed by its path under the session's artifacts/.
+         */
+        ReplyFile: {
+            /** Content Type */
+            content_type: string | null;
+            /** Opens At */
+            opens_at: string;
+            /** Path */
+            path: string;
+            /** Short Url */
+            short_url?: string | null;
+        };
+        /**
+         * ReplyItem
+         * @description GAIA's reply: its bubbles and own cards; outcome is None while it is still being written.
+         */
+        ReplyItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Bubbles */
+            bubbles: string[];
+            failure: components["schemas"]["FailureReason"] | null;
+            /** Failure Line */
+            failure_line: string | null;
+            /** Files */
+            files: components["schemas"]["ReplyFile"][];
+            /** Follow Up Actions */
+            follow_up_actions: string[];
+            /** Id */
+            id: string;
+            image: components["schemas"]["ImageData"] | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reply";
+            /** Narrates */
+            narrates: string[];
+            outcome: components["schemas"]["ReplyOutcome"] | null;
+            /** Pinned */
+            pinned: boolean;
+            quote: components["schemas"]["ReplyToMessageData"] | null;
+            /** Quote Platform Message Id */
+            quote_platform_message_id?: string | null;
+            /** Retry Target */
+            retry_target: string | null;
+            /** Seq */
+            seq: number;
+            timeline: components["schemas"]["ToolTimeline"];
+            /**
+             * Tool Data
+             * @deprecated
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
+        };
+        /**
+         * ReplyOutcome
+         * @description How a finished reply ended.
+         * @enum {string}
+         */
+        ReplyOutcome: "answered" | "stopped" | "truncated" | "failed" | "silent" | "interim";
+        /**
          * ReplyToMessageData
          * @description Data for the message being replied to.
          */
@@ -13156,32 +15186,10 @@ export interface components {
             role: "user" | "assistant";
         };
         /**
-         * ResetSessionRequest
-         * @description Request model for resetting a bot session (starting a new conversation).
+         * ReportReason
+         * @enum {string}
          */
-        ResetSessionRequest: {
-            /**
-             * Channel Id
-             * @description Channel/group ID (None for DM)
-             */
-            channel_id?: string | null;
-            /**
-             * Is Dm
-             * @description Whether this conversation is a direct message. Discord and Slack DM channel ids differ from the user id, so the server cannot tell a DM from a channel without this.
-             * @default false
-             */
-            is_dm?: boolean;
-            /**
-             * Platform
-             * @description Platform name (discord, slack, etc.)
-             */
-            platform: string;
-            /**
-             * Platform User Id
-             * @description User's ID on the platform
-             */
-            platform_user_id: string;
-        };
+        ReportReason: "phishing" | "malware" | "harassment" | "illegal" | "other";
         /**
          * ResetSessionResponse
          * @description Response model for a bot session reset.
@@ -13213,6 +15221,29 @@ export interface components {
              * @description Whether the workflow was reset
              */
             success: boolean;
+        };
+        /**
+         * RetractFrame
+         * @description Everything an uncommitted reply attempt streamed is withdrawn; work is never retracted.
+         */
+        RetractFrame: {
+            /** Attempt Id */
+            attempt_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "retract";
+        };
+        /**
+         * RetryMessageRequest
+         * @description Answer the user message target again in place; message_id is minted by the client and makes a resend a no-op.
+         */
+        RetryMessageRequest: {
+            /** Message Id */
+            message_id: string;
+            /** Target */
+            target: string;
         };
         /** SandboxExecuteRequest */
         SandboxExecuteRequest: {
@@ -13281,6 +15312,85 @@ export interface components {
          * @enum {string}
          */
         ScheduleRejection: "wrong_field_count" | "unparseable" | "too_frequent" | "never_fires";
+        /**
+         * ScoutSkipReason
+         * @description Why a scout contributed nothing to this brief.
+         * @enum {string}
+         */
+        ScoutSkipReason: "failed" | "budget" | "backoff" | "source_failed" | "no_read_only_tools" | "unknown_integration" | "signed_out" | "out_of_time" | "free_plan" | "dormant";
+        /**
+         * ScreenFrame
+         * @description The screen a connection opens on: its newest page, or only what is new or changed since the client's after.
+         */
+        ScreenFrame: {
+            /** Head */
+            head: number;
+            /**
+             * Held Cards
+             * @default {}
+             */
+            held_cards?: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen";
+        };
+        /**
+         * ScreenInsertFrame
+         * @description An item became visible; its seq is its position, before every item with a higher one.
+         */
+        ScreenInsertFrame: {
+            /** Head */
+            head: number;
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen_insert";
+        };
+        /**
+         * ScreenPatchFrame
+         * @description What changed in an item this connection already sent; the item keeps its position.
+         */
+        ScreenPatchFrame: {
+            /** Base */
+            base: number;
+            /** Changes */
+            changes: components["schemas"]["ItemChange"][];
+            /** Head */
+            head: number;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen_patch";
+        };
+        /**
+         * ScreenUpdateFrame
+         * @description An item already shown changed in place; it keeps its position.
+         */
+        ScreenUpdateFrame: {
+            /** Head */
+            head: number;
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen_update";
+        };
         /**
          * SearchIntegrationItem
          * @description Integration item in search results.
@@ -13373,6 +15483,19 @@ export interface components {
             messages: components["schemas"]["MessageSearchResult"][];
             /** Notes */
             notes: components["schemas"]["NoteSearchResult"][];
+        };
+        /**
+         * SectionBlock
+         * @description A lead or items block, stored as the payload section it became (sections[section]).
+         */
+        SectionBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "items" | "lead";
+            /** Section */
+            section: number;
         };
         /**
          * SelectedCalendarEventData
@@ -13524,6 +15647,48 @@ export interface components {
             status: string;
         };
         /**
+         * SendMessageRequest
+         * @description A user message sent into a conversation; message_id is minted by the client and makes a resend a no-op.
+         */
+        SendMessageRequest: {
+            /** File Ids */
+            file_ids?: string[];
+            /** Message Id */
+            message_id: string;
+            /** Reply To */
+            reply_to?: string | null;
+            reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
+            selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
+            /** Selected Tool */
+            selected_tool?: string | null;
+            selected_workflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
+            /** Text */
+            text: string;
+            /** Tool Category */
+            tool_category?: string | null;
+            /**
+             * Voice
+             * @default false
+             */
+            voice?: boolean;
+        };
+        /**
+         * SeriesPoint
+         * @description One computed point: a day or a category, and its value.
+         */
+        SeriesPoint: {
+            /** X */
+            x: string;
+            /** Y */
+            y: number;
+        };
+        /**
+         * SeriesShape
+         * @description How a series' points are laid out, which decides the charts that can draw it.
+         * @enum {string}
+         */
+        SeriesShape: "time_series" | "categorical";
+        /**
          * SetToolOverrideRequest
          * @description Body for setting or clearing one tool's approval override.
          */
@@ -13594,6 +15759,53 @@ export interface components {
              */
             wizard_dismissed: boolean;
         };
+        /**
+         * ShareLinkRequest
+         * @description Share one of the owner's artifacts: its live link, minted with settings when none is live.
+         */
+        ShareLinkRequest: {
+            settings?: components["schemas"]["LinkSettings"];
+            /** Target */
+            target: components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"];
+        };
+        /**
+         * ShortLinkResponse
+         * @description One live heygaia.link and its settings.
+         *
+         *     content_max_access is the widest level its file may be served at when the
+         *     file narrows it (a login form, an installer); None otherwise.
+         */
+        ShortLinkResponse: {
+            access: components["schemas"]["LinkAccess"];
+            content_max_access: components["schemas"]["LinkAccess"] | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Slug */
+            slug: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * ShortLinkShareState
+         * @description Whether one of the owner's artifacts is shared: its live link, or None.
+         */
+        ShortLinkShareState: {
+            link: components["schemas"]["ShortLinkResponse"] | null;
+        };
+        /**
+         * ShortLinkTargetRequest
+         * @description One of the owner's artifacts, to read or stop sharing.
+         */
+        ShortLinkTargetRequest: {
+            /** Target */
+            target: components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"];
+        };
+        /**
+         * ShortLinkTargetType
+         * @description Every kind of artifact a heygaia.link can point at.
+         * @enum {string}
+         */
+        ShortLinkTargetType: "todo_deliverable" | "briefing" | "workspace_file" | "workflow_run" | "openui_artifact";
         /**
          * SignupRequest
          * @description Body of POST /api/v1/auth/signup; invite is the token from an invite link.
@@ -13964,6 +16176,22 @@ export interface components {
             starred: boolean;
         };
         /**
+         * StateFrame
+         * @description The conversation's display state after an append.
+         */
+        StateFrame: {
+            display: components["schemas"]["DisplayState"];
+            /** Head */
+            head: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "state";
+            /** Work */
+            work: components["schemas"]["LiveTask"][];
+        };
+        /**
          * StaticReminderPayload
          * @description Payload for STATIC agent reminders.
          */
@@ -13978,6 +16206,14 @@ export interface components {
              * @description Notification title: short and human-readable, like a phone notification header (e.g. 'Drink water'). Shown directly to the user.
              */
             title: string;
+        };
+        /**
+         * StopSharingResult
+         * @description Whether stopping killed a live link; False when the artifact was not shared.
+         */
+        StopSharingResult: {
+            /** Revoked */
+            revoked: boolean;
         };
         /**
          * StoredIntegrationTool
@@ -14451,7 +16687,62 @@ export interface components {
          * @description Why a system-generated conversation was created.
          * @enum {string}
          */
-        SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "other";
+        SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "briefing" | "other";
+        /**
+         * SystemWorkflowsProvisionedNotification
+         * @description Connecting an integration set up its system workflows.
+         */
+        SystemWorkflowsProvisionedNotification: {
+            /** Integration Display Name */
+            integration_display_name: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "system_workflows_provisioned";
+        };
+        /**
+         * TimelineCard
+         * @description A card rendered on its own below the thread; a grouped tool's calls arrive as one card.
+         */
+        TimelineCard: {
+            card: components["schemas"]["ToolDataEntry"];
+            /** Key */
+            key: string;
+        };
+        /**
+         * TimelineDelta
+         * @description What changed in the reply's timeline since the attempt's last one; the first is against an empty timeline.
+         */
+        TimelineDelta: {
+            /** Changes */
+            changes: components["schemas"]["ItemChange"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "timeline";
+        };
+        /**
+         * TimelineStep
+         * @description One row of the tool thread, keyed stably across the stream.
+         *
+         *     data is the tool-call entry, or the subagent group with its handoff_input, handoff_output and
+         *     step_keys (one per tool call, in order) filled in. An output or handoff_output the server cut
+         *     names its full length beside it, as output_original_length or handoff_output_original_length.
+         */
+        TimelineStep: {
+            data: components["schemas"]["JsonValue"];
+            /** Key */
+            key: string;
+            kind: components["schemas"]["TimelineStepKind"];
+        };
+        /**
+         * TimelineStepKind
+         * @description What one row of a tool timeline shows: a tool call, or a subagent's group of them.
+         * @enum {string}
+         */
+        TimelineStepKind: "tool" | "subagent";
         /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
@@ -14502,6 +16793,21 @@ export interface components {
             upcoming: number;
         };
         /**
+         * TodoFailedNotification
+         * @description A scheduled todo that stopped after using up its attempts.
+         */
+        TodoFailedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_failed";
+            /** Retry Count */
+            retry_count: number;
+            /** Todo Id */
+            todo_id: string;
+        };
+        /**
          * TodoistNewTaskCreatedConfig
          * @description Config for todoist_new_task_created trigger.
          */
@@ -14546,6 +16852,11 @@ export interface components {
              */
             created_at?: string;
             /**
+             * @description Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed.
+             * @default now
+             */
+            delivery?: components["schemas"]["WorkflowDelivery"];
+            /**
              * Description
              * @description Description of the todo item
              */
@@ -14576,12 +16887,6 @@ export interface components {
              * @description Labels for categorization
              */
             labels?: string[];
-            /**
-             * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.
-             * @default true
-             */
-            notify_on_run?: boolean;
             /**
              * @description Priority level
              * @default none
@@ -14634,6 +16939,19 @@ export interface components {
             workflow_id?: string | null;
         };
         /**
+         * TodoNotification
+         * @description A notification about one todo: its run's result, or what its health check found.
+         */
+        TodoNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo";
+            /** Todo Id */
+            todo_id: string;
+        };
+        /**
          * TodoResponse
          * @description Complete todo response with all fields
          */
@@ -14655,6 +16973,11 @@ export interface components {
              * @description Creation timestamp
              */
             created_at: string;
+            /**
+             * @description Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed.
+             * @default now
+             */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Description of the todo item
@@ -14691,12 +17014,6 @@ export interface components {
              * @description Labels for categorization
              */
             labels: string[];
-            /**
-             * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.
-             * @default true
-             */
-            notify_on_run: boolean;
             /**
              * Parent Todo Id
              * @description Read-only; the tracked todo this one is a sub-todo of, set by GAIA
@@ -14820,11 +17137,30 @@ export interface components {
              * @default 0
              */
             pending?: number;
+            /** Pending By Project */
+            pending_by_project?: {
+                [key: string]: number;
+            };
             /**
              * Total
              * @default 0
              */
             total?: number;
+        };
+        /**
+         * TodoTriggerFiredNotification
+         * @description An event a todo's trigger subscription watches fired.
+         */
+        TodoTriggerFiredNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_trigger_fired";
+            /** Subscription Id */
+            subscription_id: string;
+            /** Todo Id */
+            todo_id: string;
         };
         /**
          * TodoUpdateRequest
@@ -14833,6 +17169,7 @@ export interface components {
         TodoUpdateRequest: {
             /** Completed */
             completed?: boolean | null;
+            delivery?: components["schemas"]["WorkflowDelivery"] | null;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -14843,8 +17180,6 @@ export interface components {
             expires_at?: string | null;
             /** Labels */
             labels?: string[] | null;
-            /** Notify On Run */
-            notify_on_run?: boolean | null;
             priority?: components["schemas"]["Priority"] | null;
             /** Project Id */
             project_id?: string | null;
@@ -14867,6 +17202,27 @@ export interface components {
          * @enum {string}
          */
         TodoWakeKind: "schedule" | "trigger" | "approval";
+        /**
+         * TodoWokeItem
+         * @description What woke a tracked todo's run; its write-up is its own item.
+         */
+        TodoWokeItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_woke";
+            /** Seq */
+            seq: number;
+            wake: components["schemas"]["TodoRunWake"];
+        };
         /**
          * TodoWorkflowGenerationResponse
          * @description Result of asking for a todo's workflow to be generated.
@@ -14938,22 +17294,10 @@ export interface components {
         };
         /**
          * ToolDataEntry
-         * @description Unified structure for tool execution data.
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
          *
-         *     Every key an emitter can stamp must be declared here. This TypedDict is the
-         *     element type of ``MessageModel.tool_data``, and Pydantic drops undeclared
-         *     keys on ``model_dump()`` — which is how a message reaches Mongo. An emitted
-         *     key missing from this shape therefore survives the live SSE frame (the
-         *     frontend parses those against its own loose schema) and silently vanishes
-         *     from the stored turn, so the bug only ever appears on reload.
-         *
-         *     ``data`` is deliberately open: every tool owns the shape it puts here (a
-         *     calendar option list, an email thread, a rendered artifact), so the only
-         *     honest constraint is "JSON the frontend's per-tool card knows how to read".
-         *     Everything around it is closed.
-         *
-         *     The frontend mirror is ``ToolDataEntrySchema`` in
-         *     ``libs/shared/ts/src/chat/schema.ts``.
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
          */
         ToolDataEntry: {
             /** Data */
@@ -14998,6 +17342,24 @@ export interface components {
             requires_integration: boolean;
         };
         /**
+         * ToolProgress
+         * @description The newest tool call's line, which the loading row shows while the item streams.
+         */
+        ToolProgress: {
+            /** Icon Url */
+            icon_url: string | null;
+            /** Integration Name */
+            integration_name: string | null;
+            /** Message */
+            message: string;
+            /** Show Category */
+            show_category: boolean;
+            /** Tool Category */
+            tool_category: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
          * ToolsCategoryResponse
          * @description Response model for tools by category.
          */
@@ -15022,6 +17384,29 @@ export interface components {
             total_count: number;
         };
         /**
+         * ToolsSetup
+         * @description Where an MCP's post-connect tool discovery stands, so the UI knows when to stop waiting.
+         * @enum {string}
+         */
+        ToolsSetup: "running" | "ready" | "failed";
+        /**
+         * ToolTimeline
+         * @description What an item's cards show, in order: the tool thread, then the cards rendered on their own.
+         */
+        ToolTimeline: {
+            /**
+             * Cards
+             * @default []
+             */
+            cards: components["schemas"]["TimelineCard"][];
+            progress: components["schemas"]["ToolProgress"] | null;
+            /**
+             * Steps
+             * @default []
+             */
+            steps: components["schemas"]["TimelineStep"][];
+        };
+        /**
          * TranscribeAudioResponse
          * @description Response model for a transcribed bot audio clip.
          */
@@ -15036,9 +17421,8 @@ export interface components {
          * TriageEmailSummary
          * @description The fields of an important email that actually reach the client.
          *
-         *     Deliberately not :class:`EmailSummary`: both the persisted triage subdoc and
-         *     the ``triage_ready`` WebSocket payload drop ``snippet``, and the frontend
-         *     types exactly these three.
+         *     Deliberately not :class:`EmailSummary`: the persisted triage subdoc drops
+         *     ``snippet``, and the frontend types exactly these three.
          *
          *     Defaulted for the same reason as :class:`PersistedTriageSummary` — these
          *     entries are read back out of a persisted subdoc, and the write path always
@@ -15234,6 +17618,28 @@ export interface components {
          */
         TriggerType: "manual" | "schedule" | "integration" | "scheduled_todo" | "todo_trigger";
         /**
+         * UncomposedItem
+         * @description What GAIA read but the composition left out, with the words for where it stands.
+         */
+        UncomposedItem: {
+            /** App */
+            app: string;
+            /** Detail */
+            detail: string | null;
+            kind: components["schemas"]["ItemState"];
+            /**
+             * State Label
+             * @description The item's state in a few words, as the brief page shows it.
+             */
+            state_label: string;
+            /** Title */
+            title: string;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
          * UnlinkAccountResponse
          * @description Response model for unlinking a platform account.
          */
@@ -15256,6 +17662,15 @@ export interface components {
              * @constant
              */
             status?: "success";
+        };
+        /**
+         * UnreadSource
+         * @description A connected app the brief could not read this time, and why.
+         */
+        UnreadSource: {
+            /** App */
+            app: string;
+            reason: components["schemas"]["ScoutSkipReason"];
         };
         /**
          * UpdateCustomIntegrationRequest
@@ -15400,31 +17815,6 @@ export interface components {
             content: string;
         };
         /**
-         * UpdateMessagesRequest
-         * @description Request to replace the messages of a conversation.
-         */
-        UpdateMessagesRequest: {
-            /** Conversation Id */
-            conversation_id: string;
-            /** Messages */
-            messages: components["schemas"]["MessageModelInput"][];
-        };
-        /**
-         * UpdateMessagesResponse
-         * @description Append acknowledgement carrying the ids the appended messages were stored
-         *     under — the client reconciles its optimistic records against these.
-         */
-        UpdateMessagesResponse: {
-            /** Conversation Id */
-            conversation_id: string;
-            /** Message */
-            message: string;
-            /** Message Ids */
-            message_ids: string[];
-            /** Modified Count */
-            modified_count: number;
-        };
-        /**
          * UpdateProjectRequest
          * @description Model for updating projects - all fields optional
          */
@@ -15512,6 +17902,7 @@ export interface components {
         UpdateWorkflowRequest: {
             /** Activated */
             activated?: boolean | null;
+            delivery?: components["schemas"]["WorkflowDelivery"] | null;
             /** Description */
             description?: string | null;
             /** @description Absent keeps the gate, null removes it, a value replaces it */
@@ -15522,8 +17913,6 @@ export interface components {
             icon_color?: string | null;
             /** Integration Ids */
             integration_ids?: string[] | null;
-            /** Notify On Completion */
-            notify_on_completion?: boolean | null;
             /** Prompt */
             prompt?: string | null;
             /** Steps */
@@ -15652,6 +18041,94 @@ export interface components {
              * @description Why the switch is locked, shown beside it; null when available
              */
             unavailable_reason: string | null;
+        };
+        /**
+         * UserItem
+         * @description A message the user sent, with GAIA's reaction to it.
+         */
+        UserItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "user";
+            message: components["schemas"]["UserMessage"];
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * UserMessage
+         * @description A message the user sent from any surface.
+         */
+        UserMessage: {
+            /**
+             * File Ids
+             * @default []
+             */
+            file_ids: string[];
+            /**
+             * Files
+             * @default []
+             */
+            files: components["schemas"]["FileData"][];
+            /**
+             * First Contact
+             * @default false
+             */
+            first_contact: boolean;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * Imported
+             * @default false
+             */
+            imported: boolean;
+            /**
+             * Kind
+             * @default user_message
+             * @constant
+             */
+            kind: "user_message";
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned: boolean;
+            /** Platform Message Id */
+            platform_message_id: string | null;
+            /** Posthog Session Id */
+            posthog_session_id: string | null;
+            reaction: components["schemas"]["Reaction"] | null;
+            /** Reply To */
+            reply_to: string | null;
+            reply_to_message: components["schemas"]["ReplyToMessageData"] | null;
+            /** Retry Of */
+            retry_of: string | null;
+            /**
+             * Revision
+             * @default 0
+             */
+            revision: number;
+            selected_calendar_event: components["schemas"]["SelectedCalendarEventData"] | null;
+            /** Selected Tool */
+            selected_tool: string | null;
+            selected_workflow: components["schemas"]["SelectedWorkflowDataOutput"] | null;
+            surface: components["schemas"]["ConversationSource"];
+            /** Text */
+            text: string;
+            todo_run_wake: components["schemas"]["TodoRunWake"] | null;
+            /** Tool Category */
+            tool_category: string | null;
         };
         /**
          * UserSubscriptionStatus
@@ -15899,6 +18376,71 @@ export interface components {
             web?: components["schemas"]["SearchResultItem"][];
         };
         /**
+         * WorkCancelled
+         * @description Everything one stop cancelled; all empty when the conversation was idle.
+         */
+        WorkCancelled: {
+            /**
+             * Approval Ids
+             * @description Pending approvals closed, barrier and ledger.
+             */
+            approval_ids: string[];
+            /**
+             * Browser Jobs
+             * @description Browser jobs reached, with what each stop came to.
+             */
+            browser_jobs: {
+                [key: string]: components["schemas"]["BrowserStopOutcome"];
+            };
+            /**
+             * Executor Spared
+             * @description An executor task kept running because the stop did not name it.
+             * @default false
+             */
+            executor_spared: boolean;
+            /**
+             * Executor Stopped
+             * @description A running executor task was stopped.
+             * @default false
+             */
+            executor_stopped: boolean;
+            /**
+             * Executor Task Id
+             * @description Task id of the stopped executor run; None for a lock without one.
+             */
+            executor_task_id: string | null;
+            /**
+             * Pending Task Ids
+             * @description Queued executor requests dropped by id.
+             */
+            pending_task_ids: string[];
+            /**
+             * Replay Ids
+             * @description Workflow playbook replays stopped, by stream id.
+             */
+            replay_ids: string[];
+            /**
+             * Subagent Ids
+             * @description Running subagents stopped.
+             */
+            subagent_ids: string[];
+        };
+        /**
+         * WorkflowCompletedNotification
+         * @description A finished workflow run; its result is in the conversation.
+         */
+        WorkflowCompletedNotification: {
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_completed";
+            /** Workflow Id */
+            workflow_id: string;
+        };
+        /**
          * WorkflowCreator
          * @description The public-facing creator card built by ``format_creator``.
          *
@@ -15914,6 +18456,16 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * WorkflowDelivery
+         * @description How a finished workflow run's result reaches the user.
+         *
+         *     Failures always notify, whatever the mode: a broken workflow needs the user
+         *     now. A run whose narration decides there is nothing worth reporting reaches
+         *     nobody in any mode.
+         * @enum {string}
+         */
+        WorkflowDelivery: "now" | "brief" | "silent";
         /**
          * WorkflowExecution
          * @description A single workflow execution record.
@@ -16031,6 +18583,45 @@ export interface components {
             total: number;
         };
         /**
+         * WorkflowFailedNotification
+         * @description A workflow run that errored or that a limit stopped.
+         */
+        WorkflowFailedNotification: {
+            /**
+             * Error Type
+             * @description The exception's class name, when the worker saw it.
+             */
+            error_type: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_failed";
+            /** Workflow Id */
+            workflow_id: string;
+        };
+        /**
+         * WorkflowFiredItem
+         * @description The workflow card that started a run; the run's reply is its own item.
+         */
+        WorkflowFiredItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_fired";
+            /** Seq */
+            seq: number;
+            workflow: components["schemas"]["SelectedWorkflowDataOutput"];
+        };
+        /**
          * WorkflowListResponse
          * @description Response model for listing workflows.
          */
@@ -16048,6 +18639,21 @@ export interface components {
              * @description Human-readable outcome
              */
             message: string;
+        };
+        /**
+         * WorkflowPausedNotification
+         * @description A workflow paused until the integrations it needs are connected.
+         */
+        WorkflowPausedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_paused";
+            /** Missing Integrations */
+            missing_integrations: string[];
+            /** Workflow Id */
+            workflow_id: string;
         };
         /**
          * WorkflowResponse
@@ -16202,6 +18808,8 @@ export interface components {
             current_step_index: number;
             /** @description Why the workflow is not activated. None means the user turned it off themselves — only system-paused workflows may be resumed automatically. */
             deactivated_reason: components["schemas"]["DeactivationReason"] | null;
+            /** @description How a finished run's result reaches the user: pushed now, held for the next brief, or kept silent in the workflow's conversation. Failures always notify. */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Short display description for cards/UI (1-2 sentences)
@@ -16279,12 +18887,6 @@ export interface components {
              * @description Required integrations the user has not connected yet.
              */
             missing_integrations: components["schemas"]["IntegrationRef"][] | null;
-            /**
-             * Notify On Completion
-             * @description Whether GAIA sends the automatic completion notification when a run finishes. When False the run is silent (failures still notify) and the agent only notifies if the workflow's own instructions ask it to.
-             * @default true
-             */
-            notify_on_completion: boolean;
             /**
              * Occurrence Count
              * @description Number of times this task has been executed
@@ -16377,6 +18979,67 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * WorkItem
+         * @description One piece of work from its hand-off to its result, with every task handed to it.
+         */
+        WorkItem: {
+            /** Approvals */
+            approvals: components["schemas"]["ApprovalRequestEntry"][];
+            /** Asked Seq */
+            asked_seq: number;
+            /** Asking */
+            asking: components["schemas"]["ApprovalRequested"][];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            handoff: components["schemas"]["ToolDataEntry"] | null;
+            /** Id */
+            id: string;
+            image: components["schemas"]["ImageData"] | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "work";
+            /** Retry Target */
+            retry_target: string | null;
+            /** Seq */
+            seq: number;
+            status: components["schemas"]["WorkStatus"];
+            /** Task Id */
+            task_id: string;
+            timeline: components["schemas"]["ToolTimeline"];
+            /**
+             * Tool Data
+             * @deprecated
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
+        };
+        /**
+         * WorkspaceFileTarget
+         * @description A file GAIA wrote in one conversation's workspace, by its path under the workspace's files.
+         */
+        WorkspaceFileTarget: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Path */
+            path: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "workspace_file";
+        };
+        /**
+         * WorkStatus
+         * @description Where a piece of work stands: live, or how it ended.
+         * @enum {string}
+         */
+        WorkStatus: "running" | "awaiting_approval" | "done" | "failed" | "cancelled" | "lost";
         /** WritingStyleEditRequest */
         WritingStyleEditRequest: {
             /** Edited Summary */
@@ -16430,23 +19093,37 @@ export interface components {
 }
 export type ActionConfig = components['schemas']['ActionConfig'];
 export type ActionExecutionResponse = components['schemas']['ActionExecutionResponse'];
+export type ActionResult = components['schemas']['ActionResult'];
 export type ActionStyle = components['schemas']['ActionStyle'];
 export type ActionType = components['schemas']['ActionType'];
+export type ActiveBotConversation = components['schemas']['ActiveBotConversation'];
 export type ActivityDay = components['schemas']['ActivityDay'];
 export type AddIntegrationResponse = components['schemas']['AddIntegrationResponse'];
 export type AddUserIntegrationRequest = components['schemas']['AddUserIntegrationRequest'];
 export type AddUserIntegrationResponse = components['schemas']['AddUserIntegrationResponse'];
 export type AgentType = components['schemas']['AgentType'];
 export type ApiCallConfig = components['schemas']['ApiCallConfig'];
+export type ApprovalDecider = components['schemas']['ApprovalDecider'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
+export type ApprovalDescription = components['schemas']['ApprovalDescription'];
+export type ApprovalDetail = components['schemas']['ApprovalDetail'];
+export type ApprovalNotification = components['schemas']['ApprovalNotification'];
+export type ApprovalOutcome = components['schemas']['ApprovalOutcome'];
+export type ApprovalRequested = components['schemas']['ApprovalRequested'];
+export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];
+export type ApprovalRequestEntryData = components['schemas']['ApprovalRequestEntryData'];
+export type ApprovalStatus = components['schemas']['ApprovalStatus'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
+export type ArtifactKind = components['schemas']['ArtifactKind'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
+export type BargeInAccepted = components['schemas']['BargeInAccepted'];
+export type BargeInRequest = components['schemas']['BargeInRequest'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -16477,13 +19154,46 @@ export type Body_user_update_user_name = components['schemas']['Body_user_update
 export type Body_user_update_user_timezone = components['schemas']['Body_user_update_user_timezone'];
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
+export type BotDeliveryRecorded = components['schemas']['BotDeliveryRecorded'];
+export type BotDeliveryReport = components['schemas']['BotDeliveryReport'];
+export type BotMessageAccepted = components['schemas']['BotMessageAccepted'];
+export type BotSessionRequest = components['schemas']['BotSessionRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
+export type BriefAction = components['schemas']['BriefAction'];
+export type BriefCard = components['schemas']['BriefCard'];
+export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
+export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
+export type BriefEditionNotification = components['schemas']['BriefEditionNotification'];
+export type BriefForm = components['schemas']['BriefForm'];
+export type BriefingEdition = components['schemas']['BriefingEdition'];
+export type BriefingEditions = components['schemas']['BriefingEditions'];
+export type BriefingEditionsUpdate = components['schemas']['BriefingEditionsUpdate'];
+export type BriefingEvent = components['schemas']['BriefingEvent'];
+export type BriefingFrequency = components['schemas']['BriefingFrequency'];
+export type BriefingItem = components['schemas']['BriefingItem'];
+export type BriefingKind = components['schemas']['BriefingKind'];
+export type BriefingListResponse = components['schemas']['BriefingListResponse'];
+export type BriefingMood = components['schemas']['BriefingMood'];
+export type BriefingPayload = components['schemas']['BriefingPayload'];
+export type BriefingScheduleState = components['schemas']['BriefingScheduleState'];
+export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];
+export type BriefingSection = components['schemas']['BriefingSection'];
+export type BriefingStat = components['schemas']['BriefingStat'];
+export type BriefingTallies = components['schemas']['BriefingTallies'];
+export type BriefingView = components['schemas']['BriefingView'];
+export type BriefingWeek = components['schemas']['BriefingWeek'];
+export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
+export type BriefNoteNotification = components['schemas']['BriefNoteNotification'];
+export type BriefOutcome = components['schemas']['BriefOutcome'];
+export type BriefPoolItem = components['schemas']['BriefPoolItem'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
 export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus'];
+export type BrowserStopOutcome = components['schemas']['BrowserStopOutcome'];
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
+export type BubbleTextDelta = components['schemas']['BubbleTextDelta'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
 export type BuiltInEngine = components['schemas']['BuiltInEngine'];
 export type BuiltInOption = components['schemas']['BuiltInOption'];
@@ -16504,13 +19214,17 @@ export type CalendarListResponse = components['schemas']['CalendarListResponse']
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
-export type CancelStreamResponse = components['schemas']['CancelStreamResponse'];
+export type CalendarResponse = components['schemas']['CalendarResponse'];
+export type CardsDelta = components['schemas']['CardsDelta'];
+export type ChangeOp = components['schemas']['ChangeOp'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
 export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
 export type ChannelPreferences = components['schemas']['ChannelPreferences'];
 export type ChannelPreferencesUpdate = components['schemas']['ChannelPreferencesUpdate'];
 export type ChannelPriorityList = components['schemas']['ChannelPriorityList'];
+export type ChartBlock = components['schemas']['ChartBlock'];
+export type ChartKind = components['schemas']['ChartKind'];
 export type CheckoutSource = components['schemas']['CheckoutSource'];
 export type CommunityIntegrationCreator = components['schemas']['CommunityIntegrationCreator'];
 export type CommunityIntegrationItem = components['schemas']['CommunityIntegrationItem'];
@@ -16529,16 +19243,20 @@ export type ConditionOperator = components['schemas']['ConditionOperator'];
 export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
+export type ContentTokenResponse = components['schemas']['ContentTokenResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
-export type ConversationDocument = components['schemas']['ConversationDocument'];
+export type ConversationEntriesPage = components['schemas']['ConversationEntriesPage'];
+export type ConversationEvent = components['schemas']['ConversationEvent'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
 export type ConversationModel = components['schemas']['ConversationModel'];
 export type ConversationSource = components['schemas']['ConversationSource'];
+export type ConversationStopResponse = components['schemas']['ConversationStopResponse'];
 export type ConversationSummary = components['schemas']['ConversationSummary'];
 export type ConversationSyncItem = components['schemas']['ConversationSyncItem'];
 export type ConversationSyncRow = components['schemas']['ConversationSyncRow'];
+export type ConversationUpdatedFrame = components['schemas']['ConversationUpdatedFrame'];
 export type CreateCheckoutSessionRequest = components['schemas']['CreateCheckoutSessionRequest'];
 export type CreateConversationResponse = components['schemas']['CreateConversationResponse'];
 export type CreateCustomIntegrationRequest = components['schemas']['CreateCustomIntegrationRequest'];
@@ -16556,7 +19274,9 @@ export type CredentialProviderName = components['schemas']['CredentialProviderNa
 export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
+export type DataSeries = components['schemas']['DataSeries'];
 export type DeactivationReason = components['schemas']['DeactivationReason'];
+export type DecisionRefusal = components['schemas']['DecisionRefusal'];
 export type DegradedHealthResponse = components['schemas']['DegradedHealthResponse'];
 export type DeleteAllConversationsResponse = components['schemas']['DeleteAllConversationsResponse'];
 export type DeleteMemoryResponse = components['schemas']['DeleteMemoryResponse'];
@@ -16584,7 +19304,14 @@ export type DiscoveredSkillInfo = components['schemas']['DiscoveredSkillInfo'];
 export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsResponse'];
 export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
+export type DisplayState = components['schemas']['DisplayState'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
+export type DormantTodosNotification = components['schemas']['DormantTodosNotification'];
+export type EditionChoice = components['schemas']['EditionChoice'];
+export type EditionFamily = components['schemas']['EditionFamily'];
+export type EditionImage = components['schemas']['EditionImage'];
+export type EditionLeftOut = components['schemas']['EditionLeftOut'];
+export type EditionVariant = components['schemas']['EditionVariant'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
@@ -16592,7 +19319,9 @@ export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
+export type EventsWire = components['schemas']['EventsWire'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
+export type FailureReason = components['schemas']['FailureReason'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
 export type FeatureSpec = components['schemas']['FeatureSpec'];
 export type FeatureStage = components['schemas']['FeatureStage'];
@@ -16607,7 +19336,7 @@ export type FirstStepKey = components['schemas']['FirstStepKey'];
 export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollapseRequest'];
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
-export type FoldedCards = components['schemas']['FoldedCards'];
+export type FollowUpsDelta = components['schemas']['FollowUpsDelta'];
 export type GateAuthor = components['schemas']['GateAuthor'];
 export type GateEdit = components['schemas']['GateEdit'];
 export type GateSkipRecord = components['schemas']['GateSkipRecord'];
@@ -16622,10 +19351,13 @@ export type GmailEmailSentConfig = components['schemas']['GmailEmailSentConfig']
 export type GmailMessagesResponse = components['schemas']['GmailMessagesResponse'];
 export type GmailMessageSummary = components['schemas']['GmailMessageSummary'];
 export type GmailNewMessageConfig = components['schemas']['GmailNewMessageConfig'];
+export type GmailPersonalizedNotification = components['schemas']['GmailPersonalizedNotification'];
 export type GmailPollInboxConfig = components['schemas']['GmailPollInboxConfig'];
+export type GoalState = components['schemas']['GoalState'];
 export type GoogleCalendarEventDateTime = components['schemas']['GoogleCalendarEventDateTime'];
 export type GoogleCalendarEventResource = components['schemas']['GoogleCalendarEventResource'];
 export type GoogleCalendarListEntry = components['schemas']['GoogleCalendarListEntry'];
+export type GoogleCalendarPerson = components['schemas']['GoogleCalendarPerson'];
 export type GoogleDocsDocumentDeletedConfig = components['schemas']['GoogleDocsDocumentDeletedConfig'];
 export type GoogleDocsDocumentUpdatedConfig = components['schemas']['GoogleDocsDocumentUpdatedConfig'];
 export type GoogleDocsNewDocumentConfig = components['schemas']['GoogleDocsNewDocumentConfig'];
@@ -16636,6 +19368,7 @@ export type HandoffDecisionRequest = components['schemas']['HandoffDecisionReque
 export type HandoffDecisionResponse = components['schemas']['HandoffDecisionResponse'];
 export type HandoffStatus = components['schemas']['HandoffStatus'];
 export type HealthResponse = components['schemas']['HealthResponse'];
+export type HeardFrom = components['schemas']['HeardFrom'];
 export type HILPreferencesResponse = components['schemas']['HILPreferencesResponse'];
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];
@@ -16655,28 +19388,43 @@ export type IntegrationAccountResponse = components['schemas']['IntegrationAccou
 export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
+export type IntegrationExpiredNotification = components['schemas']['IntegrationExpiredNotification'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
 export type IntegrationHowItWorksStep = components['schemas']['IntegrationHowItWorksStep'];
 export type IntegrationInfo = components['schemas']['IntegrationInfo'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
-export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
+export type IntegrationStatus = components['schemas']['IntegrationStatus'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type ItemChange = components['schemas']['ItemChange'];
+export type ItemState = components['schemas']['ItemState'];
+export type JsonValue = components['schemas']['JsonValue'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
 export type LinearIssueUpdatedConfig = components['schemas']['LinearIssueUpdatedConfig'];
+export type LinkAccess = components['schemas']['LinkAccess'];
+export type LinkContent = components['schemas']['LinkContent'];
+export type LinkDenial = components['schemas']['LinkDenial'];
+export type LinkDenialEnvelope = components['schemas']['LinkDenialEnvelope'];
 export type LinkedUsersResponse = components['schemas']['LinkedUsersResponse'];
+export type LinkEnvelope = components['schemas']['LinkEnvelope'];
 export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
+export type LinkPreviewMeta = components['schemas']['LinkPreviewMeta'];
+export type LinkReportRequest = components['schemas']['LinkReportRequest'];
+export type LinkSettings = components['schemas']['LinkSettings'];
+export type LinkSettingsUpdate = components['schemas']['LinkSettingsUpdate'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
+export type LiveTask = components['schemas']['LiveTask'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
+export type LoadedConversation = components['schemas']['LoadedConversation'];
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type ManagedAt = components['schemas']['ManagedAt'];
@@ -16713,19 +19461,17 @@ export type MemoryGraphResponse = components['schemas']['MemoryGraphResponse'];
 export type MemoryKind = components['schemas']['MemoryKind'];
 export type MemoryListResponse = components['schemas']['MemoryListResponse'];
 export type MemoryOverviewResponse = components['schemas']['MemoryOverviewResponse'];
+export type MemoryReadyNotification = components['schemas']['MemoryReadyNotification'];
 export type MemoryRelationType = components['schemas']['MemoryRelationType'];
 export type MemorySearchResult = components['schemas']['MemorySearchResult'];
 export type MemorySourceType = components['schemas']['MemorySourceType'];
 export type MemoryTreeNode = components['schemas']['MemoryTreeNode'];
 export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
-export type MessageDict = components['schemas']['MessageDict'];
+export type MessageAccepted = components['schemas']['MessageAccepted'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
-export type MessageKind = components['schemas']['MessageKind'];
-export type MessageModelInput = components['schemas']['MessageModelInput'];
-export type MessageModelOutput = components['schemas']['MessageModelOutput'];
+export type MessageReaction = components['schemas']['MessageReaction'];
 export type MessageRequest = components['schemas']['MessageRequest'];
-export type MessageRequestWithHistory = components['schemas']['MessageRequestWithHistory'];
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];
 export type MintPlatformLinkCodeResponse = components['schemas']['MintPlatformLinkCodeResponse'];
 export type MobileLoginUrlResponse = components['schemas']['MobileLoginUrlResponse'];
@@ -16733,9 +19479,12 @@ export type ModalConfig = components['schemas']['ModalConfig'];
 export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];
+export type NewStamp = components['schemas']['NewStamp'];
+export type NoteBlock = components['schemas']['NoteBlock'];
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
+export type NoticeItem = components['schemas']['NoticeItem'];
 export type NotificationAction = components['schemas']['NotificationAction'];
 export type NotificationActionView = components['schemas']['NotificationActionView'];
 export type NotificationChannelView = components['schemas']['NotificationChannelView'];
@@ -16766,8 +19515,11 @@ export type OnboardingResetResponse = components['schemas']['OnboardingResetResp
 export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
 export type OnboardingStep = components['schemas']['OnboardingStep'];
+export type OnboardingUser = components['schemas']['OnboardingUser'];
+export type OpenUIArtifactResponse = components['schemas']['OpenUIArtifactResponse'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
+export type PartialReply = components['schemas']['PartialReply'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
@@ -16789,7 +19541,11 @@ export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
 export type PollPairingResponse = components['schemas']['PollPairingResponse'];
+export type Postmark = components['schemas']['Postmark'];
+export type PostmarksResponse = components['schemas']['PostmarksResponse'];
 export type Priority = components['schemas']['Priority'];
+export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass'];
+export type ProgressBlock = components['schemas']['ProgressBlock'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
@@ -16801,19 +19557,29 @@ export type ProviderListResponse = components['schemas']['ProviderListResponse']
 export type ProviderPreset = components['schemas']['ProviderPreset'];
 export type ProviderTestFailure = components['schemas']['ProviderTestFailure'];
 export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
+export type PublicBriefing = components['schemas']['PublicBriefing'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
+export type PublicOpenUIArtifact = components['schemas']['PublicOpenUIArtifact'];
 export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
+export type PublicTodoDeliverable = components['schemas']['PublicTodoDeliverable'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
+export type PublicWorkflowRun = components['schemas']['PublicWorkflowRun'];
 export type PublicWorkflowsResponse = components['schemas']['PublicWorkflowsResponse'];
 export type PublicWorkflowStep = components['schemas']['PublicWorkflowStep'];
+export type PublicWorkspaceFile = components['schemas']['PublicWorkspaceFile'];
 export type PublishIntegrationResponse = components['schemas']['PublishIntegrationResponse'];
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
+export type QuoteBlock = components['schemas']['QuoteBlock'];
+export type QuoteSpan = components['schemas']['QuoteSpan'];
+export type Reaction = components['schemas']['Reaction'];
+export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
+export type RecordTarget = components['schemas']['RecordTarget'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
 export type RedeemLinkCodeRequest = components['schemas']['RedeemLinkCodeRequest'];
@@ -16826,11 +19592,19 @@ export type RegisterServerResponse = components['schemas']['RegisterServerRespon
 export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
 export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
+export type ReminderNotification = components['schemas']['ReminderNotification'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
+export type RenderMode = components['schemas']['RenderMode'];
+export type ReplyDeltaFrame = components['schemas']['ReplyDeltaFrame'];
+export type ReplyFile = components['schemas']['ReplyFile'];
+export type ReplyItem = components['schemas']['ReplyItem'];
+export type ReplyOutcome = components['schemas']['ReplyOutcome'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
-export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
+export type ReportReason = components['schemas']['ReportReason'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
+export type RetractFrame = components['schemas']['RetractFrame'];
+export type RetryMessageRequest = components['schemas']['RetryMessageRequest'];
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
 export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaRequest'];
@@ -16839,11 +19613,17 @@ export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfil
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
 export type ScheduleRejection = components['schemas']['ScheduleRejection'];
+export type ScoutSkipReason = components['schemas']['ScoutSkipReason'];
+export type ScreenFrame = components['schemas']['ScreenFrame'];
+export type ScreenInsertFrame = components['schemas']['ScreenInsertFrame'];
+export type ScreenPatchFrame = components['schemas']['ScreenPatchFrame'];
+export type ScreenUpdateFrame = components['schemas']['ScreenUpdateFrame'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
 export type SearchMode = components['schemas']['SearchMode'];
 export type SearchResultItem = components['schemas']['SearchResultItem'];
 export type SearchResultsResponse = components['schemas']['SearchResultsResponse'];
+export type SectionBlock = components['schemas']['SectionBlock'];
 export type SelectedCalendarEventData = components['schemas']['SelectedCalendarEventData'];
 export type SelectedWorkflowDataInput = components['schemas']['SelectedWorkflowDataInput'];
 export type SelectedWorkflowDataOutput = components['schemas']['SelectedWorkflowDataOutput'];
@@ -16853,9 +19633,17 @@ export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
+export type SendMessageRequest = components['schemas']['SendMessageRequest'];
+export type SeriesPoint = components['schemas']['SeriesPoint'];
+export type SeriesShape = components['schemas']['SeriesShape'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
+export type ShareLinkRequest = components['schemas']['ShareLinkRequest'];
+export type ShortLinkResponse = components['schemas']['ShortLinkResponse'];
+export type ShortLinkShareState = components['schemas']['ShortLinkShareState'];
+export type ShortLinkTargetRequest = components['schemas']['ShortLinkTargetRequest'];
+export type ShortLinkTargetType = components['schemas']['ShortLinkTargetType'];
 export type SignupRequest = components['schemas']['SignupRequest'];
 export type Skill = components['schemas']['Skill'];
 export type SkillInlineCreateRequest = components['schemas']['SkillInlineCreateRequest'];
@@ -16875,7 +19663,9 @@ export type StarredVoicesResponse = components['schemas']['StarredVoicesResponse
 export type StartPairingRequest = components['schemas']['StartPairingRequest'];
 export type StartPairingResponse = components['schemas']['StartPairingResponse'];
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
+export type StateFrame = components['schemas']['StateFrame'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
+export type StopSharingResult = components['schemas']['StopSharingResult'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
@@ -16902,18 +19692,27 @@ export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
+export type SystemWorkflowsProvisionedNotification = components['schemas']['SystemWorkflowsProvisionedNotification'];
+export type TimelineCard = components['schemas']['TimelineCard'];
+export type TimelineDelta = components['schemas']['TimelineDelta'];
+export type TimelineStep = components['schemas']['TimelineStep'];
+export type TimelineStepKind = components['schemas']['TimelineStepKind'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
+export type TodoFailedNotification = components['schemas']['TodoFailedNotification'];
 export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskCreatedConfig'];
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
+export type TodoNotification = components['schemas']['TodoNotification'];
 export type TodoResponse = components['schemas']['TodoResponse'];
 export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
+export type TodoTriggerFiredNotification = components['schemas']['TodoTriggerFiredNotification'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
 export type TodoWakeKind = components['schemas']['TodoWakeKind'];
+export type TodoWokeItem = components['schemas']['TodoWokeItem'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
@@ -16921,8 +19720,11 @@ export type TodoWorkflowStatusResponse = components['schemas']['TodoWorkflowStat
 export type ToolContract = components['schemas']['ToolContract'];
 export type ToolDataEntry = components['schemas']['ToolDataEntry'];
 export type ToolInfo = components['schemas']['ToolInfo'];
+export type ToolProgress = components['schemas']['ToolProgress'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
+export type ToolsSetup = components['schemas']['ToolsSetup'];
+export type ToolTimeline = components['schemas']['ToolTimeline'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
 export type TriggerConfig = components['schemas']['TriggerConfig'];
@@ -16933,8 +19735,10 @@ export type TriggerOptionsResponse = components['schemas']['TriggerOptionsRespon
 export type TriggerSubscriptionStatus = components['schemas']['TriggerSubscriptionStatus'];
 export type TriggerSubscriptionView = components['schemas']['TriggerSubscriptionView'];
 export type TriggerType = components['schemas']['TriggerType'];
+export type UncomposedItem = components['schemas']['UncomposedItem'];
 export type UnlinkAccountResponse = components['schemas']['UnlinkAccountResponse'];
 export type UnpublishIntegrationResponse = components['schemas']['UnpublishIntegrationResponse'];
+export type UnreadSource = components['schemas']['UnreadSource'];
 export type UpdateCustomIntegrationRequest = components['schemas']['UpdateCustomIntegrationRequest'];
 export type UpdateDescriptionRequest = components['schemas']['UpdateDescriptionRequest'];
 export type UpdateDescriptionResponse = components['schemas']['UpdateDescriptionResponse'];
@@ -16945,8 +19749,6 @@ export type UpdateHoloCardColorsResponse = components['schemas']['UpdateHoloCard
 export type UpdateInstructionsRequest = components['schemas']['UpdateInstructionsRequest'];
 export type UpdateIntegrationAccountRequest = components['schemas']['UpdateIntegrationAccountRequest'];
 export type UpdateMemoryRequest = components['schemas']['UpdateMemoryRequest'];
-export type UpdateMessagesRequest = components['schemas']['UpdateMessagesRequest'];
-export type UpdateMessagesResponse = components['schemas']['UpdateMessagesResponse'];
 export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 export type UpdateReminderRequest = components['schemas']['UpdateReminderRequest'];
 export type UpdateTimezoneResponse = components['schemas']['UpdateTimezoneResponse'];
@@ -16961,6 +19763,8 @@ export type UsageHistoryEntry = components['schemas']['UsageHistoryEntry'];
 export type UsageSummary = components['schemas']['UsageSummary'];
 export type UserFeatureFlagListResponse = components['schemas']['UserFeatureFlagListResponse'];
 export type UserFeatureFlagResponse = components['schemas']['UserFeatureFlagResponse'];
+export type UserItem = components['schemas']['UserItem'];
+export type UserMessage = components['schemas']['UserMessage'];
 export type UserSubscriptionStatus = components['schemas']['UserSubscriptionStatus'];
 export type UserUpdateResponse = components['schemas']['UserUpdateResponse'];
 export type ValidationIssue = components['schemas']['ValidationIssue'];
@@ -16970,19 +19774,28 @@ export type VoiceOption = components['schemas']['VoiceOption'];
 export type VoiceSelectionResponse = components['schemas']['VoiceSelectionResponse'];
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
+export type WorkCancelled = components['schemas']['WorkCancelled'];
+export type WorkflowCompletedNotification = components['schemas']['WorkflowCompletedNotification'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
+export type WorkflowDelivery = components['schemas']['WorkflowDelivery'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
 export type WorkflowExecutionsResponse = components['schemas']['WorkflowExecutionsResponse'];
+export type WorkflowFailedNotification = components['schemas']['WorkflowFailedNotification'];
+export type WorkflowFiredItem = components['schemas']['WorkflowFiredItem'];
 export type WorkflowListResponse = components['schemas']['WorkflowListResponse'];
 export type WorkflowMessageResponse = components['schemas']['WorkflowMessageResponse'];
+export type WorkflowPausedNotification = components['schemas']['WorkflowPausedNotification'];
 export type WorkflowResponse = components['schemas']['WorkflowResponse'];
 export type WorkflowStatusResponse = components['schemas']['WorkflowStatusResponse'];
 export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
 export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
+export type WorkItem = components['schemas']['WorkItem'];
+export type WorkspaceFileTarget = components['schemas']['WorkspaceFileTarget'];
+export type WorkStatus = components['schemas']['WorkStatus'];
 export type WritingStyleEditRequest = components['schemas']['WritingStyleEditRequest'];
 export type WritingStyleExampleBlocks = components['schemas']['WritingStyleExampleBlocks'];
 export type WritingStyleRegenerateRequest = components['schemas']['WritingStyleRegenerateRequest'];
@@ -17332,6 +20145,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HILPreferencesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artifacts_get_artifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenUIArtifactResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artifacts_get_artifact_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
                 };
             };
             /** @description Unprocessable Entity */
@@ -17748,16 +20659,18 @@ export interface operations {
             };
         };
     };
-    bot_bot_chat_stream: {
+    bot_record_delivered: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                conversation_id: string;
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["BotChatRequest"];
+                "application/json": components["schemas"]["BotDeliveryReport"];
             };
         };
         responses: {
@@ -17784,7 +20697,58 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BotDeliveryRecorded"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_list_active_conversations: {
+        parameters: {
+            query: {
+                platform: components["schemas"]["ConversationSource"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveBotConversation"][];
+                };
             };
             /** @description Unprocessable Entity */
             422: {
@@ -17997,6 +20961,57 @@ export interface operations {
             };
         };
     };
+    bot_bot_send_message: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotMessageAccepted"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     bot_redeem_link_code: {
         parameters: {
             query?: never;
@@ -18084,7 +21099,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ResetSessionRequest"];
+                "application/json": components["schemas"]["BotSessionRequest"];
             };
         };
         responses: {
@@ -18163,6 +21178,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotSettingsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_stop_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationStopResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -18308,6 +21374,461 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnlinkAccountResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_list_briefings: {
+        parameters: {
+            query?: {
+                /** @description The previous page's next_cursor; omit for the first page. */
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_briefing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                briefing_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingView"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_read_briefing_editions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingEditions"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_update_briefing_editions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefingEditionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingEditions"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_edition_image: {
+        parameters: {
+            query: {
+                /** @description The signature the brief's edition URL carries. */
+                t: string;
+            };
+            header?: never;
+            path: {
+                key: string;
+                variant: components["schemas"]["EditionVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_postmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostmarksResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_read_briefing_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingScheduleState"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_update_briefing_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefingScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingScheduleState"];
+                };
+            };
+            /** @description Briefs cannot turn off while workflows deliver to the brief */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefDeliveryWorkflowsConflict"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_stamp_art: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": unknown;
                 };
             };
             /** @description Unprocessable Entity */
@@ -19515,107 +23036,6 @@ export interface operations {
             };
         };
     };
-    chat_cancel_stream_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                stream_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CancelStreamResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    chat_chat_stream_endpoint: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Browser timezone fallback */
-                "x-timezone"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MessageRequestWithHistory"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     conversations_get_conversations_endpoint: {
         parameters: {
             query?: {
@@ -19801,7 +23221,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConversationDocument"];
+                    "application/json": components["schemas"]["LoadedConversation"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -19851,6 +23271,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationActionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_barge_in_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BargeInRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BargeInAccepted"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -19917,18 +23390,21 @@ export interface operations {
             };
         };
     };
-    conversations_update_messages_endpoint: {
+    conversations_get_entries_before_endpoint: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Return entries with a seq below this one */
+                before_seq: number;
+                /** @description Page size */
+                limit?: number;
+            };
             header?: never;
-            path?: never;
+            path: {
+                conversation_id: string;
+            };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateMessagesRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Client Error */
             "4XX": {
@@ -19954,7 +23430,115 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UpdateMessagesResponse"];
+                    "application/json": components["schemas"]["ConversationEntriesPage"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_conversation_events_endpoint: {
+        parameters: {
+            query?: {
+                /** @description The log head the client's copy of the screen reached */
+                after?: number;
+                /** @description The newest frame shapes the client reads */
+                wire?: components["schemas"]["EventsWire"];
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationEvent"];
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_send_message_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageAccepted"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -20071,6 +23655,59 @@ export interface operations {
             };
         };
     };
+    conversations_retry_message_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetryMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageAccepted"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     conversations_star_conversation_endpoint: {
         parameters: {
             query?: never;
@@ -20111,6 +23748,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StarConversationResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_stop_conversation_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationStopResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -22235,53 +25921,6 @@ export interface operations {
             };
         };
     };
-    integrations_get_my_integrations_snapshot_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MyIntegrationsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     integrations_get_public_integration: {
         parameters: {
             query?: never;
@@ -22494,53 +26133,6 @@ export interface operations {
             };
         };
     };
-    integrations_get_integration_statuses_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationStatusesResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     integrations_add_integration_to_workspace: {
         parameters: {
             query?: never;
@@ -22628,6 +26220,849 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationSuccessResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_create_short_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Target not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_resolve_short_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkEnvelope"];
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_update_link_settings_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_content_token_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentTokenResponse"];
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_download_link_file_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_link_preview_meta_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkPreviewMeta"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_record_open_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkEnvelope"];
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_short_link_pdf_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_report_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_rotate_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_share_state_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkShareState"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_stop_sharing_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopSharingResult"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -29035,53 +33470,6 @@ export interface operations {
             };
         };
     };
-    chat_subscribe_executor_stream: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                stream_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     support_get_support_rate_limit_status: {
         parameters: {
             query?: never;
@@ -29355,7 +33743,10 @@ export interface operations {
                 project_id?: string | null;
                 q?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description Browser timezone fallback */
+                "x-timezone"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -30270,7 +34661,10 @@ export interface operations {
     todos_get_todo_counts: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Browser timezone fallback */
+                "x-timezone"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -31191,7 +35585,9 @@ export interface operations {
     };
     user_logout: {
         parameters: {
-            query?: never;
+            query?: {
+                return_url?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

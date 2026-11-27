@@ -13,15 +13,21 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 import pytest
 
+from app.db.repositories.short_links import short_link_repository
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationMessageHit,
     ConversationSearchResults,
 )
 from app.models.notes_models import NoteSearchHit
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.services import search_service
+from app.services.links.placeholders import link_placeholder
+from app.services.links.urls import build_url
 from app.services.search_service import search_messages
 from app.utils.log_identifiers import user_text_shape
+from shared.py.conversation_wire import ReplyItem
+from tests.factories import make_reply_item
 from tests.helpers import captured_wide_event
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -54,15 +60,11 @@ def _conversation_results() -> ConversationSearchResults:
         messages=[
             ConversationMessageHit(
                 conversation_id="conv1",
-                message={
-                    "type": "bot",
-                    "response": "test response about Python",
-                    "message_id": "m1",
-                },
+                item=make_reply_item("test response about Python", reply_id="m1"),
             ),
             ConversationMessageHit(
                 conversation_id="conv2",
-                message={"type": "bot", "response": "Python programming", "message_id": "m2"},
+                item=make_reply_item("Python programming", reply_id="m2"),
             ),
         ],
         conversations=[
@@ -94,6 +96,21 @@ class TestSearchMessagesHappyPath:
         assert all(n.snippet == "...matched text..." for n in result.notes)
         assert result.messages[0].conversation_id == "conv1"
         assert result.notes[0].id == "n1"
+
+    async def test_a_reply_snippet_spans_its_bubbles_with_thirty_characters_before_the_match(
+        self, mock_conversation_repo, mock_note_repo
+    ):
+        item = make_reply_item("x", reply_id="m1").model_copy(
+            update={"bubbles": ("A" * 40, "Python rocks")}
+        )
+        mock_conversation_repo.search.return_value = ConversationSearchResults(
+            messages=[ConversationMessageHit(conversation_id="conv1", item=item)], conversations=[]
+        )
+        mock_note_repo.search_by_plaintext.return_value = []
+
+        result = await search_messages("python", FAKE_USER_ID)
+
+        assert [m.snippet for m in result.messages] == ["..." + "A" * 28 + "\n\nPython rocks"]
 
 
 class TestSearchMessagesLogsNoUserText:
@@ -188,3 +205,25 @@ class TestSearchMessagesRegexEscaping:
         # And each repository is scoped to the caller.
         assert mock_conversation_repo.search.call_args[0][0] == FAKE_USER_ID
         assert mock_note_repo.search_by_plaintext.call_args[0][0] == FAKE_USER_ID
+
+
+async def test_a_found_reply_shows_its_link_read_under_the_searching_user(
+    mock_conversation_repo, mock_note_repo
+) -> None:
+    target = RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+    hit = ConversationMessageHit(
+        conversation_id="conv1", item=make_reply_item(f"the plan {link_placeholder(target)}")
+    )
+    mock_conversation_repo.search.return_value = ConversationSearchResults(
+        messages=[hit], conversations=[]
+    )
+    mock_note_repo.search_by_plaintext.return_value = []
+    live = AsyncMock(return_value=ShortLink(slug="ab12cd", user_id=FAKE_USER_ID, target=target))
+
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        results = await search_messages("plan", FAKE_USER_ID)
+
+    [message] = results.messages
+    assert isinstance(message.item, ReplyItem)
+    assert message.item.bubbles == (f"the plan {build_url('ab12cd')}",)
+    assert live.await_args.args[0] == FAKE_USER_ID

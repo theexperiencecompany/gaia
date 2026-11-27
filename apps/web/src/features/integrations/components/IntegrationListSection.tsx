@@ -21,13 +21,13 @@ import type { SuggestedIntegration } from "@/features/integrations/types";
 
 const accordionStyles = accordionVariants({ density: "compact" });
 
-type SectionKey = "connected" | "suggested" | "available";
+type ListSectionId = "connected" | "suggested" | "available";
 
 const byName = (a: { name: string }, b: { name: string }) =>
   a.name.localeCompare(b.name);
 
 interface ListSectionProps {
-  id: SectionKey;
+  id: ListSectionId;
   title: string;
   count: number;
   tooltip: string;
@@ -85,9 +85,9 @@ function ListSection({
 }
 
 /** Expanded sections: each opens once, the first render it has items (data can land after mount); the user's toggles stand after that. */
-function useAutoExpandedSections(populated: readonly SectionKey[]) {
+function useAutoExpandedSections(populated: readonly ListSectionId[]) {
   const [expandedKeys, setExpandedKeys] = useState<Set<Key>>(new Set());
-  const [autoOpened, setAutoOpened] = useState<ReadonlySet<SectionKey>>(
+  const [autoOpened, setAutoOpened] = useState<ReadonlySet<ListSectionId>>(
     new Set(),
   );
   const newlyPopulated = populated.filter((key) => !autoOpened.has(key));
@@ -105,7 +105,7 @@ interface IntegrationListSectionProps {
 function IntegrationListSection({
   suggestedIntegrations = [],
 }: IntegrationListSectionProps) {
-  const { integrations, connectIntegration, refetch } = useIntegrations();
+  const { integrations, connectIntegration } = useIntegrations();
 
   const connected = integrations
     .filter((i) => i.status === "connected")
@@ -114,7 +114,7 @@ function IntegrationListSection({
     .filter((i) => i.status !== "connected")
     .toSorted(byName);
 
-  const populated: SectionKey[] = [];
+  const populated: ListSectionId[] = [];
   if (connected.length > 0) populated.push("connected");
   if (suggestedIntegrations.length > 0) populated.push("suggested");
   if (notConnected.length > 0) populated.push("available");
@@ -163,7 +163,6 @@ function IntegrationListSection({
                   <SuggestedIntegrationRow
                     key={suggestion.id}
                     suggestion={suggestion}
-                    onConnected={refetch}
                   />
                 ))}
               </ScrollShadow>

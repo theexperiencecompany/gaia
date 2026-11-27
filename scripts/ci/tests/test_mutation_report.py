@@ -482,6 +482,7 @@ def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
         (LOG_LIB, "lib/log.sh"),
         (CPU_SLOTS_LIB, "lib/cpu-slots.sh"),
         (REPO_ROOT / "scripts" / "ci" / "lib" / "runner-host.sh", "lib/runner-host.sh"),
+        (REPO_ROOT / "scripts" / "ci" / "lib" / "runner_host.py", "lib/runner_host.py"),
         (REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_gap.py", "lib/mutation_gap.py"),
         (REPORT, "lib/mutation_report.py"),
     ):

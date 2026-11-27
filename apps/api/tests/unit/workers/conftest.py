@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.user_activity import ActivityStatus
 from app.models.user_models import AuthenticatedUser
+from tests.unit.services.conversation.log_helpers import EMPTY
 
 
 @pytest.fixture(autouse=True)
@@ -13,6 +15,30 @@ def _subscription_active_by_default():
     with patch(
         "app.workers.tasks.workflow_tasks.is_paid",
         AsyncMock(return_value=True),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_active_by_default():
+    """Default every tracked-todo and workflow owner to active; the dormancy tests patch the same seams."""
+    # create=True: the regression lane runs these suites against a base without the seams.
+    with (
+        patch(
+            "app.workers.tasks.tracked_todo_tasks.activity_status_of",
+            AsyncMock(return_value=ActivityStatus.ACTIVE),
+            create=True,
+        ),
+        patch(
+            "app.workers.tasks.workflow_tasks.activity_status_of",
+            AsyncMock(return_value=ActivityStatus.ACTIVE),
+            create=True,
+        ),
+        patch(
+            "app.workers.tasks.maintenance_sweep_tasks.user_repository.find_activity_rows",
+            AsyncMock(return_value=[]),
+            create=True,
+        ),
     ):
         yield
 
@@ -45,21 +71,27 @@ def _no_playbook():
 
 @pytest.fixture(autouse=True)
 def _free_conversation():
-    """Default every workflow fire to "nobody else holds this conversation".
+    """Default every workflow fire to "nothing else runs in this conversation".
 
-    A fire claims its workflow's conversation before it spends anything, so
-    without this every existing test would reach Mongo for the conversation and
-    Redis for the lock. The overlap tests patch the same seams to say it is
-    held.
+    A fire is admitted to its workflow's conversation before it spends anything, so
+    without this every existing test would reach Mongo for the conversation and its
+    log, and Redis for the admission key. The overlap tests patch the same seams to
+    say it is busy.
     """
+    idle_log = MagicMock(state=AsyncMock(return_value=EMPTY))
+    admission = MagicMock(
+        set=AsyncMock(return_value=True), get=AsyncMock(return_value=None), delete=AsyncMock()
+    )
     with (
         patch(
             "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
             AsyncMock(return_value="conv_1"),
         ),
-        patch("app.workers.tasks.workflow_tasks.try_acquire_lock", AsyncMock(return_value=True)),
-        patch("app.workers.tasks.workflow_tasks.release_lock_if_owned", AsyncMock()),
-        patch("app.workers.tasks.workflow_tasks.get_lock_holder", AsyncMock(return_value=None)),
+        patch("app.workers.tasks.workflow_tasks.redis_cache", MagicMock(client=admission)),
+        patch(
+            "app.workers.tasks.workflow_tasks.runtime_ports",
+            MagicMock(return_value=MagicMock(log=idle_log)),
+        ),
         patch("app.workers.tasks.workflow_tasks.keep_alive", AsyncMock(return_value=MagicMock())),
     ):
         yield

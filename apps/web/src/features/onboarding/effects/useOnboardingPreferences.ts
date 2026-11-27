@@ -13,7 +13,7 @@ import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
 import { shouldRetryQuery } from "@/lib/queryClient";
 
 import { saveOnboardingAnswers } from "../api/onboardingApi";
-import { FIELD_NAMES, questions } from "../constants";
+import { FIELD_NAMES, isHeardFrom, questions } from "../constants";
 import type { Action, OnboardingState } from "../state/types";
 import { welcomeLanguage } from "../utils/welcomeLanguage";
 
@@ -23,7 +23,8 @@ export interface AnswersSave {
 }
 
 /**
- * Persists Q1 (profession) and Q2 (needs) the moment Q2 is confirmed: the
+ * Persists the answers (profession, needs, where they heard of GAIA) the
+ * moment the last question is confirmed: the
  * platform-link opener and the first chat are composed from the stored answers.
  * The wizard holds on the questions stage until this lands; a network or 5xx
  * failure retries with backoff, and one that still fails waits on "Try again".
@@ -34,6 +35,7 @@ export function useOnboardingPreferences(
 ): AnswersSave {
   const questionsComplete = state.questionIndex >= questions.length;
   const profession = state.responses[FIELD_NAMES.PROFESSION];
+  const heardFrom = state.responses[FIELD_NAMES.HEARD_FROM];
   const { selectedNeeds, preferencesPersisted, isRestarting } = state;
   const otherNeed = state.otherNeed.trim();
   const appLocale = useLocale();
@@ -44,8 +46,9 @@ export function useOnboardingPreferences(
       profession,
       needs: selectedNeeds,
       ...(otherNeed ? { other_need: otherNeed } : {}),
+      ...(heardFrom && isHeardFrom(heardFrom) ? { heard_from: heardFrom } : {}),
     };
-  }, [profession, selectedNeeds, otherNeed]);
+  }, [profession, selectedNeeds, otherNeed, heardFrom]);
 
   const queryClient = useQueryClient();
   const { mutate, status, reset } = useMutation({

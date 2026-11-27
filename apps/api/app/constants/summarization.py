@@ -5,9 +5,14 @@ SUMMARIZATION_KEEP_TOKENS = 8000  # Keep ~8K tokens after summarization
 # Share of the summary model's input window the summary prompt may fill, measured
 # on the XML it is actually sent as; the rest covers the estimate's error.
 SUMMARY_INPUT_BUDGET_FRACTION = 0.80
-# Comms runs on OpenAI, which bills a request past 272K input tokens at 2x input
-# and 1.5x output; a fraction of the 1M window (600K) would cross that first.
-COMMS_SUMMARIZATION_TRIGGER_TOKENS = 200_000
+# Comms' whole request, prompt slots (~34K in a real chat) included: every comms call
+# reads it, so once a turn settles past this its oldest turns fold into the rolling
+# summary in the background (130K → ~50K).
+COMMS_SUMMARIZATION_TRIGGER_TOKENS = 64_000
+# The fold runs inside a turn only past this: turns came faster than background folds landed.
+COMMS_SUMMARIZATION_CEILING_TOKENS = 2 * COMMS_SUMMARIZATION_TRIGGER_TOKENS
+# Recent turns comms keeps word for word after a fold; open requests stay on top of it.
+COMMS_SUMMARIZATION_KEEP_TOKENS = 12_000
 
 # Aggressive compaction sheds stale tool observations earlier so per-step
 # input tokens stay low and implicit prompt caching keeps hitting on long
@@ -15,7 +20,11 @@ COMMS_SUMMARIZATION_TRIGGER_TOKENS = 200_000
 COMPACTION_THRESHOLD = 0.40
 # Single tool output > ~30k tokens → compact to a workspace file immediately.
 # (~4 chars/token, the same estimate this middleware uses for context usage.)
+# Also the most of an output a tool card keeps (conversation/tool_cards.py).
 MAX_OUTPUT_CHARS = 120000
+# What one stored tool card, and one log entry's cards together, keep of outputs and thinking.
+MAX_CARD_TEXT_CHARS = 4 * MAX_OUTPUT_CHARS
+MAX_ENTRY_TEXT_CHARS = 8 * MAX_OUTPUT_CHARS
 
 # Floor for the context-pressure trigger: over the compaction threshold, outputs
 # above this size compact even under MAX_OUTPUT_CHARS; below it, tiny outputs stay inline.

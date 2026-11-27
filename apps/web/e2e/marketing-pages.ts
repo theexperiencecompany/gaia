@@ -1,0 +1,23 @@
+/** The key marketing pages: one or two per template, and one translated page. */
+export const MARKETING_PAGES = [
+  "/",
+  "/pricing",
+  "/about",
+  "/contact",
+  "/features",
+  "/compare",
+  "/compare/motion",
+  "/alternative-to/motion",
+  "/for/consultants",
+  "/de/for/consultants",
+  "/learn/agent-loop",
+  "/automate",
+  "/automate/airtable-notion",
+  "/blog",
+  "/blog/desktop",
+  "/faq",
+  "/marketplace",
+  "/marketplace/airtable",
+  "/use-cases/morning-briefing",
+  "/bots",
+];

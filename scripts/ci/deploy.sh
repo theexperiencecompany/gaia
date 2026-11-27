@@ -9,10 +9,29 @@
 #                               $GITHUB_OUTPUT.
 #   stack                       `docker stack deploy` the production Swarm stack
 #                               from the private gaia-infra checkout at .infra/.
+#   migrate                     Before the rollout, run the release's data
+#                               migrations (apps/api/scripts/post_deploy.py) as
+#                               a one-shot Swarm job on the NEW apps image; a
+#                               failure stops the deploy with nothing touched.
+#                               Then run one asking whether any
+#                               conversation still needs the migration catch-up.
+#                               None: return, and the rollout runs with no
+#                               downtime. Some: scale the old writers to 0, run
+#                               the catch-up job, and on its failure scale them
+#                               back up and fail. Writes catch_up= and
+#                               writers_down= to $GITHUB_OUTPUT.
 #   verify                      Everything a deploy needs, without touching a
 #                               single service — the rehearsal to run after
 #                               changing the infra repo, the deploy key or
 #                               the tailnet path.
+#   smoke                       Read production as an anonymous visitor (the
+#                               public pages and API reads in
+#                               lib/prod-smoke-targets.toml, then a polite burst
+#                               against the anonymous rate limit) and write
+#                               verdict=pass|warn|fail|error and summary=. Fails
+#                               on fail or error. It never changes production:
+#                               a failure alerts, and rolling back is a person's
+#                               call (action=rollback).
 #   retag from-env|rolled-back  Re-point the :latest tags in GHCR at what
 #                               production actually runs, so ":latest ==
 #                               deployed" holds as an invariant.
@@ -26,6 +45,9 @@
 #   verify-commit               Fail unless prod's /health (and each bot's,
 #                               when bots were deployed) serves the commit
 #                               baked into the deployed image. Writes commit=.
+#   verify-alert-rules          Fail unless the rules file in the running
+#                               grafana task carries exactly the uids in the
+#                               repo's alert-rules.yaml.
 #   changelog                   Commit subjects PREVIOUS..COMMIT (changes=).
 #   unwedge                     Force-cancel master runs parked on a deployment
 #                               gate nobody can release (no reviewers, no wait
@@ -41,6 +63,13 @@
 #           the images; empty falls through to the compose file's
 #           ${VAR:-latest} defaults. Needs the `prod` docker context.
 #   verify  as `stack`, minus the write.
+#   smoke   PROD_ORIGIN, PROD_WEB_ORIGIN; GITHUB_OUTPUT, GITHUB_STEP_SUMMARY.
+#           No secrets: every read is anonymous.
+#   migrate GITHUB_OUTPUT (required); GAIA_IMAGE_TAG as `stack`;
+#           MIGRATE_RELEASE_TIMEOUT_SECS, MIGRATE_CHECK_TIMEOUT_SECS,
+#           MIGRATE_CATCH_UP_TIMEOUT_SECS, MIGRATE_WRITERS_TIMEOUT_SECS,
+#           MIGRATE_POLL_SECS. Needs the `prod` docker context and a GHCR
+#           login (the job pulls the image).
 #   retag   from-env: APPS_IMAGE_TAG / BOTS_IMAGE_TAG / GRAFANA_IMAGE_TAG.
 #           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK;
 #           re-points every service on one of our repos, grafana included.
@@ -58,6 +87,8 @@
 #   verify-commit  PROD_ORIGIN, GITHUB_OUTPUT; APPS_IMAGE_TAG (empty = latest),
 #           BOTS_IMAGE_TAG, VERIFY_TIMEOUT_SECS, VERIFY_CONSECUTIVE,
 #           VERIFY_POLL_SECS. Needs a GHCR login.
+#   verify-alert-rules  ALERT_RULES_FILE, GRAFANA_VERIFY_TIMEOUT_SECS,
+#           GRAFANA_VERIFY_POLL_SECS. Needs the `prod` docker context.
 #   changelog  COMMIT, GITHUB_REPOSITORY, GITHUB_OUTPUT; PREVIOUS. Needs GH_TOKEN.
 #   unwedge GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_OUTPUT (required);
 #           STUCK_LIMIT_SECS. Needs actions:write. Writes reaped=<run ids>.
@@ -208,6 +239,199 @@ _cmd_swarm_stack() {
   esac
 }
 
+# The pre-rollout migrations (cmd_migrate). First the release step
+# (apps/api/scripts/post_deploy.py) runs every pending data migration while the
+# old build still serves. Then the new API refuses to
+# boot while any conversation holds data the conversation log does not match,
+# and the old build writes that data until it stops, so a catch-up runs only
+# with the old writers down. Bots and the voice agent write conversations
+# through the API, so stopping these two stops every conversation write.
+_MIGRATE_TEMPLATE="gaia-prod_gaia-backend"
+_MIGRATE_WRITERS=(gaia-prod_gaia-backend gaia-prod_arq_worker)
+_MIGRATE_SCRIPT=(python -m scripts.migrate_conversations)
+_MIGRATE_RELEASE_STEP=(python -m scripts.post_deploy --apply)
+# CATCH_UP_NEEDED_EXIT in apps/api/scripts/migrate_conversations.py.
+_MIGRATE_CATCH_UP_NEEDED=3
+# Job services not yet removed, and the `svc=replicas` pairs that put stopped
+# writers back: the EXIT trap reads both, so no exit path leaves either behind.
+_MIGRATE_JOBS=""
+_MIGRATE_RESTORE=""
+_MIGRATE_CAUGHT_UP=false
+_MIGRATE_ENV_FILE=""
+_MIGRATE_JOB_EXIT=""
+
+_migrate_docker() { docker --context prod "$@"; }
+
+# _migrate_running <service> — its tasks Running right now, whatever their
+# desired state: a task told to shut down still writes until it exits.
+_migrate_running() {
+  local states
+  states=$(_migrate_docker service ps "$1" --format '{{.CurrentState}}') \
+    || ci_die "deploy migrate: cannot list the tasks of $1"
+  grep -c '^Running' <<< "$states" || true
+}
+
+# _migrate_await <service> <le|ge> <count> — wait, bounded by
+# MIGRATE_WRITERS_TIMEOUT_SECS, until its Running tasks are at most / at least
+# count; 1 on timeout.
+_migrate_await() {
+  local svc="$1" op="$2" want="$3" running
+  local deadline=$(( $(date +%s) + ${MIGRATE_WRITERS_TIMEOUT_SECS:-300} ))
+  while :; do
+    running=$(_migrate_running "$svc") || return 1
+    if [[ "$op" = le ]] && (( running <= want )); then return 0; fi
+    if [[ "$op" = ge ]] && (( running >= want )); then return 0; fi
+    (( $(date +%s) < deadline )) || return 1
+    sleep "${MIGRATE_POLL_SECS:-5}"
+  done
+}
+
+_migrate_job_logs() {
+  ci_group "Logs of $1"
+  _migrate_docker service logs --raw "$1" 2>&1 || ci_warn "deploy migrate: could not read the logs of $1"
+  ci_endgroup
+}
+
+_migrate_remove_job() {
+  _migrate_docker service rm "$1" > /dev/null \
+    || ci_warn "deploy migrate: could not remove the job service $1 — remove it on the VM"
+  _MIGRATE_JOBS="${_MIGRATE_JOBS/ $1/}"
+}
+
+# _migrate_job <kind> <timeout secs> <command...> — run command as a one-shot
+# job on the new image with the backend's secrets, networks, env and working
+# directory, and set _MIGRATE_JOB_EXIT to its exit code. Dies when the job never
+# ran to an exit (rejected, shut down, or past the timeout).
+_migrate_job() {
+  local kind="$1" timeout="$2"
+  shift 2
+  local name template secret network workdir args=()
+  name="gaia-migrate-${kind}-${GITHUB_RUN_ID:-local}-$(date +%s)"
+  template=$(_migrate_docker service inspect "$_MIGRATE_TEMPLATE" --format '{{json .Spec.TaskTemplate}}') \
+    || ci_die "deploy migrate: cannot inspect $_MIGRATE_TEMPLATE, whose secrets, networks and env the job copies"
+
+  # The env goes through a 0600 file, never argv or the log.
+  _MIGRATE_ENV_FILE=$(mktemp)
+  chmod 600 "$_MIGRATE_ENV_FILE"
+  jq -r '.ContainerSpec.Env // [] | .[]' <<< "$template" > "$_MIGRATE_ENV_FILE"
+  args+=(--env-file "$_MIGRATE_ENV_FILE")
+  while IFS= read -r secret; do
+    [[ -z "$secret" ]] || args+=(--secret "$secret")
+  done < <(jq -r '.ContainerSpec.Secrets // [] | .[] | "source=\(.SecretName),target=\(.File.Name)"' <<< "$template")
+  while IFS= read -r network; do
+    [[ -z "$network" ]] || args+=(--network "$network")
+  done < <(jq -r '.Networks // [] | .[].Target' <<< "$template")
+  workdir=$(jq -r '.ContainerSpec.Dir // empty' <<< "$template")
+  [[ -z "$workdir" ]] || args+=(--workdir "$workdir")
+
+  echo "deploy migrate: starting the $kind job $name on $_MIGRATE_IMAGE: $*"
+  _MIGRATE_JOBS="$_MIGRATE_JOBS $name"
+  _migrate_docker service create --detach --quiet --with-registry-auth \
+    --name "$name" --label "gaia.migrate=$kind" \
+    --mode replicated-job --restart-condition none \
+    "${args[@]}" "$_MIGRATE_IMAGE" "$@" > /dev/null \
+    || ci_die "deploy migrate: could not create the $kind job $name"
+  rm -f "$_MIGRATE_ENV_FILE"
+  _MIGRATE_ENV_FILE=""
+
+  local deadline=$(( $(date +%s) + timeout )) task status="{}" state code
+  while :; do
+    task=$(_migrate_docker service ps "$name" --quiet --no-trunc | head -n 1) \
+      || ci_die "deploy migrate: cannot list the task of the $kind job $name"
+    state=""
+    if [[ -n "$task" ]]; then
+      status=$(_migrate_docker inspect "$task" --format '{{json .Status}}') \
+        || ci_die "deploy migrate: cannot inspect task $task of the $kind job $name"
+      state=$(jq -r '.State' <<< "$status")
+    fi
+    case "$state" in
+      complete | failed) break ;;
+      rejected | shutdown | orphaned | remove)
+        _migrate_job_logs "$name"
+        ci_die "deploy migrate: the $kind job $name never ran to an exit (task $state: $(jq -r '.Err // "no error given"' <<< "$status"))"
+        ;;
+    esac
+    if (( $(date +%s) >= deadline )); then
+      _migrate_job_logs "$name"
+      ci_die "deploy migrate: the $kind job $name did not finish within ${timeout}s (task ${state:-not scheduled yet})"
+    fi
+    sleep "${MIGRATE_POLL_SECS:-5}"
+  done
+
+  _migrate_job_logs "$name"
+  code=$(jq -r '.ContainerStatus.ExitCode // empty' <<< "$status")
+  [[ -n "$code" ]] || ci_die "deploy migrate: the $kind job $name ended $state with no exit code"
+  _migrate_remove_job "$name"
+  _MIGRATE_JOB_EXIT="$code"
+  echo "deploy migrate: the $kind job exited $code"
+}
+
+# On every exit: no job service outlives the step, and writers stopped for a
+# catch-up that did not succeed come back on the image they were running.
+_migrate_on_exit() {
+  local rc=$? job pair
+  [[ -z "$_MIGRATE_ENV_FILE" ]] || rm -f "$_MIGRATE_ENV_FILE"
+  for job in $_MIGRATE_JOBS; do
+    _migrate_remove_job "$job"
+  done
+  if [[ -n "$_MIGRATE_RESTORE" ]] && [[ "$_MIGRATE_CAUGHT_UP" != true ]]; then
+    echo "deploy migrate: scaling the old writers back up ($_MIGRATE_RESTORE)"
+    # shellcheck disable=SC2086 # one svc=replicas word per writer
+    if _migrate_docker service scale --detach $_MIGRATE_RESTORE > /dev/null; then
+      for pair in $_MIGRATE_RESTORE; do
+        _migrate_await "${pair%%=*}" ge "${pair#*=}" \
+          || printf '::error::%s\n' "deploy migrate: ${pair%%=*} is not back to ${pair#*=} Running tasks — check the VM" >&2
+      done
+    else
+      printf '::error::%s\n' "deploy migrate: could not scale the old writers back up — prod is DOWN; run docker service scale $_MIGRATE_RESTORE" >&2
+    fi
+    (( rc != 0 )) || rc=1
+  fi
+  exit "$rc"
+}
+
+cmd_migrate() {
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+  _MIGRATE_IMAGE="$GHCR_NAMESPACE/${APPS_IMAGE_REPOS[0]}:${GAIA_IMAGE_TAG:-latest}"
+  trap _migrate_on_exit EXIT
+
+  _migrate_job release "${MIGRATE_RELEASE_TIMEOUT_SECS:-1800}" "${_MIGRATE_RELEASE_STEP[@]}"
+  [[ "$_MIGRATE_JOB_EXIT" = 0 ]] \
+    || ci_die "deploy migrate: the release's migrations failed (exit $_MIGRATE_JOB_EXIT) — nothing was stopped or rolled out"
+
+  _migrate_job check "${MIGRATE_CHECK_TIMEOUT_SECS:-600}" "${_MIGRATE_SCRIPT[@]}" --check
+  case "$_MIGRATE_JOB_EXIT" in
+    0)
+      printf 'catch_up=none\nwriters_down=false\n' >> "$GITHUB_OUTPUT"
+      ci_ok "deploy migrate: no conversation needs a catch-up — the rollout runs with no downtime"
+      return 0
+      ;;
+    "$_MIGRATE_CATCH_UP_NEEDED") echo "catch_up=needed" >> "$GITHUB_OUTPUT" ;;
+    *) ci_die "deploy migrate: the check job failed (exit $_MIGRATE_JOB_EXIT) — nothing was stopped or rolled out" ;;
+  esac
+
+  local svc replicas
+  for svc in "${_MIGRATE_WRITERS[@]}"; do
+    replicas=$(_migrate_docker service inspect "$svc" --format '{{.Spec.Mode.Replicated.Replicas}}') \
+      || ci_die "deploy migrate: cannot read the replica count of $svc"
+    _MIGRATE_RESTORE="${_MIGRATE_RESTORE:+$_MIGRATE_RESTORE }$svc=$replicas"
+  done
+  echo "deploy migrate: a catch-up is needed — stopping the old writers (${_MIGRATE_WRITERS[*]})"
+  _migrate_docker service scale --detach "${_MIGRATE_WRITERS[@]/%/=0}" > /dev/null \
+    || ci_die "deploy migrate: could not scale the old writers to 0"
+  for svc in "${_MIGRATE_WRITERS[@]}"; do
+    _migrate_await "$svc" le 0 \
+      || ci_die "deploy migrate: $svc still has Running tasks after ${MIGRATE_WRITERS_TIMEOUT_SECS:-300}s — not migrating under a live writer"
+  done
+
+  _migrate_job catch-up "${MIGRATE_CATCH_UP_TIMEOUT_SECS:-1800}" "${_MIGRATE_SCRIPT[@]}"
+  [[ "$_MIGRATE_JOB_EXIT" = 0 ]] \
+    || ci_die "deploy migrate: the catch-up job failed (exit $_MIGRATE_JOB_EXIT) — the new image was not rolled out"
+  _MIGRATE_CAUGHT_UP=true
+  echo "writers_down=true" >> "$GITHUB_OUTPUT"
+  ci_ok "deploy migrate: caught up; the writers stay stopped until the rollout starts them on the new image"
+}
+
 cmd_retag() {
 
   MODE="${1:?usage: deploy.sh retag from-env|rolled-back}"
@@ -321,6 +545,15 @@ cmd_retag() {
       exit 1
       ;;
   esac
+}
+
+cmd_smoke() {
+  : "${PROD_ORIGIN:?PROD_ORIGIN is required}"
+  : "${PROD_WEB_ORIGIN:?PROD_WEB_ORIGIN is required}"
+  # Extra arguments pass through (prod_smoke.py --help); the workflow passes none.
+  python3 -I "$(dirname "$0")/lib/prod_smoke.py" --api "$PROD_ORIGIN" --web "$PROD_WEB_ORIGIN" "$@" \
+    || ci_die "deploy smoke: production fails an anonymous visitor, or the smoke could not decide (verdict above)"
+  ci_ok "deploy smoke: OK ($PROD_ORIGIN and $PROD_WEB_ORIGIN answer an anonymous visitor as expected; warnings above, if any)"
 }
 
 # A message is a state, its impact, the cause, the action and what clears it —
@@ -585,6 +818,50 @@ cmd_verify_commit() {
   echo "commit=$apps_sha" >> "$GITHUB_OUTPUT"
 }
 
+# alert_rule_uid_diff <expected uids> <shipped uids> — newline lists in, one
+# `missing <uid>` / `extra <uid>` line per difference out; empty when equal.
+alert_rule_uid_diff() {
+  comm -23 <(sort -u <<< "$1") <(sort -u <<< "$2") | sed 's/^/missing /'
+  comm -13 <(sort -u <<< "$1") <(sort -u <<< "$2") | sed 's/^/extra /'
+}
+
+_GRAFANA_SERVICE="gaia-prod_grafana"
+_GRAFANA_RULES_FILE="/etc/grafana/provisioning/alerting/alert-rules.yaml"
+
+# alert_rule_uids — the rule uids in the rules file on stdin. Every rule opens its
+# list item with its uid; yq is not on every runner that runs this.
+alert_rule_uids() {
+  sed -nE 's/^[[:space:]]*-[[:space:]]+uid:[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]*$/\1/p'
+}
+
+# shipped_alert_rule_uids — the uids in the rules file the running grafana task was
+# built with. Read off the image, so no Grafana login is involved.
+shipped_alert_rule_uids() {
+  local cid
+  cid=$(docker --context prod ps -q --filter "label=com.docker.swarm.service.name=$_GRAFANA_SERVICE")
+  # none is a task not up yet, two is Swarm mid-roll: neither is the release to judge
+  [[ "$(grep -c . <<< "$cid")" == 1 ]] || return 1
+  docker --context prod exec "$cid" cat "$_GRAFANA_RULES_FILE" | alert_rule_uids
+}
+
+cmd_verify_alert_rules() {
+  local file="${ALERT_RULES_FILE:-infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml}"
+  [[ -s "$file" ]] || ci_die "deploy verify-alert-rules: $file is missing or empty"
+  local expected shipped="" diff
+  expected=$(alert_rule_uids < "$file")
+  [[ -n "$expected" ]] || ci_die "deploy verify-alert-rules: $file declares no rule uids"
+  local deadline=$(( $(date +%s) + ${GRAFANA_VERIFY_TIMEOUT_SECS:-120} ))
+  # the old task still answers while Swarm rolls the new one, so a difference is retried too
+  until shipped=$(shipped_alert_rule_uids) && diff=$(alert_rule_uid_diff "$expected" "$shipped") && [[ -z "$diff" ]]; do
+    if (( $(date +%s) >= deadline )); then
+      [[ -n "$shipped" ]] || ci_die "deploy verify-alert-rules: the $_GRAFANA_SERVICE task has no rules at $_GRAFANA_RULES_FILE"
+      ci_die "deploy verify-alert-rules: the running Grafana image carries different rules than $file: ${diff//$'\n'/, }"
+    fi
+    sleep "${GRAFANA_VERIFY_POLL_SECS:-5}"
+  done
+  ci_ok "deploy verify-alert-rules: the running Grafana image carries exactly the $(wc -l <<< "$expected" | tr -d ' ') rules in $file"
+}
+
 cmd_served_commit() {
   : "${PROD_ORIGIN:?PROD_ORIGIN is required}"
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
@@ -687,7 +964,8 @@ cmd_unwedge() {
 }
 
 usage() {
-  sed -n '2,63p' "$0" >&2
+  # The header comment, up to the line before `set -euo pipefail`.
+  sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d' >&2
 }
 
 main() {
@@ -696,12 +974,15 @@ main() {
   case "$sub" in
     plan)   cmd_plan "$@" ;;
     stack)  _cmd_swarm_stack deploy "$@" ;;
+    migrate) cmd_migrate "$@" ;;
     verify) _cmd_swarm_stack verify "$@" ;;
+    smoke)  cmd_smoke "$@" ;;
     retag)  cmd_retag "$@" ;;
     notify) cmd_notify "$@" ;;
     failing-checks) cmd_failing_checks "$@" ;;
     served-commit) cmd_served_commit "$@" ;;
     verify-commit) cmd_verify_commit "$@" ;;
+    verify-alert-rules) cmd_verify_alert_rules "$@" ;;
     changelog) cmd_changelog "$@" ;;
     unwedge) cmd_unwedge "$@" ;;
     *)

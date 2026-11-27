@@ -104,8 +104,11 @@ on:
       docker_release_result:
         value: ${{ jobs.docker-release.result }}
 
+# Deploys queue one behind another and never cancel. A build phase takes a group
+# of its own: a group keeps one pending entry, so an older run's deploy phase
+# joining it cancelled the newer run's waiting build (run 45297800153).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ inputs.phase == 'build' && format('-build-{0}', github.run_id) || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -114,7 +117,7 @@ jobs:
   # phase consumes the build phase's outputs via inputs).
   affected:
     if: inputs.phase != 'deploy'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -224,7 +227,7 @@ jobs:
 
   docker-release:
     needs: [affected]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
@@ -298,16 +301,22 @@ jobs:
             echo "scheme=develop" >> $GITHUB_OUTPUT
           fi
 
-      # Publish API image tags when API-related scope changed.
+      # Publish API image tags when API-related scope changed. GIT_COMMIT_SHA is
+      # the commit every docker:build stamps on its image: nx release commits
+      # "chore(release): publish" locally, so HEAD is no longer it for the next group.
       - name: Release apps Docker images
         id: release-apps
         if: needs.affected.outputs.api_image == 'true'
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
         run: pnpm exec nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Publish bot image tags when bot scope changed.
       - name: Release bots Docker images
         id: release-bots
         if: needs.affected.outputs.bots_image == 'true'
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
         run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Captured right after the push steps, before Discord command sync —
@@ -419,7 +428,7 @@ jobs:
   docker-api-manifest:
     needs: [docker-release, docker-api-arm64]
     if: ${{ !cancelled() && needs.docker-release.outputs.apps_tag != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       packages: write
@@ -448,6 +457,19 @@ jobs:
           fi
           docker buildx imagetools create -t "$IMAGE:$APPS_TAG" -t "$IMAGE:$COMMIT_SHA" "$IMAGE:$APPS_TAG" "$IMAGE@$ARM64_DIGEST"
           docker buildx imagetools inspect "$IMAGE:$APPS_TAG"
+
+  # gaia-fortress on a dispatch (fortress-image.yml). ci.yml's build phase skips
+  # it and calls fortress-image.yml itself as a leaf, because trigger-build
+  # awaits this whole workflow and a slow Fortress build would hold the deploy.
+  docker-api-fortress:
+    needs: [docker-release]
+    if: ${{ !cancelled() && inputs.phase != 'build' && needs.docker-release.outputs.apps_tag != '' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/fortress-image.yml
+    with:
+      apps_tag: ${{ needs.docker-release.outputs.apps_tag }}
 
   # Self-hosters run the bots on arm64 too; production's bot images stay
   # amd64-only. Only a CLI release commit builds the arm64 half (native arm
@@ -492,7 +514,7 @@ jobs:
   docker-bots-manifest:
     needs: [affected, docker-release, docker-bots-arm64]
     if: ${{ !cancelled() && needs.affected.outputs.cli_release == 'true' && needs.docker-release.outputs.bots_tag != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -533,7 +555,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
@@ -583,7 +605,7 @@ jobs:
           touch "$RUNNER_TEMP/web-digests/${DIGEST#sha256:}"
 
       - name: Upload image digest
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-digest-${{ matrix.arch }}
           path: ${{ runner.temp }}/web-digests/*
@@ -593,7 +615,7 @@ jobs:
   # Tags the multi-platform gaia-web index from both platform digests.
   docker-web:
     needs: [docker-web-build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       packages: write
@@ -657,12 +679,13 @@ jobs:
           docker buildx imagetools inspect "$IMAGE:$GIT_SHA"
 
   # Grafana provisioning (dashboards/datasources/alerting) is baked into a custom
-  # image so production needs no host bind mount. Built unconditionally — it's a
+  # image so production needs no host bind mount; alert-rules.yaml is copied in
+  # from this repo, the rest comes from gaia-infra. Built unconditionally — it's a
   # tiny COPY layer over the upstream image, and the prod stack always references
   # gaia-grafana:latest.
   docker-grafana:
     if: inputs.phase != 'deploy'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -682,6 +705,16 @@ jobs:
           ssh-key: ${{ secrets.GAIA_INFRA_DEPLOY_KEY }}
           path: .infra
           persist-credentials: false
+
+      # gaia-infra has no alert-rules.yaml; this repo owns the file.
+      - name: Add the alert rules to the build context
+        env:
+          RULES_SRC: infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml
+          RULES_DST: .infra/docker/observability/grafana/provisioning/alerting
+        run: |
+          set -euo pipefail
+          cp "$RULES_SRC" "$RULES_DST/"
+          test -s "$RULES_DST/alert-rules.yaml"
 
       - name: Log in to GHCR
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
@@ -738,7 +771,7 @@ jobs:
     # planning there would deploy ungated code in parallel with the gate.
     needs: [docker-release, docker-api-manifest, docker-grafana]
     if: always() && inputs.phase != 'build'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       backend_deploy: ${{ steps.plan.outputs.backend_deploy }}
       backend_orphaned: ${{ steps.plan.outputs.backend_orphaned }}
@@ -785,7 +818,7 @@ jobs:
   notify-publish-without-deploy:
     needs: [deployment-plan]
     if: always() && inputs.phase != 'build' && needs.deployment-plan.outputs.backend_orphaned == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # failing-checks reads this commit's check-runs to name the cause.
@@ -847,7 +880,7 @@ jobs:
   # ":latest == deployed" for the backend. phase=build never touches :latest.
   promote-latest:
     if: github.ref == 'refs/heads/master' && inputs.phase == 'deploy' && inputs.gate_result == 'success' && (inputs.web_image_tag != '' || inputs.grafana_image_tag != '')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       packages: write

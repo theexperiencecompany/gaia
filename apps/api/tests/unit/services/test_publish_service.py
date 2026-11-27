@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.public_pages import PublicPageDomain
 from app.models.integration_models import Integration, StoredIntegrationTool
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent
@@ -38,7 +39,7 @@ def _integration(**overrides: object) -> Integration:
         "mcp_config": None,
     }
     data.update(overrides)
-    return Integration(**data)
+    return Integration.model_validate(data)
 
 
 @pytest.fixture
@@ -53,8 +54,8 @@ def mock_deps():
         patch(f"{_MOD}.infer_integration_content", new_callable=AsyncMock) as m_content,
         patch(f"{_MOD}.index_public_integration", new_callable=AsyncMock) as m_index,
         patch(f"{_MOD}.remove_public_integration", new_callable=AsyncMock) as m_remove,
-        patch(f"{_MOD}.delete_cache_by_pattern", new_callable=AsyncMock) as m_clear,
         patch(f"{_MOD}.invalidate_user_integration_caches", new_callable=AsyncMock) as m_invalidate,
+        patch(f"{_MOD}.invalidate_public_pages", new_callable=AsyncMock) as m_pages,
     ):
         m_repo.get = AsyncMock(return_value=None)
         m_repo.ensure_unique_slug = AsyncMock(return_value="my-integration")
@@ -77,12 +78,38 @@ def mock_deps():
             content=m_content,
             index=m_index,
             remove=m_remove,
-            clear=m_clear,
             invalidate=m_invalidate,
+            pages=m_pages,
         )
 
 
 class TestPublishCustomIntegration:
+    async def test_publishing_clears_the_cached_marketplace_pages(self, mock_deps):
+        mock_deps.repo.get.return_value = _integration()
+
+        await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        mock_deps.pages.assert_awaited_once_with(PublicPageDomain.INTEGRATIONS)
+
+    async def test_a_failed_search_index_update_still_clears_the_caches(self, mock_deps):
+        mock_deps.repo.get.return_value = _integration()
+        mock_deps.index.side_effect = RuntimeError("chroma down")
+
+        with pytest.raises(RuntimeError, match="chroma down"):
+            await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        mock_deps.pages.assert_awaited_once_with(PublicPageDomain.INTEGRATIONS)
+        mock_deps.invalidate.assert_awaited_once_with(USER_ID)
+
+    async def test_a_refused_publish_leaves_the_cached_pages_alone(self, mock_deps):
+        mock_deps.repo.get.return_value = _integration()
+        mock_deps.repo.publish.return_value = False
+
+        with pytest.raises(PublishError):
+            await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        mock_deps.pages.assert_not_awaited()
+
     async def test_publishes_and_returns_marketplace_url(self, mock_deps):
         mock_deps.repo.get.return_value = _integration()
 
@@ -102,7 +129,6 @@ class TestPublishCustomIntegration:
         dumped = [{"name": "lookup", "description": "Look things up"}]
         assert mock_deps.validate.await_args.kwargs["tools"] == dumped
         assert mock_deps.index.await_args.kwargs["tools"] == dumped
-        mock_deps.clear.assert_awaited_once_with("marketplace:community:*")
         mock_deps.invalidate.assert_awaited_once_with(USER_ID)
 
     async def test_404_when_integration_missing(self, mock_deps):
@@ -237,8 +263,14 @@ class TestUnpublishCustomIntegration:
 
         mock_deps.repo.unpublish.assert_awaited_once_with(INTEGRATION_ID)
         mock_deps.remove.assert_awaited_once_with(INTEGRATION_ID)
-        mock_deps.clear.assert_awaited_once_with("marketplace:community:*")
         mock_deps.invalidate.assert_awaited_once_with(USER_ID)
+
+    async def test_unpublishing_clears_the_cached_marketplace_pages(self, mock_deps):
+        mock_deps.repo.get.return_value = _integration(is_public=True)
+
+        await unpublish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        mock_deps.pages.assert_awaited_once_with(PublicPageDomain.INTEGRATIONS)
 
     async def test_404_when_integration_missing(self, mock_deps):
         with pytest.raises(PublishError) as exc_info:
@@ -272,3 +304,4 @@ class TestUnpublishCustomIntegration:
 
         assert exc_info.value.status_code == 500
         mock_deps.remove.assert_not_awaited()
+        mock_deps.pages.assert_not_awaited()

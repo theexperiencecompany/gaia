@@ -1,12 +1,13 @@
 /**
- * The user's side of the two onboarding questions: a right-aligned row of
- * tinted icon chips where their reply bubble will land, plus Continue. Two
+ * The user's side of the onboarding questions: a right-aligned row of
+ * tinted icon chips where their reply bubble will land, plus Continue. Three
  * modes via a discriminated union:
  * - `profession`: Q1's single-select (picking one replaces the current pick).
  * - `needs`: Q2's multi-select.
- * Either way the answer is only committed when Continue is pressed. Both
- * questions end in a catch-all chip that opens a small text field, so an
- * answer the list does not have is still their own words.
+ * - `heardFrom`: Q3's single-select, no free text.
+ * Either way the answer is only committed when Continue is pressed. Q1 and
+ * Q2 end in a catch-all chip that opens a small text field, so an answer the
+ * list does not have is still their own words.
  */
 
 import {
@@ -23,6 +24,7 @@ import { memo } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
 import {
+  heardFromOptions,
   isListedProfession,
   isRoleNeed,
   NEEDS_MAX_SELECTION,
@@ -44,7 +46,7 @@ import { OnboardingCTAButton } from "./OnboardingCTAButton";
 
 interface ProfessionModeProps {
   mode: "profession";
-  draftProfession: string | null;
+  draftChoice: string | null;
   onSelectProfession: (value: string) => void;
   onContinue: () => void;
 }
@@ -66,10 +68,21 @@ interface NeedsModeProps {
   onContinue: () => void;
 }
 
-export type OnboardingInputProps = ProfessionModeProps | NeedsModeProps;
+interface HeardFromModeProps {
+  mode: "heardFrom";
+  draftChoice: string | null;
+  onSelect: (value: string) => void;
+  onContinue: () => void;
+}
+
+export type OnboardingInputProps =
+  | ProfessionModeProps
+  | NeedsModeProps
+  | HeardFromModeProps;
 
 function OnboardingInputImpl(props: OnboardingInputProps) {
   if (props.mode === "needs") return <NeedsInput {...props} />;
+  if (props.mode === "heardFrom") return <HeardFromInput {...props} />;
   return <ProfessionInput {...props} />;
 }
 
@@ -79,17 +92,16 @@ const REPLY_WRAPPER_CLASS =
   "ml-auto flex w-full max-w-xl flex-col items-end gap-3 pt-3";
 
 function ProfessionInput({
-  draftProfession,
+  draftChoice,
   onSelectProfession,
   onContinue,
 }: ProfessionModeProps) {
   // "Other" is a chip and a text field: the chip opens the field, and whatever
   // is typed becomes the draft, so a job the list does not have is still
   // their own words rather than a compromise chip.
-  const isOther =
-    draftProfession !== null && !isListedProfession(draftProfession);
+  const isOther = draftChoice !== null && !isListedProfession(draftChoice);
   const customText =
-    isOther && draftProfession !== OTHER_PROFESSION ? draftProfession : "";
+    isOther && draftChoice !== OTHER_PROFESSION ? draftChoice : "";
 
   return (
     <div className={REPLY_WRAPPER_CLASS}>
@@ -97,7 +109,7 @@ function ProfessionInput({
         label="What do you do for work?"
         options={professionOptions}
         isSelected={(value) =>
-          value === OTHER_PROFESSION ? isOther : value === draftProfession
+          value === OTHER_PROFESSION ? isOther : value === draftChoice
         }
         onSelect={onSelectProfession}
       />
@@ -111,11 +123,31 @@ function ProfessionInput({
             onSelectProfession(text.trim() ? text : OTHER_PROFESSION)
           }
           onSubmit={() => {
-            if (draftProfession) onContinue();
+            if (draftChoice) onContinue();
           }}
         />
       )}
-      <OnboardingCTAButton disabled={!draftProfession} onClick={onContinue}>
+      <OnboardingCTAButton disabled={!draftChoice} onClick={onContinue}>
+        Continue
+      </OnboardingCTAButton>
+    </div>
+  );
+}
+
+function HeardFromInput({
+  draftChoice,
+  onSelect,
+  onContinue,
+}: HeardFromModeProps) {
+  return (
+    <div className={REPLY_WRAPPER_CLASS}>
+      <OptionChips
+        label="Where did you hear about GAIA?"
+        options={heardFromOptions}
+        isSelected={(value) => value === draftChoice}
+        onSelect={onSelect}
+      />
+      <OnboardingCTAButton disabled={!draftChoice} onClick={onContinue}>
         Continue
       </OnboardingCTAButton>
     </div>

@@ -1,8 +1,6 @@
-// Define the structure for each message in the conversation
-// This type represents an individual message, including details about whether it's from the user or bot,
+// Tool payload types the chat's cards render, re-exported for their consumers.
 
 import type {
-  ConversationMessage,
   DeepResearchResults,
   EmailComposeData,
   ImageData,
@@ -18,7 +16,6 @@ import type {
 
 // Re-export types for external consumption
 export type {
-  ConversationMessage,
   DeepResearchResults,
   EmailComposeData,
   EnhancedWebResult,
@@ -29,6 +26,3 @@ export type {
   WeatherData,
   WebResult,
 };
-
-// Message type using the base conversation message structure
-export type MessageType = ConversationMessage;

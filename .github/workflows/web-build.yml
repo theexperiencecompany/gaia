@@ -12,7 +12,7 @@ on:
 jobs:
   cf-build:
     name: cf-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # The public build values (vars.NEXT_PUBLIC_*) live on the production
     # environment, so only the build a master push deploys bakes them in; a PR
@@ -53,6 +53,8 @@ jobs:
           NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
           # Build-time only: uploads source maps and lets the build delete them.
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          # Prerender fetches count against the web server's ceiling, not one runner address's.
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
           # The release the maps and the events share: this commit.
           SENTRY_RELEASE: ${{ github.sha }}
           NEXT_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
@@ -116,7 +118,7 @@ jobs:
 
       - name: Upload bundle artifact
         if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: open-next
           path: apps/web/.open-next/**/*

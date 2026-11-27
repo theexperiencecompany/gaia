@@ -13,18 +13,28 @@ case.
 """
 
 from datetime import UTC, datetime
+import hashlib
+import json
 
 from redis.exceptions import RedisError
 
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
-from app.constants.todos import BLOCKING_LABELS, EXECUTE_TRACKED_TODO_TASK, TodoActivityEvent
+from app.constants.notifications import NotificationKind
+from app.constants.todos import (
+    BLOCKING_LABELS,
+    EXECUTE_TRACKED_TODO_TASK,
+    TodoActivityEvent,
+    TodoCompleter,
+)
 from app.constants.trigger_gates import GateOwner
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
+from app.models.notification.details_models import TodoTriggerFiredNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
+    notification_id,
 )
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
@@ -36,7 +46,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.analytics_service import capture
 from app.services.notification_service import notification_service
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.condition_matching import conditions_match
@@ -300,7 +310,7 @@ async def _perform_action(
         coalesced=coalesced,
     )
     note = _fire_note(verdict, coalesced=coalesced)
-    await record_activity(
+    await record_todo_activity(
         todo.id,
         todo.user_id,
         TodoActivityEvent.TRIGGER_FIRED,
@@ -311,14 +321,14 @@ async def _perform_action(
             case SubscriptionAction.EXECUTE:
                 await _execute(todo, subscription, payload, coalesced=coalesced, verdict=verdict)
             case SubscriptionAction.NOTIFY:
-                await _notify(todo, subscription)
+                await _notify(todo, subscription, payload)
             case SubscriptionAction.COMPLETE:
                 await _complete(todo, subscription)
             case SubscriptionAction.UNBLOCK:
-                await _unblock(todo, subscription)
+                await _unblock(todo, subscription, payload)
     except Exception as e:
         # The fire is already on the timeline; without this it reads as if the action ran.
-        await record_activity(
+        await record_todo_activity(
             todo.id,
             todo.user_id,
             TodoActivityEvent.TRIGGER_ACTION_FAILED,
@@ -358,10 +368,14 @@ async def _execute(
     log.info("todo_subscription.execution_enqueued", todo_id=todo.id)
 
 
-async def _notify(todo: TodoDocument, subscription: TriggerSubscription) -> None:
-    """Tell the user the event landed. No state change — that is the point."""
-    await notification_service.create_notification(
+async def _notify(
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
+) -> None:
+    """Tell the user the event landed, once per event however often it is redelivered."""
+    event = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+    await notification_service.notify(
         NotificationRequest(
+            id=notification_id(todo.user_id, "todo_trigger", subscription.id, event),
             user_id=todo.user_id,
             source=NotificationSourceEnum.TODO_TRIGGER,
             content=NotificationContent(
@@ -369,7 +383,11 @@ async def _notify(todo: TodoDocument, subscription: TriggerSubscription) -> None
                 body=f"An event you were watching ({subscription.trigger_name}) just fired.",
                 actions=[todo_redirect_action("View todo", todo.id)],
             ),
-            metadata={"todo_id": todo.id, "subscription_id": subscription.id},
+            details=TodoTriggerFiredNotification(
+                kind=NotificationKind.TODO_TRIGGER_FIRED,
+                todo_id=todo.id,
+                subscription_id=subscription.id,
+            ),
         )
     )
     log.info("todo_subscription.notified", todo_id=todo.id)
@@ -383,11 +401,14 @@ async def _complete(todo: TodoDocument, subscription: TriggerSubscription) -> No
         todo.id,
         todo.user_id,
         summary=f"Completed automatically: {subscription.trigger_name} fired.",
+        by=TodoCompleter.TRIGGER,
     )
     log.info("todo_subscription.completed_todo", todo_id=todo.id)
 
 
-async def _unblock(todo: TodoDocument, subscription: TriggerSubscription) -> None:
+async def _unblock(
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
+) -> None:
     """Clear the blocking labels, or degrade to notify when there are none.
 
     A todo that was never blocked has nothing to unblock, and silently doing
@@ -398,7 +419,7 @@ async def _unblock(todo: TodoDocument, subscription: TriggerSubscription) -> Non
     blocking = BLOCKING_LABELS.intersection(todo.labels)
     if not blocking:
         log.info("todo_subscription.unblock_degraded_to_notify", todo_id=todo.id)
-        await _notify(todo, subscription)
+        await _notify(todo, subscription, payload)
         return
 
     await todo_repository.update(

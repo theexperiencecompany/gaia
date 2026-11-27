@@ -18,7 +18,6 @@ from langgraph.config import get_config
 
 from app.agents.tools.run_record import block_integration
 from app.config.settings import settings
-from app.constants.cache import OAUTH_STATE_TTL
 from app.constants.integrations import (
     ACCOUNT_NEEDS_RECONNECT_HINT,
     MANAGED_BY_MCP,
@@ -35,6 +34,7 @@ from app.models.agent_models import (
 from app.models.chat_models import SourceCategory
 from app.models.integration_models import IntegrationAccount
 from app.services.connect_link_service import build_connect_link_url
+from app.services.conversation.integration_log import record_integration_needed
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
@@ -55,6 +55,16 @@ def _current_run() -> AgentConfigurableView | None:
     return read_agent_configurable(config)
 
 
+async def _log_need(user_id: str, integration_id: str, integration_name: str) -> None:
+    """Log the need on a conversation the step runs, so the connect continues its work."""
+    run = _current_run()
+    if run is None or run.conversation_step is None or not run.thread_id:
+        return
+    await record_integration_needed(
+        run.conversation_step, run.thread_id, user_id, integration_id, integration_name
+    )
+
+
 class _StandaloneAuth(NamedTuple):
     """Whether an MCP integration can hand the model a provider OAuth URL, and what it is."""
 
@@ -69,7 +79,7 @@ async def _standalone_mcp_auth(
 
     Only MCP has one. A bearer server has no OAuth endpoint, so callers must never
     offer it a login link. build_url=False classifies without paying for OAuth
-    discovery, which a background run cannot use.
+    discovery or minting a state nobody will spend (a background run, a chat app).
     """
     try:
         resolved = await IntegrationResolver.resolve(integration_id)
@@ -240,15 +250,8 @@ def _ui_message(prompt: _Prompt) -> str:
 
 
 async def _text_only_message(prompt: _Prompt) -> str:
-    """Inline what a bot user needs: a standalone URL or the integrations page."""
+    """Inline what a bot user needs: the login-free connect link or the integrations page."""
     ask = prompt.ask
-    if prompt.auth.kind == "oauth" and prompt.auth.url:
-        return (
-            f"{ask.lead} The user is on a text-only platform (no UI). Include this standalone "
-            "authorization URL verbatim in your result so the comms agent can relay it to the "
-            "user, and tell them to open it soon because it expires after about "
-            f"{OAUTH_STATE_TTL // 60} minutes: {prompt.auth.url}"
-        )
     if prompt.auth.kind == "token_only":
         return (
             f"{ask.lead} This integration authenticates with an API key, so no standalone "
@@ -298,10 +301,9 @@ async def request_integration_connection(
 ) -> str:
     """Show the connect card for mode and return the agent instruction.
 
-    An OAuth MCP integration also yields its standalone provider URL; a token-only
-    MCP server is reported as having none. Everything else keeps the connect-link
-    or the integrations page. A background run gets the integrations page and
-    carries on.
+    In the app an OAuth MCP integration also yields its standalone provider URL; a chat
+    app gets the single-use connect link instead, and a token-only MCP server the
+    integrations page. A background run gets the integrations page and carries on.
     """
     # Only Composio grants ever reach the ``expired`` status, so MCP integrations
     # fall through to the never-connected wording without needing a special case.
@@ -338,10 +340,17 @@ async def request_integration_connection(
             }
         )
 
+    if first_ask:
+        await _log_need(user_id, integration_id, integration_name)
+
     # Login-required but permanent: the fallback when no single-use link applies.
     integrations_url = f"{settings.FRONTEND_URL.rstrip('/')}/integrations"
     background = run is not None and run.execution_mode == "background"
-    auth = await _standalone_mcp_auth(user_id, integration_id, build_url=not background)
+    # Only a card shows the provider URL; a chat app gets the connect link, which starts its own flow.
+    shows_card = source_category == SourceCategory.UI.value
+    auth = await _standalone_mcp_auth(
+        user_id, integration_id, build_url=shows_card and not background
+    )
     prompt = _Prompt(
         ask=ask,
         integration_id=integration_id,
@@ -354,6 +363,6 @@ async def request_integration_connection(
 
     if background:
         return _background_message(prompt)
-    if source_category == SourceCategory.UI.value:
+    if shows_card:
         return _ui_message(prompt)
     return await _text_only_message(prompt)

@@ -44,7 +44,7 @@ PLACEHOLDER_TOKEN = re.compile(
     rf"\$(?P<root>{_ROOT_ALTERNATION})(?![A-Za-z0-9_])"
     r"(?P<path>(?:\.[A-Za-z0-9_-]+)*)"
     rf"(?:\s*(?P<sign>[+-])\s*(?P<amount>\d+)\s*(?P<unit>{_UNIT_ALTERNATION})\b)?"
-    r"(?:\s+(?P<clock>[01]\d:[0-5]\d|2[0-3]:[0-5]\d)\b)?"
+    r"(?:\s+(?P<clock>(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)\b)?"
 )
 
 

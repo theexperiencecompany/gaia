@@ -11,16 +11,17 @@ write in the base repository goes through.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.bot_sessions import (
     LEGACY_DM_SESSION_KEY_SUFFIX,
     BotSessionsRepository,
 )
+from app.models.bot_models import MessageReaction, OwedReaction, PartialReply
 
 TELEGRAM_USER = "6222050155"
 LEGACY_KEY = f"telegram:{TELEGRAM_USER}:dm"
@@ -129,7 +130,7 @@ class TestRenameSessionKey:
 
 
 class TestRepointConversation:
-    async def test_it_sets_only_the_conversation_id(
+    async def test_it_sets_the_conversation_id_and_clears_the_delivery_cursor(
         self, repo: BotSessionsRepository, collection: MagicMock
     ) -> None:
         assert await repo.repoint_conversation(
@@ -138,7 +139,7 @@ class TestRepointConversation:
 
         filter_, update = collection.update_one.await_args.args
         assert filter_ == {"session_key": CANONICAL_KEY}
-        assert update == {"$set": {"conversation_id": "conv-winner"}}
+        assert update == {"$set": {"conversation_id": "conv-winner"}, "$unset": {"delivery": ""}}
 
     async def test_it_reports_a_filter_that_matched_nothing(
         self, repo: BotSessionsRepository, collection: MagicMock
@@ -161,44 +162,6 @@ class TestDeleteBySessionKey:
         assert collection.delete_many.await_args.args[0] == {"session_key": LEGACY_KEY}
 
 
-class TestSessionWritesBustTheGlobalCache:
-    """These rows are keyed by session_key, not by user, so they live in the global cache scope.
-
-    Invalidating any other scope leaves the pre-migration session cached and
-    brings back the fork the migration just merged.
-    """
-
-    async def test_rename_invalidates_the_global_scope(
-        self, repo: BotSessionsRepository, collection: MagicMock
-    ) -> None:
-        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
-            await repo.rename_session_key(
-                session_key=LEGACY_KEY, new_session_key=CANONICAL_KEY, channel_id=TELEGRAM_USER
-            )
-
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
-
-    async def test_repoint_invalidates_the_global_scope(
-        self, repo: BotSessionsRepository, collection: MagicMock
-    ) -> None:
-        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
-            await repo.repoint_conversation(
-                session_key=CANONICAL_KEY, conversation_id="conv-winner"
-            )
-
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
-
-    async def test_delete_invalidates_the_global_scope(
-        self, repo: BotSessionsRepository, collection: MagicMock
-    ) -> None:
-        collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=1))
-
-        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
-            await repo.delete_by_session_key(LEGACY_KEY)
-
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
-
-
 class TestDeleteForPlatformUser:
     async def test_it_deletes_by_platform_and_account_and_reports_the_count(
         self, repo: BotSessionsRepository, collection: MagicMock
@@ -214,16 +177,6 @@ class TestDeleteForPlatformUser:
             "platform": "telegram",
             "platform_user_id": TELEGRAM_USER,
         }
-
-    async def test_it_invalidates_the_global_scope(
-        self, repo: BotSessionsRepository, collection: MagicMock
-    ) -> None:
-        collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=1))
-
-        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
-            await repo.delete_for_platform_user(platform="telegram", platform_user_id=TELEGRAM_USER)
-
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
 
 
 class TestListSessions:
@@ -241,3 +194,138 @@ class TestListSessions:
         await repo.list_sessions(platform="slack")
 
         assert collection.find.call_args.args[0] == {"platform": "slack"}
+
+
+OWED_AT = datetime(2026, 11, 26, tzinfo=UTC)
+THUMBS = MessageReaction(message_id="u1", emoji="👍")
+
+
+class TestOweReaction:
+    async def test_it_starts_a_missing_cursor_before_the_message_then_owes_the_reaction(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        owed = OwedReaction(message_id="u1", emoji="👍", owed_at=OWED_AT)
+
+        await repo.owe_reaction("conv-1", seq=4, reaction=owed)
+
+        init_filter, init = collection.update_one.await_args.args
+        assert init_filter == {"conversation_id": "conv-1", "delivery": {"$exists": False}}
+        assert init == {"$set": {"delivery": {"delivered_seq": 3, "owed_seq": 0}}}
+        push_filter, push = collection.find_one_and_update.await_args.args
+        assert push_filter == {"conversation_id": "conv-1"}
+        assert push == {
+            "$push": {
+                "delivery.owed_reactions": {"message_id": "u1", "emoji": "👍", "owed_at": OWED_AT}
+            }
+        }
+
+
+class TestRecordDelivered:
+    async def test_it_settles_each_placed_reaction_whatever_the_cursor_then_moves_the_cursor(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        partial = PartialReply(reply_id="r1", bubbles=1)
+
+        assert await repo.record_delivered(
+            "conv-1",
+            platform="telegram",
+            delivered_seq=7,
+            partial_reply=partial,
+            placed_reactions=[THUMBS, MessageReaction(message_id="u2", emoji="❤")],
+        )
+
+        (settle_filter, settle), (move_filter, move) = [
+            c.args for c in collection.update_one.await_args_list
+        ]
+        assert settle_filter == {"conversation_id": "conv-1", "platform": "telegram"}
+        assert settle == {
+            "$pull": {
+                "delivery.owed_reactions": {
+                    "$or": [
+                        {"message_id": "u1", "emoji": "👍"},
+                        {"message_id": "u2", "emoji": "❤"},
+                    ]
+                }
+            }
+        }
+        assert move_filter == {
+            "conversation_id": "conv-1",
+            "platform": "telegram",
+            "$or": [
+                {"delivery": {"$exists": False}},
+                {"delivery.delivered_seq": {"$lte": 7}},
+            ],
+        }
+        assert move == {
+            "$set": {
+                "delivery.delivered_seq": 7,
+                "delivery.partial_reply": {
+                    "reply_id": "r1",
+                    "bubbles": 1,
+                    "open_message_ids": [],
+                },
+            }
+        }
+
+    async def test_a_report_placing_nothing_only_moves_the_cursor(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        await repo.record_delivered(
+            "conv-1", platform="telegram", delivered_seq=7, partial_reply=None
+        )
+
+        [(_filter, update)] = [c.args for c in collection.update_one.await_args_list]
+        assert update == {"$set": {"delivery.delivered_seq": 7, "delivery.partial_reply": None}}
+
+    async def test_a_report_behind_the_cursor_says_it_moved_nothing(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        collection.update_one.return_value = MagicMock(matched_count=0, upserted_id=None)
+
+        assert not await repo.record_delivered(
+            "conv-1", platform="telegram", delivered_seq=3, partial_reply=None
+        )
+
+
+class TestDropOwedReactionsBefore:
+    async def test_it_pulls_only_the_platforms_reactions_owed_before_the_cutoff(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        collection.update_many = AsyncMock(return_value=MagicMock(modified_count=3))
+
+        assert await repo.drop_owed_reactions_before("telegram", OWED_AT) == 3
+        filter_, update = collection.update_many.await_args.args
+        assert filter_ == {
+            "platform": "telegram",
+            "delivery.owed_reactions.owed_at": {"$lt": OWED_AT},
+        }
+        assert update == {"$pull": {"delivery.owed_reactions": {"owed_at": {"$lt": OWED_AT}}}}
+
+
+class TestForgetDelivery:
+    async def test_it_drops_the_cursor_of_the_deleted_conversation(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        await repo.forget_delivery("conv-1")
+
+        filter_, update = collection.update_one.await_args.args
+        assert (filter_, update) == ({"conversation_id": "conv-1"}, {"$unset": {"delivery": ""}})
+
+
+class TestListOwed:
+    async def test_it_lists_sessions_owing_an_entry_or_a_reaction(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        cursor = collection.find.return_value
+        cursor.limit = MagicMock(return_value=cursor)
+
+        await repo.list_owed("telegram", 50)
+
+        cursor.limit.assert_called_once_with(50)
+        assert collection.find.call_args.args[0] == {
+            "platform": "telegram",
+            "$or": [
+                {"$expr": {"$gt": ["$delivery.owed_seq", "$delivery.delivered_seq"]}},
+                {"delivery.owed_reactions.0": {"$exists": True}},
+            ],
+        }

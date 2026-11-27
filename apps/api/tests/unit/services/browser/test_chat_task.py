@@ -89,12 +89,11 @@ class TestUserMessageTurn:
     @pytest.mark.parametrize(
         "configurable",
         [
-            {"thread_id": "conv-1", "user_id": USER, "is_result_narration": True},
             {"thread_id": "conv-1", "user_id": USER, "execution_mode": "background"},
             {"thread_id": "conv-1"},
             {"user_id": USER},
         ],
-        ids=["narration", "background", "no-user", "no-chat"],
+        ids=["background", "no-user", "no-chat"],
     )
     def test_a_turn_with_no_users_message_behind_it_is_none(
         self, configurable: AgentConfigurable

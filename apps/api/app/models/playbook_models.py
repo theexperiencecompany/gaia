@@ -43,7 +43,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 
 #: The key marking an argument value as a replay-time slot, not data. A `$`
@@ -553,6 +553,20 @@ def walk_ask_slots(
             yield from walk_ask_slots(item, (*path, index))
 
 
+def walk_time_slots(
+    value: object, path: tuple[str | int, ...] = ()
+) -> Iterator[tuple[tuple[str | int, ...], Mapping[str, object]]]:
+    """Every time slot inside one value, with the argument path that addresses it."""
+    if is_time_slot(value):
+        yield path, value
+    elif isinstance(value, Mapping) and not is_ask_slot(value):
+        for key, item in value.items():
+            yield from walk_time_slots(item, (*path, str(key)))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from walk_time_slots(item, (*path, index))
+
+
 class PlaybookBody(BaseModel):
     """The authored part of a playbook — what round-trips through YAML."""
 
@@ -597,6 +611,11 @@ class PlaybookDocument(PlaybookBody, MongoDocument):
     revision: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def log_fields(self) -> dict[str, str]:
+        """What names this playbook on a log line."""
+        return {"playbook_id": self.playbook_id, "workflow_id": self.workflow_id}
 
 
 class PlaybookUpdate(BaseModel):

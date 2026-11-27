@@ -502,7 +502,7 @@ On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-
 
 | Prop / option | Means | Values | Where |
 |---|---|---|---|
-| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`. Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`. Tabs: `solid`, `light`, `underlined`. Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
+| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`, `scrim` (a control laid over a picture). Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`. Tabs: `solid`, `light`, `underlined`. Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
 | `color` | semantic colour where HeroUI has a `color` prop | `accent`, `success`, `warning`, `danger`, `default` | `Chip color=`, `tabsVariants`, `sliderVariants` |
 | `size` | dimensions | `sm`, `md`, `lg`; Modal `xl`–`5xl` | the component's `size=`, `inputVariants`, `modalVariants` |
 | `shape` | corners | `default` (the size's radius), `sharp` 2px, `sm` 8px, `md` 12px, `xl` 16px, `pill` | `GaiaButton shape=`, `shapeVariants` |
@@ -511,7 +511,7 @@ On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-
 | `placeholder` | field placeholder colour | the tone scale, `dim` to `ghost` | `inputVariants` |
 | `tint` | strength of a soft fill | `default` (20%), `light` (15%) | `GaiaButton tint=`, `chipVariants` |
 | `inset` | a button's horizontal padding | `default`, `tight` (8px), `none` | `GaiaButton inset=` |
-| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a), and v2's coloured tooltips `accent`, `foreground`, `danger`; dividers: `raised` (on a zinc-800 card) | `overlayVariants`, `separatorVariants` |
+| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a), `bare` (no body, padding or shadow: the content is its own card), and v2's coloured tooltips `accent`, `foreground`, `danger`; dividers: `raised` (on a zinc-800 card) | `overlayVariants`, `separatorVariants` |
 | `density` | an accordion's vertical rhythm | `default`, `compact`, `flush` | `accordionVariants` |
 | `labelPlacement` | where a field's label sits | `outside`, `inside` (v2's 56px field) | `fieldVariants` |
 | `is*` | a boolean state | `isSelected`, `isBordered` | `chipVariants`, `avatarVariants` |
@@ -544,7 +544,7 @@ Neutrals are Tailwind's zinc scale; the brand and status colours are `accent`, `
 
 1. Put the route in its group and import exactly one area stylesheet at the top of the page, or inherit one from its layout: `styles/marketing.css` (landing pages), `styles/content.css` (SEO and content pages: the programmatic families and guides), `styles/directory.css` (the marketplace and blog, whose search, filter and share menus the content pages never render) or `styles/app.css` (the signed-in app). `pnpm area-css` fails when a page has none or two.
 2. Build it from sections 1 and 2. A settings page is `Card`s holding `TextField` or `Select` (`fieldVariants`, `inputVariants({ variant: "translucent" })`), `Switch`, `GaiaButton` and `Separator`. A marketing section is layout `div`s plus `LinkButton`, `Chip` and plain text.
-3. Run `pnpm area-css` (`pnpm dev` and `pnpm build` run it too) and commit `styles/generated/*.css`. It derives each area's Tailwind sources and HeroUI component sheets from the routes' imports; a stale file fails the web tests.
+3. Run `pnpm area-css` (`pnpm dev` runs it too) and commit `styles/generated/*.css`; `pnpm build` only checks them and fails when one is stale. It derives each area's Tailwind sources and HeroUI component sheets from the routes' imports; a stale file fails the web tests.
 
 ### 5. When the look you need does not exist
 
@@ -559,6 +559,19 @@ Add it once: a value on the owning variant function in `src/components/shared/`,
 ## Components
 
 GAIA composes from **HeroUI v3** (`@heroui/react`) for every control and overlay, the GAIA wrappers and variant functions in `src/components/shared/` that give it GAIA's look, and GAIA-native cards built directly to the dark card contract. **Shadcn** (`src/components/ui/`) remains for what HeroUI lacks (sidebar, chart, calendar, input-otp, context menu); its copies of HeroUI primitives are legacy, not for new code. Start with "How to write frontend code" above.
+
+### Chat Bubbles
+
+`.imessage-bubble` (`apps/web/src/app/styles/globals.css`) is shared by bot (`imessage-from-them`, zinc-800) and user (`imessage-from-me`, primary) bubbles. Never override its padding per call site.
+
+| Property | Value | Why |
+|---|---|---|
+| Radius | `20px` (`--bubble-radius`) | A one-line bubble is a capsule exactly `2 × radius` tall |
+| Line height | `24px` (`--bubble-line-height`) at 16px Inter | Inter centres the cap height in a 24px line, so text sits optically centred |
+| Block padding | `radius − line-height / 2` = `8px` | One line = 40px; each further line adds 24px |
+| Inline padding | `16px` (`lg`) | Matches the ~14px from cap top to the bubble edge |
+
+The last block inside a bubble carries no bottom margin (`p` and `li` use `last:mb-0`), and a reply that is only a list marker ("42.") renders as text, not as an empty list.
 
 ### Dark Card Styling Contract
 
@@ -655,7 +668,7 @@ Every control and overlay. "How to write frontend code" above lists the wrappers
 | `Tabs` | Tabbed card content · `tabsVariants` |
 | `ProgressBar`, `Avatar`, `ScrollShadow` | Progress, contact avatars, overflowing lists |
 
-Chart palette (Recharts): `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`
+Chart palette (Recharts), cyan-led like the rest of the UI: `["#00bbff", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`; pie and radial charts use `["#00bbff", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"]`. Both are `CHART_PALETTE` / `PIE_PALETTE` in `apps/web/src/config/openui/theme.ts`; import them rather than restating the colours.
 
 ### HeroUI control dimensions
 
@@ -818,6 +831,19 @@ Default transition: `transition-all duration-200`. Use this everywhere unless a 
 | Default | `ease` | Most transitions |
 | Exit / entrance | `ease-out` | Entrances, exits |
 | Bounce | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `scale-in`, `scale-in-blur` |
+
+### Letters
+
+A letter (the founder letter, a brief's sheet, the unfolding edition, the folded letter in chat) moves on its own curves, all in `apps/web/src/components/shared/letterMotion.ts`. Import them; never restate a curve.
+
+| Token | Duration | Easing | Use |
+|---|---|---|---|
+| `LETTER_OPEN_TRANSITION` | 0.4s | `[0.33, 1, 0.68, 1]` | A letter and its backdrop arriving |
+| `LETTER_CLOSE_TRANSITION` | 0.2s | `[0.4, 0, 1, 1]` | Leaving: fades and shrinks to `LETTER_EXIT_SCALE` (0.96) |
+| `LETTER_REDUCED_TRANSITION` | 0.15s | `easeOut` | Reduced motion: a plain fade both ways |
+| `LETTER_TRAVEL_TRANSITION` | 0.5s | `[0.32, 0.72, 0, 1]` | A chat letter travelling from where it lay |
+| `LETTER_CREASE_TRANSITION` | 0.42s | `[0.5, 0, 0.15, 1]` | Each crease of an unfolding edition |
+| `LETTER_HOVER_EASE` | 300ms | `cubic-bezier(0.23, 1, 0.32, 1)` | The folded chat letter lifting under the pointer |
 
 ### Framer Motion
 

@@ -7,7 +7,7 @@ from enum import Enum, StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.repositories.base import MongoDocument, UserScopedDocument
+from app.models.document_models import MongoDocument, UserScopedDocument
 from app.schemas.common import ResponseModel
 from shared.py.analytics.catalog.properties import Identifier
 

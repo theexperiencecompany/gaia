@@ -2,12 +2,11 @@
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from arq import ArqRedis, create_pool
-from arq.connections import RedisSettings
 
-from app.config.settings import settings
+from app.config.arq_redis import arq_redis_settings
 from app.models.scheduler_models import (
     UNSET,
     BaseScheduledTask,
@@ -17,6 +16,12 @@ from app.models.scheduler_models import (
     TaskExecutionResult,
     TaskOutcome,
     TaskRearm,
+)
+from app.services.scheduler_metrics import (
+    ScheduledTaskKind,
+    ScheduledTaskOutcome,
+    observe_claim_lateness,
+    observe_scheduled_fire,
 )
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
@@ -58,20 +63,22 @@ class BaseSchedulerService(ABC):
     Subclasses must implement task-specific operations like CRUD and execution.
     """
 
-    def __init__(self, redis_settings: RedisSettings | None = None):
+    kind: ClassVar[ScheduledTaskKind]
+
+    def __init__(self) -> None:
         """Initialize the scheduler service."""
-        self.redis_settings = redis_settings or RedisSettings.from_dsn(settings.REDIS_URL)
         self.arq_pool: ArqRedis | None = None
 
     async def initialize(self) -> None:
         """Initialize ARQ pool connection."""
-        self.arq_pool = await create_pool(self.redis_settings)
+        self.arq_pool = await create_pool(arq_redis_settings())
         log.info("initialized", self_class_name=self.__class__.__name__)
 
     async def close(self) -> None:
         """Close ARQ pool connection."""
         if self.arq_pool:
             await self.arq_pool.aclose()
+            self.arq_pool = None
         log.info("closed", self_class_name=self.__class__.__name__)
 
     async def schedule_task(self, task_id: str, schedule_config: ScheduleConfig) -> bool:
@@ -114,6 +121,7 @@ class BaseSchedulerService(ABC):
             )
 
         log.info("Processing task", task_id=task_id)
+        observe_claim_lateness(self.kind, task.scheduled_at)
 
         occurrence_count = task.occurrence_count + 1
 
@@ -125,6 +133,14 @@ class BaseSchedulerService(ABC):
             )
             execution_result = TaskExecutionResult(
                 outcome=TaskOutcome.FAILED, message=f"Task execution failed: {e!s}"
+            )
+
+        if execution_result.outcome is not TaskOutcome.ENTITLEMENT_BLOCKED:
+            observe_scheduled_fire(
+                self.kind,
+                ScheduledTaskOutcome.OK
+                if execution_result.success
+                else ScheduledTaskOutcome.FAILED,
             )
 
         if task.repeat and execution_result.outcome is TaskOutcome.ENTITLEMENT_BLOCKED:
@@ -149,7 +165,7 @@ class BaseSchedulerService(ABC):
                 ScheduledTaskStatus.FAILED,
                 TaskRearm(occurrence_count=occurrence_count),
             )
-            log.warning(
+            log.error(
                 "One-time task failed", task_id=task_id, failure_reason=execution_result.message
             )
 
@@ -263,6 +279,7 @@ class BaseSchedulerService(ABC):
                     error_type=type(e).__name__,
                 )
                 continue
+            observe_scheduled_fire(self.kind, ScheduledTaskOutcome.REAPED)
             reaped += 1
 
         return reaped
@@ -288,7 +305,7 @@ class BaseSchedulerService(ABC):
         updated_at = getattr(task, "updated_at", None)
         if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
             updated_at = updated_at.replace(tzinfo=UTC)
-        log.warning(
+        log.error(
             "Reaped task stuck in EXECUTING; reset to SCHEDULED",
             task_id=task_id,
             scheduler_class=self.__class__.__name__,
@@ -350,7 +367,13 @@ class BaseSchedulerService(ABC):
         return (task_id,)
 
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:
-        """Enqueue a task in ARQ."""
+        """Enqueue a task in ARQ, on the shared queue."""
+        return await self._enqueue_on(task_id, scheduled_at, None)
+
+    async def _enqueue_on(
+        self, task_id: str, scheduled_at: datetime, queue_name: str | None
+    ) -> bool:
+        """Enqueue a task's fire on queue_name (None is the shared queue); False when already enqueued."""
         log.set(scheduler_task_id=task_id, scheduler_scheduled_at=str(scheduled_at))
         if not self.arq_pool:
             log.error("ARQ pool not initialized")
@@ -397,6 +420,7 @@ class BaseSchedulerService(ABC):
             job_name,
             *self._build_job_args(task_id, armed_for),
             _job_id=job_id,
+            _queue_name=queue_name,
             _defer_until=scheduled_at,
         )
 

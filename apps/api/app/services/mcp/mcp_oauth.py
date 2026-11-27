@@ -17,6 +17,7 @@ import urllib.parse
 
 from pydantic import AnyHttpUrl, AnyUrl, BaseModel, ConfigDict, JsonValue
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.mcp import (
     GAIA_OAUTH_CLIENT_NAME,
@@ -226,6 +227,15 @@ def _build_oauth_scope_string(
             )
 
     return " ".join(scope_parts)
+
+
+def oauth_state_token(auth_url: str) -> str:
+    """Return the state token a provider authorization URL built by build_oauth_auth_url carries."""
+    query = urllib.parse.parse_qsl(urllib.parse.urlsplit(auth_url).query)
+    state = next((value for name, value in query if name == "state"), None)
+    if not state:
+        raise ValueError("an MCP authorization URL carries no state")
+    return state.partition(":")[0]
 
 
 async def build_oauth_auth_url(
@@ -645,7 +655,9 @@ async def handle_oauth_callback(
     # immediately; connect_after_oauth reconciles (resets to disconnected)
     # if credentials prove dead.
     try:
-        await update_user_integration_status(token_store.user_id, integration_id, "connected")
+        await update_user_integration_status(
+            token_store.user_id, integration_id, IntegrationStatus.CONNECTED
+        )
     except Exception as status_err:
         log.warning(
             f"{LogTag.MCP} optimistic status flip failed (will retry in background connect)",

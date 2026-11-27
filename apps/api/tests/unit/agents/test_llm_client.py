@@ -22,6 +22,8 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 from bson import ObjectId
 import httpx
 from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
+from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, Generation, LLMResult
@@ -36,8 +38,16 @@ from langchain_core.runnables.configurable import RunnableConfigurableFields
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
-from openai import APIConnectionError, AuthenticationError, RateLimitError
-from pydantic import BaseModel, SecretStr
+from openai import (
+    APIConnectionError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    RateLimitError,
+)
+from openrouter.errors import TooManyRequestsResponseError
+from prometheus_client import REGISTRY
+from pydantic import BaseModel, Field, SecretStr
 import pytest
 import tenacity
 
@@ -68,6 +78,7 @@ from app.agents.llm.client import (
     invoke_llm,
     register_llm_providers,
     resolve_model,
+    with_llm_retry,
     without_sdk_retry,
 )
 from app.agents.llm.exceptions import (
@@ -77,6 +88,7 @@ from app.agents.llm.exceptions import (
     MalformedStructuredOutputError,
 )
 from app.agents.llm.types import LLMProvider, ProviderLLM
+from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.deployment import DeploymentKind, baseline_profile
 from app.config.settings import settings
 from app.constants.llm import (
@@ -90,6 +102,7 @@ from app.constants.llm import (
     HELPER_MAX_OUTPUT_TOKENS,
     HIL_JUDGE_FALLBACK_MODEL_NAMES,
     HIL_JUDGE_MODEL_NAME,
+    LLM_RETRY_MAX_ATTEMPTS,
     MEMORY_MODEL_NAME,
     OPENAI_MAX_OUTPUT_TOKENS,
     OPENROUTER_APP_CATEGORIES,
@@ -112,7 +125,7 @@ from app.services.llm_metering import LLMCallContext
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
-from tests.helpers import create_fake_llm
+from tests.helpers import create_fake_llm, emitted_log_records
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -123,6 +136,26 @@ from tests.helpers import create_fake_llm
 # context; the row it produces is covered in test_llm_metering_ledger.py.
 _CLIENT = "app.agents.llm.client"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+#: Stands in for a user's memory or message text quoted inside a provider error.
+USER_TEXT = "my sister Asha is moving to Lisbon in March"
+
+
+def _openrouter_429() -> TooManyRequestsResponseError:
+    """Build OpenRouter's rate-limit error without the response model its constructor parses."""
+    error = TooManyRequestsResponseError.__new__(TooManyRequestsResponseError)
+    error.message = "slow down"
+    error.status_code = 429
+    return error
+
+
+def _provider_400() -> BadRequestError:
+    """Build a provider 400 whose message echoes the request, as an OpenAI-wire provider's can."""
+    return BadRequestError(
+        f"Invalid request: messages[1].content {USER_TEXT!r} exceeds the context window",
+        response=httpx.Response(400, request=httpx.Request("POST", "https://provider.test")),
+        body={"message": USER_TEXT, "code": "context_length_exceeded"},
+    )
+
 
 _AUX_CONTEXT = LLMCallContext(
     agent_name="memory_extraction", background=True, charge_to_budget=False
@@ -881,6 +914,16 @@ class TestResolveModelOnOpenRouter:
 # ---------------------------------------------------------------------------
 
 
+def _llm_call_counts(provider: str) -> dict[str, float]:
+    return {
+        outcome: REGISTRY.get_sample_value(
+            "gaia_llm_call_total", {"provider": provider, "outcome": outcome}
+        )
+        or 0.0
+        for outcome in ("ok", "rate_limited", "failed")
+    }
+
+
 class TestAinvokeLlm:
     @staticmethod
     def _runnable(side_effect: Any = None, result: Any = None) -> NonCallableMagicMock:
@@ -896,6 +939,123 @@ class TestAinvokeLlm:
         primary = self._runnable(result=AIMessage(content="ok"))
         result = await ainvoke_llm(primary, [HumanMessage(content="hi")])
         assert result.content == "ok"
+
+    @staticmethod
+    def _count(metric: str, **labels: str) -> float:
+        return REGISTRY.get_sample_value(metric, labels) or 0.0
+
+    @staticmethod
+    def _on(provider: str) -> RunnableConfig:
+        return cast(RunnableConfig, {"configurable": {"provider": provider}})
+
+    async def test_a_returned_call_counts_ok_for_its_lane_provider(self) -> None:
+        labels = {"provider": "gemini", "outcome": "ok"}
+        before = self._count("gaia_llm_call_total", **labels)
+
+        await ainvoke_llm(
+            self._runnable(result=AIMessage(content="ok")),
+            [HumanMessage(content="hi")],
+            config=self._on("gemini"),
+        )
+
+        assert self._count("gaia_llm_call_total", **labels) == before + 1
+
+    async def test_a_recovered_fallback_counts_the_failed_call_and_the_recovery(self) -> None:
+        call = {"provider": "openrouter", "outcome": "failed"}
+        calls, recovered = (
+            self._count("gaia_llm_call_total", **call),
+            self._count("gaia_llm_fallback_total", outcome="recovered"),
+        )
+
+        await ainvoke_llm(
+            self._runnable(side_effect=ConnectionError("provider down")),
+            [HumanMessage(content="hi")],
+            fallback=self._runnable(result=AIMessage(content="fallback-ok")),
+            config=self._on("openrouter"),
+        )
+
+        assert self._count("gaia_llm_call_total", **call) == calls + 1
+        assert self._count("gaia_llm_fallback_total", outcome="recovered") == recovered + 1
+
+    async def test_a_fallback_that_fails_too_counts_exhausted(self) -> None:
+        before = self._count("gaia_llm_fallback_total", outcome="exhausted")
+
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                self._runnable(side_effect=ConnectionError("provider down")),
+                [HumanMessage(content="hi")],
+                fallback=self._runnable(side_effect=ConnectionError("also down")),
+            )
+
+        assert self._count("gaia_llm_fallback_total", outcome="exhausted") == before + 1
+
+    async def test_a_call_with_no_fallback_to_try_counts_exhausted(self) -> None:
+        before = self._count("gaia_llm_fallback_total", outcome="exhausted")
+
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                self._runnable(side_effect=ConnectionError("provider down")),
+                [HumanMessage(content="hi")],
+            )
+
+        assert self._count("gaia_llm_fallback_total", outcome="exhausted") == before + 1
+
+    async def test_a_rate_limited_call_is_counted_apart_from_other_failures(self) -> None:
+        rate_limited = _openrouter_429()
+        labels = {"provider": "openrouter", "outcome": "rate_limited"}
+        before = self._count("gaia_llm_call_total", **labels)
+
+        with pytest.raises(TooManyRequestsResponseError):
+            await ainvoke_llm(
+                self._runnable(side_effect=rate_limited),
+                [HumanMessage(content="hi")],
+                config=self._on("openrouter"),
+            )
+
+        assert self._count("gaia_llm_call_total", **labels) == before + 1
+
+    async def test_a_call_with_no_lane_counts_for_the_provider_its_client_talks_to(self) -> None:
+        primary = NonCallableMagicMock(spec=ChatOpenRouter)
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
+        labels = {"provider": "openrouter", "outcome": "ok"}
+        before = self._count("gaia_llm_call_total", **labels)
+
+        await ainvoke_llm(primary, [HumanMessage(content="hi")])
+
+        assert self._count("gaia_llm_call_total", **labels) == before + 1
+
+    async def test_a_bug_in_the_call_is_not_counted_as_a_provider_failure(self) -> None:
+        before = _llm_call_counts("gemini")
+
+        with pytest.raises(ValueError, match="bug"):
+            await ainvoke_llm(
+                self._runnable(side_effect=ValueError("bug")),
+                [HumanMessage(content="hi")],
+                config=self._on("gemini"),
+            )
+
+        assert _llm_call_counts("gemini") == before
+
+    async def test_a_deadline_during_the_fallback_does_not_count_the_failed_call_twice(
+        self,
+    ) -> None:
+        async def _never_answers(*_args: object, **_kwargs: object) -> AIMessage:
+            await asyncio.sleep(30)
+            return AIMessage(content="too late")
+
+        before = _llm_call_counts("gemini")
+
+        with pytest.raises(TimeoutError):
+            await ainvoke_llm(
+                self._runnable(side_effect=ConnectionError("provider down")),
+                [HumanMessage(content="hi")],
+                fallback=self._runnable(side_effect=_never_answers),
+                config=self._on("gemini"),
+                options=LLMInvokeOptions(timeout=0.05, meter_auxiliary=False),
+            )
+
+        assert _llm_call_counts("gemini") == {**before, "failed": before["failed"] + 1}
 
     @patch("app.agents.llm.client.log")
     async def test_falls_back_to_default_on_provider_error(self, mock_log: MagicMock) -> None:
@@ -1164,9 +1324,310 @@ class TestFallbackHandover:
 
         assert mock_log.warning.call_args.kwargs["llm"] == {
             "label": "the_judge",
-            "error_type": "ConnectionError",
+            "provider": "unknown",
+            "model": "unknown",
             "fell_back": True,
         }
+        assert mock_log.warning.call_args.kwargs["error_type"] == "ConnectionError"
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "primary_error",
+        [
+            MalformedStructuredOutputError(
+                f"ConsolidatedDocument: reply made no ConsolidatedDocument tool call (content: {USER_TEXT!r})",
+                llm_output=USER_TEXT,
+            ),
+            _provider_400(),
+        ],
+        ids=["malformed_structured_reply", "provider_400_echoing_the_request"],
+    )
+    async def test_the_downgrade_warning_never_carries_the_error_text(
+        self, primary_error: Exception
+    ) -> None:
+        primary = TestAinvokeLlm._runnable(side_effect=primary_error)
+
+        with emitted_log_records() as records:
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                label="memory_consolidation",
+                fallback=self._bindable_runnable(AIMessage(content="fallback-ok")),
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        assert any("falling back" in record["message"] for record in records)
+        assert USER_TEXT not in json.dumps(records)
+
+    @pytest.mark.regression
+    async def test_the_downgrade_warning_carries_the_shape_of_the_failure(self) -> None:
+        primary = TestAinvokeLlm._runnable(side_effect=_provider_400())
+        primary.model_name = "@cf/some/model"
+
+        with emitted_log_records() as records:
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                label="memory_consolidation",
+                fallback=self._bindable_runnable(AIMessage(content="fallback-ok")),
+                config=RunnableConfig(configurable={"provider": "cloudflare"}),
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        (warning,) = [record for record in records if "falling back" in record["message"]]
+        shape = ("llm", "error_type", "error_family", "http_status", "provider_code")
+        assert {key: warning["extra"].get(key) for key in shape} == {
+            "llm": {
+                "label": "memory_consolidation",
+                "provider": "cloudflare",
+                "model": "@cf/some/model",
+                "fell_back": True,
+            },
+            "error_type": "BadRequestError",
+            "error_family": "invalid_request",
+            "http_status": 400,
+            "provider_code": "context_length_exceeded",
+        }
+
+    @staticmethod
+    def _failing_fallback(error: Exception) -> NonCallableMagicMock:
+        fallback = TestFallbackHandover._bindable_runnable(None)
+        fallback.ainvoke = AsyncMock(side_effect=error)
+        fallback.invoke = MagicMock(side_effect=error)
+        return fallback
+
+    @pytest.mark.regression
+    async def test_a_call_that_fails_on_the_fallback_too_is_logged_once_by_both_legs_shapes(
+        self,
+    ) -> None:
+        primary = TestAinvokeLlm._runnable(side_effect=_provider_400())
+        primary.model_name = "@cf/some/model"
+        fallback_error = ConnectionError(f"upstream reset on {USER_TEXT!r}")
+
+        with emitted_log_records() as records, pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                label="memory_consolidation",
+                fallback=self._failing_fallback(fallback_error),
+                config=RunnableConfig(configurable={"provider": "cloudflare"}),
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        (exhausted,) = [r for r in records if "failed on the fallback too" in r["message"]]
+        assert exhausted["level"]["name"] == "WARNING"
+        shape = (
+            "llm",
+            "primary_failure",
+            "error_type",
+            "error_family",
+            "http_status",
+            "provider_code",
+        )
+        assert {key: exhausted["extra"].get(key) for key in shape} == {
+            "llm": {
+                "label": "memory_consolidation",
+                "provider": "cloudflare",
+                "model": "@cf/some/model",
+                "fell_back": True,
+                "fallback_provider": "openrouter",
+                "fallback_model": "m",
+            },
+            "primary_failure": {
+                "error_type": "BadRequestError",
+                "error_family": "invalid_request",
+                "http_status": 400,
+                "provider_code": "context_length_exceeded",
+            },
+            "error_type": "ConnectionError",
+            "error_family": "provider_unavailable",
+            "http_status": None,
+            "provider_code": None,
+        }
+        assert USER_TEXT not in json.dumps(records)
+
+    @pytest.mark.regression
+    async def test_a_failed_call_with_no_fallback_to_try_is_logged_once_by_its_shape(
+        self,
+    ) -> None:
+        primary = TestAinvokeLlm._runnable(side_effect=_provider_400())
+        primary.model_name = "@cf/some/model"
+
+        with emitted_log_records() as records, pytest.raises(BadRequestError):
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                label="memory_consolidation",
+                config=RunnableConfig(configurable={"provider": "cloudflare"}),
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        (exhausted,) = [r for r in records if "no fallback to try" in r["message"]]
+        assert exhausted["level"]["name"] == "WARNING"
+        shape = ("llm", "error_type", "error_family", "http_status", "provider_code")
+        assert {key: exhausted["extra"].get(key) for key in shape} == {
+            "llm": {
+                "label": "memory_consolidation",
+                "provider": "cloudflare",
+                "model": "@cf/some/model",
+                "fell_back": False,
+            },
+            "error_type": "BadRequestError",
+            "error_family": "invalid_request",
+            "http_status": 400,
+            "provider_code": "context_length_exceeded",
+        }
+        assert USER_TEXT not in json.dumps(records)
+
+    @pytest.mark.regression
+    def test_a_sync_call_that_fails_on_the_fallback_too_is_logged_by_both_legs_shapes(
+        self,
+    ) -> None:
+        primary = TestTheSyncFallback._failing_primary()
+        primary.model_name = "@cf/some/model"
+        fallback_error = ConnectionError(f"upstream reset on {USER_TEXT!r}")
+
+        with emitted_log_records() as records, pytest.raises(ConnectionError):
+            invoke_llm(
+                primary,
+                "hi",
+                label="memory_extraction",
+                fallback=self._failing_fallback(fallback_error),
+                config=RunnableConfig(configurable={"provider": "cloudflare"}),
+                options=LLMInvokeOptions(max_attempts=1),
+            )
+
+        (exhausted,) = [r for r in records if "failed on the fallback too" in r["message"]]
+        assert exhausted["extra"]["llm"] == {
+            "label": "memory_extraction",
+            "provider": "cloudflare",
+            "model": "@cf/some/model",
+            "fell_back": True,
+            "fallback_provider": "openrouter",
+            "fallback_model": "m",
+        }
+        assert exhausted["extra"]["primary_failure"]["error_type"] == "ConnectionError"
+        assert USER_TEXT not in json.dumps(records)
+
+    async def test_the_exhausted_line_names_a_fallback_behind_the_real_retry_wrapper(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for #1947 review: the retry wrapper hid the fallback's client, so both read unknown."""
+        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+        monkeypatch.setattr(
+            ChatOpenRouter, "ainvoke", AsyncMock(side_effect=ConnectionError("also down"))
+        )
+        fallback = ChatOpenRouter(model="fallback-model", api_key=SecretStr("k"))
+
+        with emitted_log_records() as records, pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                TestAinvokeLlm._runnable(side_effect=_provider_400()),
+                [HumanMessage(content="hi")],
+                fallback=fallback,
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        (exhausted,) = [r for r in records if "failed on the fallback too" in r["message"]]
+        named = exhausted["extra"]["llm"]
+        assert (named["fallback_provider"], named["fallback_model"]) == (
+            "openrouter",
+            "fallback-model",
+        )
+
+    async def test_the_exhausted_line_names_the_lane_and_model_the_fallback_ran_as(self) -> None:
+        """The fallback runs under its own config and is stamped with its lane's model: the line says the same."""
+        with emitted_log_records() as records, pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                TestAinvokeLlm._runnable(side_effect=_provider_400()),
+                [HumanMessage(content="hi")],
+                fallback=self._failing_fallback(ConnectionError("also down")),
+                options=LLMInvokeOptions(
+                    max_attempts=1,
+                    meter_auxiliary=False,
+                    fallback_config=RunnableConfig(configurable={"provider": "gemini"}),
+                    fallback_model="gemini-lane-model",
+                ),
+            )
+
+        (exhausted,) = [r for r in records if "failed on the fallback too" in r["message"]]
+        named = exhausted["extra"]["llm"]
+        assert (named["fallback_provider"], named["fallback_model"]) == (
+            "gemini",
+            "gemini-lane-model",
+        )
+
+    def test_the_sync_exhausted_line_names_the_lane_and_model_the_fallback_ran_as(self) -> None:
+        with emitted_log_records() as records, pytest.raises(ConnectionError):
+            invoke_llm(
+                TestTheSyncFallback._failing_primary(),
+                "hi",
+                fallback=self._failing_fallback(ConnectionError("also down")),
+                options=LLMInvokeOptions(
+                    max_attempts=1,
+                    fallback_config=RunnableConfig(configurable={"provider": "gemini"}),
+                    fallback_model="gemini-lane-model",
+                ),
+            )
+
+        (exhausted,) = [r for r in records if "failed on the fallback too" in r["message"]]
+        named = exhausted["extra"]["llm"]
+        assert (named["fallback_provider"], named["fallback_model"]) == (
+            "gemini",
+            "gemini-lane-model",
+        )
+
+    async def test_a_fallback_that_recovers_the_call_logs_no_exhausted_line(self) -> None:
+        primary = TestAinvokeLlm._runnable(side_effect=_provider_400())
+
+        with emitted_log_records() as records:
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                fallback=self._bindable_runnable(AIMessage(content="fallback-ok")),
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        assert [r["level"]["name"] for r in records if "llm call failed" in r["message"]] == [
+            "WARNING"
+        ]
+
+    @pytest.mark.regression
+    async def test_a_failed_calls_unattributed_spend_warning_never_carries_the_error_text(
+        self,
+    ) -> None:
+        """The warning fires while the call's error is propagating, and the log facade stamps an in-flight exception's text unless told its type."""
+
+        async def _burn_tokens_then_fail(
+            _messages: Any, config: RunnableConfig | None = None
+        ) -> AIMessage:
+            callbacks = (config or {}).get("callbacks") or []
+            assert isinstance(callbacks, list)
+            for handler in callbacks:
+                if isinstance(handler, UsageMetadataCallbackHandler):
+                    handler.usage_metadata = {
+                        "m": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+                    }
+            raise _provider_400()
+
+        primary = TestAinvokeLlm._runnable(side_effect=_burn_tokens_then_fail)
+
+        with (
+            patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.1)),
+            patch(f"{_CLIENT}.record_failed_llm_call", new=AsyncMock()),
+            emitted_log_records() as records,
+            pytest.raises(BadRequestError),
+        ):
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                config=RunnableConfig(),
+                label="memory_consolidation",
+                options=LLMInvokeOptions(max_attempts=1),
+            )
+
+        (unmetered,) = [record for record in records if "not metered" in record["message"]]
+        assert unmetered["extra"]["error_type"] == "BadRequestError"
+        assert USER_TEXT not in json.dumps(records)
 
 
 class _Extracted(BaseModel):
@@ -1206,6 +1667,7 @@ class TestMemoryLaneProviderSelection:
         mock_settings.GAIA_SIM_MODE = True
         assert aux_lane_available() is True
 
+    @patch("app.agents.llm.client.one_shot_route", return_value=("cloudflare", "m"))
     @patch("app.agents.llm.client._structured_runnable")
     @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
     @patch("app.agents.llm.client.resolve_model")
@@ -1218,6 +1680,7 @@ class TestMemoryLaneProviderSelection:
         mock_memory_llm: MagicMock,
         mock_ainvoke: AsyncMock,
         mock_aux_runnable: MagicMock,
+        mock_route: MagicMock,
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-aux")
         config = RunnableConfig(configurable={"user_id": USER_ID})
@@ -1246,6 +1709,9 @@ class TestMemoryLaneProviderSelection:
         assert fallback() is mock_memory_llm.return_value.with_structured_output.return_value
         assert mock_memory_llm.call_args.args == (ModelUse.MEMORY,)
         assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
+        assert mock_memory_llm.call_args.kwargs["exclude"] == "cloudflare"
+        assert mock_available.call_args.args == ("cloudflare",)
+        assert mock_route.call_args.args == (ModelUse.HELPER,)
         assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
 
     @patch("app.agents.llm.client._structured_runnable")
@@ -1503,6 +1969,39 @@ class TestConstants:
         for exc in (rate_limited, unauthorized, disconnected):
             assert isinstance(exc, LLM_FALLBACK_EXCEPTIONS), type(exc).__name__
 
+    def test_an_openai_quota_429_goes_straight_to_fallback_without_retrying(self) -> None:
+        """A spent quota cannot recover, so retrying it only delays the fallback."""
+        request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        quota_exhausted = RateLimitError(
+            "spend limit",
+            response=httpx.Response(429, request=request),
+            body={"type": "insufficient_quota", "code": "project_spend_limit_exceeded"},
+        )
+        calls: list[int] = []
+
+        def _call(_: object) -> None:
+            calls.append(1)
+            raise quota_exhausted
+
+        with pytest.raises(RateLimitError):
+            with_llm_retry(RunnableLambda(_call)).invoke("hi")
+
+        assert len(calls) == 1
+        assert not isinstance(quota_exhausted, LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(quota_exhausted, LLM_FALLBACK_EXCEPTIONS)
+
+    def test_a_workers_ai_per_minute_429_keeps_its_retries(self) -> None:
+        """Workers AI's body names no error type; its rate limit clears within the minute."""
+        request = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+        throttled = RateLimitError(
+            "rate limiting",
+            response=httpx.Response(429, request=request),
+            body={"errors": [{"message": "AiError: rate limiting", "code": 3040}]},
+        )
+
+        assert isinstance(throttled, LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(ValueError("insufficient_quota"), LLM_RETRYABLE_EXCEPTIONS)
+
     def test_non_retryable_exception_not_in_tuple(self) -> None:
         assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)
         assert not isinstance(KeyError("missing"), LLM_RETRYABLE_EXCEPTIONS)
@@ -1554,6 +2053,22 @@ class TestChatbot:
         with pytest.raises(ConnectionError):
             await chatbot([HumanMessage(content="hello")])
         mock_log.error.assert_called_once()
+
+    @pytest.mark.regression
+    @patch("app.agents.llm.chatbot.ainvoke_llm")
+    @patch("app.agents.llm.chatbot.resolve_model")
+    async def test_the_failure_log_never_carries_the_error_text(
+        self, mock_get_helper: MagicMock, mock_ainvoke: AsyncMock
+    ) -> None:
+        mock_get_helper.return_value = MagicMock()
+        mock_ainvoke.side_effect = _provider_400()
+
+        with emitted_log_records() as records, pytest.raises(BadRequestError):
+            await chatbot([HumanMessage(content="hello")])
+
+        (failure,) = [r for r in records if "chatbot LLM call failed" in r["message"]]
+        assert failure["extra"]["http_status"] == 400
+        assert USER_TEXT not in json.dumps(records)
 
     @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.ainvoke_llm")
@@ -1994,10 +2509,110 @@ class TestAinvokeStructured:
         assert mock_resolve.call_args.kwargs == {
             "temperature": 0.3,
             "reasoning": ReasoningLevel.OFF,
+            "exclude": None,
         }
         assert mock_structured_tool.call_args.args == (model, self._Schema)
         assert mock_invoke.call_args.args[0] is structured
         assert result.answer == "42"
+
+    @pytest.fixture
+    def _workers_ai_then_openai(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Production with Workers AI rate limiting us; return the providers a call was sent to."""
+        monkeypatch.setattr(settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(settings, "DEV_DEFAULT_MODEL", None)
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "g-key")
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_ACCOUNT_ID", "acct-1")
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_API_TOKEN", "cf-token")
+        asked: list[str] = []
+        request = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+        throttled = RateLimitError(
+            "rate limiting", response=httpx.Response(429, request=request), body=None
+        )
+
+        def _answer(model: BaseChatModel, schema: type[BaseModel], **_: object) -> Runnable:
+            def _call(_prompt: object) -> BaseModel:
+                asked.append(type(model).__name__)
+                if isinstance(model, ChatWorkersAI):
+                    raise throttled
+                return schema.model_validate({"answer": "from-openai", "fact": "from-openai"})
+
+            return RunnableLambda(_call)
+
+        monkeypatch.setattr(client_module, "structured_runnable", _answer)
+        monkeypatch.setattr(
+            ChatOpenAI,
+            "with_structured_output",
+            lambda model, schema, **_: _answer(model, schema),
+        )
+        return asked
+
+    async def test_a_rate_limited_workers_ai_one_shot_is_answered_by_another_provider(
+        self, _workers_ai_then_openai: list[str]
+    ) -> None:
+        """Regression: 16 helper calls failed outright in prod when Workers AI answered 429."""
+        result = await ainvoke_structured(
+            self._Schema, "q", label="hil", options=StructuredCallOptions(max_attempts=1)
+        )
+
+        assert result.answer == "from-openai"
+        assert _workers_ai_then_openai == ["ChatWorkersAI", "ChatOpenAI"]
+
+    async def test_the_memory_fallback_leaves_the_provider_that_failed(
+        self, _workers_ai_then_openai: list[str]
+    ) -> None:
+        """Regression: the memory lane's fallback resolved to Workers AI again and met the same 429."""
+        result = await ainvoke_structured_gemini(
+            _Extracted,
+            "q",
+            label="memory:extraction",
+            options=StructuredCallOptions(max_attempts=1),
+        )
+
+        assert result.fact == "from-openai"
+        assert _workers_ai_then_openai == ["ChatWorkersAI", "ChatOpenAI"]
+
+    async def test_the_fallback_is_the_same_call_off_the_provider_that_failed(
+        self, _workers_ai_then_openai: list[str]
+    ) -> None:
+        """The config carries the sticky session and the user the spend is booked to."""
+        config = RunnableConfig(configurable={"user_id": USER_ID, "session_id": "s-1"})
+        options = StructuredCallOptions(temperature=0.2)
+
+        with (
+            patch(f"{_CLIENT}._structured_runnable") as mock_runnable,
+            patch(
+                f"{_CLIENT}.ainvoke_llm", new=AsyncMock(return_value=self._Schema(answer="42"))
+            ) as mock_invoke,
+        ):
+            await ainvoke_structured(self._Schema, "q", label="hil", config=config, options=options)
+            fallback = mock_invoke.call_args.kwargs["fallback"]
+            mock_runnable.reset_mock()
+            built = fallback()
+
+        assert built is mock_runnable.return_value
+        assert mock_runnable.call_args.args == (self._Schema, config, options, "cloudflare")
+
+    async def test_a_one_shot_with_one_provider_has_no_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(settings, "DEV_DEFAULT_MODEL", None)
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
+        for unset in ("GOOGLE_API_KEY", "OPENAI_API_KEY", "CLOUDFLARE_AI_ACCOUNT_ID"):
+            monkeypatch.setattr(settings, unset, None)
+
+        with patch(
+            f"{_CLIENT}.ainvoke_llm", new=AsyncMock(return_value=self._Schema(answer="42"))
+        ) as mock_invoke:
+            await ainvoke_structured(self._Schema, "q", label="hil")
+
+        assert mock_invoke.call_args.kwargs["fallback"] is None
 
     async def test_reasoning_off_reaches_the_request_and_the_default_sends_none(
         self, monkeypatch: pytest.MonkeyPatch
@@ -2111,6 +2726,16 @@ class TestAinvokeStructured:
 class _Closing(BaseModel):
     text: str
     achieved: bool
+
+
+class _CappedNote(BaseModel):
+    text: str = Field(min_length=1, max_length=40)
+
+
+class _Capped(BaseModel):
+    headline: str = Field(max_length=12)
+    tags: list[str] = Field(max_length=2)
+    note: _CappedNote
 
 
 def _provider_replies_with(arguments: str, finish_reason: str = "tool_calls") -> Any:
@@ -2344,6 +2969,140 @@ class TestStructuredReplyParsing:
         binding = runnable.first
         assert isinstance(binding, RunnableBinding)
         assert binding.kwargs["tool_choice"] == tool_choice
+
+    @staticmethod
+    def _tool_binding(runnable: Runnable) -> RunnableBinding:
+        assert isinstance(runnable, RunnableSequence)
+        assert isinstance(runnable.first, RunnableBinding)
+        return runnable.first
+
+    def test_the_tool_is_not_strict_unless_asked(self) -> None:
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(client_module._structured_tool_runnable(llm, _Closing))
+
+        assert "strict" not in binding.kwargs["tools"][0]["function"]
+        offered = binding.kwargs["ls_structured_output_format"]["schema"]
+        assert "strict" not in offered["function"]
+
+    def test_a_strict_tool_has_the_openai_wire_hold_the_arguments_to_the_schema(self) -> None:
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(
+            client_module._structured_tool_runnable(llm, _Closing, strict=True)
+        )
+
+        assert binding.kwargs["tools"][0]["function"]["strict"] is True
+        offered = binding.kwargs["ls_structured_output_format"]["schema"]
+        assert offered["function"]["strict"] is True
+
+    def test_a_schema_held_call_on_gemini_runs_on_the_response_schema(self) -> None:
+        gemini = ChatGoogleGenerativeAI(model="gemini-x", api_key=SecretStr("k"))
+
+        with patch(f"{_CLIENT}.resolve_model", return_value=gemini):
+            runnable = _structured_runnable(_Closing, None, StructuredCallOptions(schema_held=True))
+
+        binding = self._tool_binding(runnable)
+        assert binding.bound is gemini
+        assert binding.kwargs == {
+            "response_mime_type": "application/json",
+            "response_json_schema": _Closing.model_json_schema(),
+        }
+
+    def test_a_strict_tool_offers_no_size_cap_for_the_provider_to_cut_a_string_at(self) -> None:
+        """Regression: a provider holding a strict maxLength cut a brief's headline mid-sentence."""
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(
+            client_module._structured_tool_runnable(llm, _Capped, strict=True)
+        )
+
+        offered = json.dumps(binding.kwargs["tools"][0]["function"]["parameters"])
+        assert "maxLength" not in offered
+        assert "maxItems" not in offered
+        assert '"minLength": 1' in offered
+        assert binding.kwargs["tools"][0]["function"]["name"] == "_Capped"
+
+    def test_a_gemini_response_schema_offers_no_size_cap(self) -> None:
+        gemini = ChatGoogleGenerativeAI(model="gemini-x", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(client_module._gemini_schema_runnable(gemini, _Capped))
+
+        held = json.dumps(binding.kwargs["response_json_schema"])
+        assert "maxLength" not in held
+        assert "maxItems" not in held
+
+    def test_a_reply_past_a_cap_the_provider_was_not_held_to_is_malformed_naming_it(
+        self,
+    ) -> None:
+        reply = AIMessage(
+            content='{"headline": "Three things are on today", "tags": [], "note": {"text": "ok"}}'
+        )
+
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(reply, _Capped)
+
+        assert "at most 12 characters" in raised.value.reason
+
+    def test_the_gemini_reply_is_read_as_the_schema_under_the_schemas_name(self) -> None:
+        fake = GenericFakeChatModel(
+            messages=iter([AIMessage(content='{"text": "done", "achieved": true}')])
+        )
+
+        runnable = client_module._gemini_schema_runnable(
+            cast("ChatGoogleGenerativeAI", fake), _Closing
+        )
+
+        assert isinstance(runnable, RunnableSequence)
+        assert runnable.last.name == "_Closing"
+        assert runnable.invoke("prompt") == _Closing(text="done", achieved=True)
+
+    def test_a_gemini_reply_that_does_not_fit_the_schema_is_malformed(self) -> None:
+        fake = GenericFakeChatModel(messages=iter([AIMessage(content='{"text": "done"}')]))
+
+        with pytest.raises(MalformedStructuredOutputError, match="does not fit the schema"):
+            client_module._gemini_schema_runnable(
+                cast("ChatGoogleGenerativeAI", fake), _Closing
+            ).invoke("prompt")
+
+    def test_a_json_reply_that_is_no_ai_message_is_malformed_naming_its_type(self) -> None:
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(HumanMessage(content="{}"), _Closing)
+
+        assert raised.value.reason == "_Closing: expected an AI reply, got HumanMessage"
+
+    def test_a_json_reply_cut_at_the_output_cap_is_malformed(self) -> None:
+        cut = AIMessage(content='{"text": "do', response_metadata={"finish_reason": "length"})
+
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(cut, _Closing)
+
+        assert raised.value.reason == "_Closing: reply stopped at the output cap"
+
+    def test_a_json_reply_that_does_not_fit_keeps_its_text_for_the_retry(self) -> None:
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(AIMessage(content='{"text": "done"}'), _Closing)
+
+        assert raised.value.llm_output == '{"text": "done"}'
+        assert raised.value.reason.startswith("_Closing: the reply does not fit the schema: ")
+
+    def test_a_call_on_gemini_that_holds_no_schema_runs_on_the_tool(self) -> None:
+        gemini = ChatGoogleGenerativeAI(model="gemini-x", api_key=SecretStr("k"))
+
+        with patch(f"{_CLIENT}.resolve_model", return_value=gemini):
+            runnable = _structured_runnable(_Closing, None, StructuredCallOptions())
+
+        assert "response_json_schema" not in self._tool_binding(runnable).kwargs
+
+    def test_a_schema_held_call_off_gemini_runs_on_the_strict_tool(self) -> None:
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        with patch(f"{_CLIENT}.resolve_model", return_value=llm):
+            runnable = _structured_runnable(_Closing, None, StructuredCallOptions(schema_held=True))
+
+        binding = self._tool_binding(runnable)
+        assert "response_json_schema" not in binding.kwargs
+        assert binding.kwargs["tools"][0]["function"]["strict"] is True
 
 
 class TestStampFallback:
@@ -2607,7 +3366,8 @@ class TestTheSyncFallback:
     @staticmethod
     def _fallback() -> NonCallableMagicMock:
         runnable = TestFallbackHandover._bindable_runnable(AIMessage(content="ok"))
-        runnable.model_name = "fallback-model"
+        # The binding names no model of its own; the client it wraps does.
+        runnable.bound = ChatOpenRouter(model="fallback-model", api_key=SecretStr("k"))
         runnable.invoke = MagicMock(side_effect=lambda *_a, **_k: AIMessage(content="ok"))
         return runnable
 
@@ -2630,9 +3390,24 @@ class TestTheSyncFallback:
         assert result.response_metadata["gaia_fallback_model"] == "fallback-model"
         assert mock_log.warning.call_args.kwargs["llm"] == {
             "label": "memory_extraction",
-            "error_type": "ConnectionError",
+            "provider": "unknown",
+            "model": "unknown",
             "fell_back": True,
         }
+        assert mock_log.warning.call_args.kwargs["error_type"] == "ConnectionError"
+
+    @pytest.mark.regression
+    def test_the_downgrade_warning_never_carries_the_error_text(self) -> None:
+        primary = self._failing_primary()
+        primary.invoke = MagicMock(side_effect=ConnectionError(f"upstream reset on {USER_TEXT!r}"))
+
+        with emitted_log_records() as records:
+            invoke_llm(
+                primary, "hi", fallback=self._fallback(), options=LLMInvokeOptions(max_attempts=1)
+            )
+
+        assert any("falling back" in record["message"] for record in records)
+        assert USER_TEXT not in json.dumps(records)
 
     def test_an_explicit_sticky_session_outranks_the_runs(self) -> None:
         fallback = self._fallback()
@@ -2656,6 +3431,173 @@ class TestTheSyncFallback:
                 options=LLMInvokeOptions(max_attempts=1),
             )
 
+    def test_a_returned_call_counts_ok_for_its_lane_provider(self) -> None:
+        primary = self._failing_primary()
+        primary.invoke = MagicMock(return_value=AIMessage(content="ok"))
+        before = _llm_call_counts("gemini")
+
+        invoke_llm(primary, "hi", config=RunnableConfig(configurable={"provider": "gemini"}))
+
+        assert _llm_call_counts("gemini") == {**before, "ok": before["ok"] + 1}
+
+    def test_a_call_with_no_lane_counts_for_the_provider_its_client_talks_to(self) -> None:
+        primary = NonCallableMagicMock(spec=ChatOpenRouter)
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.invoke = MagicMock(return_value=AIMessage(content="ok"))
+        before = _llm_call_counts("openrouter")
+
+        invoke_llm(primary, "hi")
+
+        assert _llm_call_counts("openrouter") == {**before, "ok": before["ok"] + 1}
+
+    def test_a_failed_call_counts_failed_for_its_lane_provider(self) -> None:
+        before = _llm_call_counts("gemini")
+
+        invoke_llm(
+            self._failing_primary(),
+            "hi",
+            fallback=self._fallback(),
+            config=RunnableConfig(configurable={"provider": "gemini"}),
+        )
+
+        assert _llm_call_counts("gemini") == {**before, "failed": before["failed"] + 1}
+
+    def test_a_rate_limited_call_is_counted_apart_from_other_failures(self) -> None:
+        rate_limited = _openrouter_429()
+        primary = self._failing_primary()
+        primary.invoke = MagicMock(side_effect=rate_limited)
+        before = _llm_call_counts("openrouter")
+
+        invoke_llm(
+            primary,
+            "hi",
+            fallback=self._fallback(),
+            config=RunnableConfig(configurable={"provider": "openrouter"}),
+        )
+
+        assert _llm_call_counts("openrouter") == {
+            **before,
+            "rate_limited": before["rate_limited"] + 1,
+        }
+
+    def test_one_attempt_means_the_provider_is_called_once(self) -> None:
+        calls: list[object] = []
+
+        def _down(prompt: object) -> AIMessage:
+            calls.append(prompt)
+            raise ConnectionError("provider down")
+
+        with pytest.raises(ConnectionError, match="provider down"):
+            invoke_llm(RunnableLambda(_down), "hi", options=LLMInvokeOptions(max_attempts=1))
+
+        assert calls == ["hi"]
+
+
+class TestAWorkersAiRateLimitSkipsTheRetries:
+    """Workers AI limits per minute, so a retry seconds later fails again and only delays the fallback."""
+
+    _REQUEST = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+    _ON_WORKERS_AI = RunnableConfig(configurable={"provider": "cloudflare"})
+
+    @pytest.fixture(autouse=True)
+    def _no_backoff(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+
+    @classmethod
+    def _rate_limited(cls) -> RateLimitError:
+        return RateLimitError(
+            "rate limiting",
+            response=httpx.Response(429, request=cls._REQUEST),
+            body={"errors": [{"message": "AiError: rate limiting", "code": 3040}]},
+        )
+
+    @classmethod
+    def _server_error(cls) -> InternalServerError:
+        return InternalServerError(
+            "upstream error", response=httpx.Response(500, request=cls._REQUEST), body=None
+        )
+
+    @staticmethod
+    def _failing(error: Exception) -> tuple[RunnableLambda[Any, AIMessage], list[int]]:
+        attempts: list[int] = []
+
+        def _call(_: Any) -> AIMessage:
+            attempts.append(1)
+            raise error
+
+        return RunnableLambda(_call), attempts
+
+    @staticmethod
+    def _answering() -> RunnableLambda[Any, AIMessage]:
+        return RunnableLambda(lambda _: AIMessage(content="fallback-ok"))
+
+    @pytest.mark.regression
+    async def test_a_rate_limit_is_tried_once_and_then_the_fallback_answers(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        reply = await ainvoke_llm(
+            primary, "hi", fallback=self._answering(), config=self._ON_WORKERS_AI
+        )
+
+        assert len(attempts) == 1
+        assert reply.content == "fallback-ok"
+
+    @pytest.mark.regression
+    def test_the_sync_call_tries_a_rate_limit_once_too(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        reply = invoke_llm(primary, "hi", fallback=self._answering(), config=self._ON_WORKERS_AI)
+
+        assert len(attempts) == 1
+        assert reply.content == "fallback-ok"
+
+    async def test_a_server_error_is_still_retried_before_the_fallback(self) -> None:
+        primary, attempts = self._failing(self._server_error())
+
+        reply = await ainvoke_llm(
+            primary, "hi", fallback=self._answering(), config=self._ON_WORKERS_AI
+        )
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+        assert reply.content == "fallback-ok"
+
+    async def test_a_rate_limit_with_no_fallback_is_still_retried(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        with pytest.raises(RateLimitError):
+            await ainvoke_llm(primary, "hi", config=self._ON_WORKERS_AI)
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+
+    def test_the_sync_call_still_retries_a_rate_limit_with_no_fallback(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        with pytest.raises(RateLimitError):
+            invoke_llm(primary, "hi", config=self._ON_WORKERS_AI)
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+
+    def test_the_retry_wrapper_retries_a_rate_limit_unless_told_not_to(self) -> None:
+        """The fallback's own retries and the file summarizer take the default."""
+        primary, attempts = self._failing(self._rate_limited())
+
+        with pytest.raises(RateLimitError):
+            with_llm_retry(primary).invoke("hi")
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+
+    async def test_another_providers_rate_limit_is_still_retried(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        await ainvoke_llm(
+            primary,
+            "hi",
+            fallback=self._answering(),
+            config=RunnableConfig(configurable={"provider": "openai"}),
+        )
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+
 
 class TestTheInvokeTimeoutIsEnforced:
     """The caller's timeout is the ceiling on a whole attempt, retries included.
@@ -2675,6 +3617,20 @@ class TestTheInvokeTimeoutIsEnforced:
         runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(side_effect=_never_answers)
         return runnable
+
+    async def test_a_provider_that_stops_answering_counts_as_a_failed_call(self) -> None:
+        labels = {"provider": "gemini", "outcome": "failed"}
+        before = REGISTRY.get_sample_value("gaia_llm_call_total", labels) or 0.0
+
+        with pytest.raises(TimeoutError):
+            await ainvoke_llm(
+                self._hanging_primary(),
+                [HumanMessage(content="hi")],
+                config=cast(RunnableConfig, {"configurable": {"provider": "gemini"}}),
+                options=LLMInvokeOptions(timeout=0.05, meter_auxiliary=False),
+            )
+
+        assert REGISTRY.get_sample_value("gaia_llm_call_total", labels) == before + 1
 
     async def test_a_provider_that_stops_answering_hits_the_ceiling(self) -> None:
         with pytest.raises(TimeoutError):
@@ -3291,6 +4247,14 @@ class TestRequestedModel:
 
         assert _requested_model(runnable) == "gemini-3-pro"
 
+    def test_a_structured_output_sequence_reports_its_chat_models_name(self) -> None:
+        """Regression: the sequence names no model, so a failed structured call was booked and logged as unknown."""
+        structured = ChatOpenAI(model="gpt-x", api_key=SecretStr("k")).with_structured_output(
+            _Extracted
+        )
+
+        assert _requested_model(structured) == "gpt-x"
+
     def test_a_runnable_that_names_no_model_is_unknown_not_a_crash(self) -> None:
         """Metering a failure must not itself fail — an unnameable model is recorded as unknown, which is still a row."""
         assert _requested_model(NonCallableMagicMock(spec=[])) == UNKNOWN_MODEL_NAME
@@ -3527,3 +4491,52 @@ class TestIsOpenrouterWire:
         binding = NonCallableMagicMock(spec=RunnableBinding)
         binding.bound = inner
         assert client_module._is_openrouter_wire(binding) is False
+
+
+_NO_LANE: RunnableConfig | None = None
+
+
+@pytest.mark.unit
+class TestCallProvider:
+    """_call_provider names the provider a call's counter is labelled with."""
+
+    @staticmethod
+    def _on(provider: str) -> RunnableConfig:
+        return cast(RunnableConfig, {"configurable": {"provider": provider}})
+
+    def test_the_lane_named_in_the_config_outranks_the_client(self) -> None:
+        client = ChatOpenRouter(model="m", api_key=SecretStr("k"))
+        assert client_module._call_provider(client, self._on("custom")) is LLMProviderName.CUSTOM
+
+    def test_a_lane_name_that_is_no_provider_falls_back_to_the_client(self) -> None:
+        client = ChatOpenRouter(model="m", api_key=SecretStr("k"))
+        provider = client_module._call_provider(client, self._on("not-a-provider"))
+        assert provider is LLMProviderName.OPENROUTER
+
+    @pytest.mark.parametrize(
+        ("client", "provider"),
+        [
+            (ChatOpenRouter(model="m", api_key=SecretStr("k")), LLMProviderName.OPENROUTER),
+            (ChatGoogleGenerativeAI(model="m", api_key=SecretStr("k")), LLMProviderName.GEMINI),
+            (
+                ChatWorkersAI(
+                    model="m", api_key=SecretStr("k"), base_url="https://api.cloudflare.com/v1"
+                ),
+                LLMProviderName.CLOUDFLARE,
+            ),
+            (ChatOpenAI(model="m", api_key=SecretStr("k")), LLMProviderName.OPENAI),
+            (
+                ChatOpenAI(model="m", api_key=SecretStr("k"), base_url="http://127.0.0.1:8787/v1"),
+                None,
+            ),
+            (RunnableLambda(lambda prompt: prompt), None),
+        ],
+    )
+    def test_with_no_lane_the_client_class_names_the_provider(
+        self, client: Runnable, provider: LLMProviderName | None
+    ) -> None:
+        assert client_module._call_provider(client, _NO_LANE) is provider
+
+    def test_a_tool_bound_client_is_still_named_by_the_model_under_it(self) -> None:
+        bound = ChatOpenRouter(model="m", api_key=SecretStr("k")).bind(stop=["x"])
+        assert client_module._call_provider(bound, _NO_LANE) is LLMProviderName.OPENROUTER

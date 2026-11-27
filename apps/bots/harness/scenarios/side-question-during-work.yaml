@@ -1,0 +1,19 @@
+# A side question while background work runs is answered at once, on its own,
+# right under it; the work's result arrives later as a reply quoting the message
+# that asked for it. Neither swallows the other, and nothing shown is taken back.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/side-question-during-work.yaml
+name: side question during work
+emulate: telegram
+user: bot-side-question-scenario@gaia.local
+turns:
+  - burst:
+      - send: 'research it [[tool:create_todo {"title":"sq-1"}]] [[wait:15000]] [[tool:create_todo {"title":"sq-2"}]] [[say:Research finished.]]'
+      - send: "quick side question: what's 15% of 240? [[say:36.]]"
+        afterMs: 4000
+    settleMs: 30000
+    expect:
+      - bubbles: ["36.", "Research finished."]
+      - quotes: { "Research finished.": 1, "36.": null }
+      - noTakeBacks: true

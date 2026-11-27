@@ -1,5 +1,6 @@
 import asyncio
 from http import HTTPStatus
+import secrets
 from typing import Literal, TypedDict
 from urllib.parse import urlsplit
 
@@ -11,6 +12,8 @@ from workos import AsyncWorkOSClient
 from app.config.settings import settings
 from app.config.workos import get_async_workos_client, with_shared_signing_keys
 from app.constants.auth import DEV_USER_HEADER, SESSION_HINT_COOKIE
+from app.constants.cache import BOT_USER_CACHE_PREFIX
+from app.constants.http import INTERNAL_CALLER_HEADER
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import (
@@ -221,6 +224,11 @@ def build_user_context(
     )
 
 
+def bot_user_cache_key(platform: str, platform_user_id: str) -> str:
+    """Return the cache key holding a bot-platform account's resolved user context."""
+    return f"{BOT_USER_CACHE_PREFIX}:{platform}:{platform_user_id}"
+
+
 async def resolve_bot_user(platform: str, platform_user_id: str) -> AuthenticatedUser | None:
     """Resolve a bot-platform account to its user context, or None when unlinked.
 
@@ -240,8 +248,6 @@ async def load_user_context(user_id: str) -> AuthenticatedUser | None:
     agent sees the same timezone and onboarding. None when no such user, including
     an id that is not an ObjectId (SYSTEM_USER_ID among them).
     """
-    if not user_repository.is_valid_id(user_id):
-        return None
     user_doc = await user_repository.get(user_id)
     if user_doc is None:
         return None
@@ -357,3 +363,14 @@ async def authenticate_workos_session(
             error_type=type(e).__name__,
         )
         return None, None
+
+
+def carries_internal_token(request: HTTPConnection) -> bool:
+    """Whether the request presents INTERNAL_API_TOKEN, or the one being rotated out (constant-time)."""
+    presented = request.headers.get(INTERNAL_CALLER_HEADER)
+    if presented is None:
+        return False
+    accepted = (settings.INTERNAL_API_TOKEN, settings.INTERNAL_API_TOKEN_PREVIOUS)
+    # Every accepted value is compared, so the time taken says nothing about which matched.
+    matches = [secrets.compare_digest(presented.encode(), t.encode()) for t in accepted if t]
+    return any(matches)

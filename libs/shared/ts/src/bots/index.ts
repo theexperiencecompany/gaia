@@ -8,6 +8,8 @@
  * New command: add it under commands/<name>.ts and to the allCommands array in commands/index.ts.
  * New platform bot: extend BaseBotAdapter under apps/bots/<platform>/ and call adapter.boot(allCommands).
  */
+
+export type { ActiveBotConversation } from "../api/generated";
 export {
   BaseBotAdapter,
   BotServer,
@@ -15,7 +17,6 @@ export {
   richMessageToMarkdown,
   runBotProcess,
 } from "./adapter";
-
 export { GaiaApiError, GaiaClient } from "./api";
 export {
   allCommands,
@@ -38,13 +39,31 @@ export { injectInfisicalSecrets, loadConfig } from "./config";
 export type {
   OutboundAttachment,
   OutboundMessageEnvelope,
-  OutboundReaction,
 } from "./consumer/envelope";
 export {
   outboundAttachmentSchemaFor,
   outboundMessageEnvelopeSchemaFor,
-  outboundReactionSchema,
 } from "./consumer/envelope";
+export type {
+  AwaitedDecision,
+  ConversationEventSource,
+  ConversationSurface,
+  DeliveryCursor,
+  DeliveryRecorder,
+  DeliveryReport,
+  FollowStart,
+  FollowSurface,
+  ReopenedBubble,
+  SentBubble,
+  StreamingOptions,
+} from "./conversation";
+export {
+  ConversationFollower,
+  ConversationFollowers,
+  neverReopened,
+  STREAMING_DEFAULTS,
+  StaleScreen,
+} from "./conversation";
 export type {
   DeliveryFailure,
   ReportDeliveryFailure,
@@ -68,6 +87,7 @@ export type {
   LinkState,
   ParsedLinkCode,
 } from "./link-codes.types";
+export { setPlatformConnected } from "./metrics";
 export type {
   AuthenticatedSettingsResponse,
   AuthStatus,
@@ -76,17 +96,10 @@ export type {
   BotConfig,
   BotConversation,
   BotConversationListResponse,
-  BotCreateTodoRequest,
   BotFileData,
   BotIntegrationInfo,
   BotSubcommand,
-  BotTodo,
-  BotTodoListResponse,
   BotUserContext,
-  BotWorkflow,
-  BotWorkflowExecutionRequest,
-  BotWorkflowExecutionResponse,
-  BotWorkflowListResponse,
   ChatRequest,
   CommandContext,
   CommandExecuteParams,
@@ -105,13 +118,17 @@ export type {
   BotLogger,
   BotLogLevel,
   BotWideEventFields,
+  DeliveryConfig,
+  DeliveryEvent,
+  DeliveryOp,
+  DeliveryState,
+  IncomingAttachment,
   IncomingMedia,
+  MediaBatchOutcome,
   MediaKind,
   MediaOutcome,
-  MessageEditor,
-  NewMessageSender,
+  MessageSlot,
   ReactionOutcome,
-  StreamingOptions,
   WideEventBoundaryFields,
   WideEventEntry,
 } from "./utils";
@@ -119,7 +136,9 @@ export {
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
   BOT_FAILURE_REASON,
+  BOT_MAX_FILES_PER_MESSAGE,
   BOT_MEDIA_LIMITS,
+  BUBBLE_PAUSE_MS,
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
   COMMAND_HELP,
@@ -150,7 +169,6 @@ export {
   getHttpStatus,
   handleConversationList,
   handleNewConversation,
-  handleStreamingChat,
   handleTodoComplete,
   handleTodoCreate,
   handleTodoDelete,
@@ -162,8 +180,11 @@ export {
   handleWorkflowList,
   hashLogIdentifier,
   htmlToPlainText,
+  initialDeliveryState,
+  isLegibleAsPhoto,
   isTableRow,
   isTableSeparator,
+  LIVE_PREVIEW_SHARE,
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
@@ -173,17 +194,15 @@ export {
   parseTextArgs,
   processBotMedia,
   REACTION_OUTCOME,
-  ReplyPlaceholder,
   readBodyBounded,
   readBodyBytesBounded,
   readResponseBytesCapped,
   readStreamBytesCapped,
   recordBotFailure,
   renderForPlatform,
-  STREAMING_DEFAULTS,
   sanitizeErrorForLog,
-  segmentIntoBubbles,
   sendChunked,
+  stepDelivery,
   unfetchableMediaMessage,
   unsupportedMediaMessage,
   WEBHOOK_BODY_READ_TIMEOUT_MS,

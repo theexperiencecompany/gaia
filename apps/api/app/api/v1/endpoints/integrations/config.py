@@ -2,7 +2,6 @@
 
 from typing import Annotated
 
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
@@ -10,14 +9,16 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_use
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED
+from app.constants.cache import OAUTH_STATE_TTL
+from app.constants.integrations import MANAGED_BY_MCP
 from app.constants.log_tags import LogTag
+from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationsConfigResponse,
-    IntegrationStatusesResponse,
     IntegrationSuccessResponse,
     IntegrationToolsResponse,
     MyIntegrationsResponse,
@@ -30,12 +31,13 @@ from app.services.integrations.integration_connection_service import (
     initiate_integration_connection,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
-from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.integrations.my_integrations import (
     get_integration_tools,
     get_my_integrations,
-    get_my_integrations_snapshot,
 )
+from app.services.mcp.mcp_oauth import oauth_state_token
+from app.services.mcp.mcp_token_store import bind_oauth_state_to_browser, oauth_browser_cookie
+from app.utils.auth_utils import session_cookie_secure
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnected,
@@ -60,35 +62,11 @@ async def get_integrations_config() -> IntegrationsConfigResponse:
 async def get_my_integrations_endpoint(
     user_id: str = Depends(get_user_id),
 ) -> MyIntegrationsResponse:
-    """The current user's full integration catalog (platform + their custom),
-    each with connection status and tool count. One call replaces the old
-    /config + /status + /users/me/integrations merge."""
+    """The current user's full integration catalog (platform + their custom), each with its one connection status."""
     log.set(operation="get_my_integrations", user={"id": user_id})
     result = await get_my_integrations(user_id)
     log.set(result_count=result.total, outcome="success")
     return result
-
-
-@router.get("/me/snapshot")
-async def get_my_integrations_snapshot_endpoint(
-    user_id: str = Depends(get_user_id),
-) -> MyIntegrationsResponse:
-    """Return the workspace catalog without waiting for connection checks."""
-    log.set(operation="get_my_integrations_snapshot", user={"id": user_id})
-    result = await get_my_integrations_snapshot(user_id)
-    log.set(result_count=result.total, outcome="success")
-    return result
-
-
-@router.get("/status")
-async def get_integration_statuses_endpoint(
-    user_id: str = Depends(get_user_id),
-) -> IntegrationStatusesResponse:
-    """Refresh connection state independently from the fast catalog snapshot."""
-    log.set(operation="get_integration_statuses", user={"id": user_id})
-    statuses = await get_all_integrations_status(user_id)
-    log.set(result_count=len(statuses), outcome="success")
-    return IntegrationStatusesResponse(statuses=statuses)
 
 
 @router.get("/{integration_id}/tools")
@@ -166,7 +144,7 @@ async def connect_integration_endpoint(
     auth_type: str | None = None
     if resolved.mcp_config:
         auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
-    elif resolved.managed_by in ("composio", "self"):
+    elif resolved.managed_by == "composio":
         auth_type = "oauth2"
     provider = resolved.platform_integration.provider if resolved.platform_integration else None
     log.set(
@@ -181,7 +159,6 @@ async def connect_integration_endpoint(
     result = await initiate_integration_connection(
         user_id,
         resolved,
-        user_email=user.email or "",
         redirect_path=request.redirect_path,
         bearer_token=request.bearer_token,
         reconnect_account_id=request.account_id,
@@ -220,11 +197,26 @@ def _connect_link_error(reason: str) -> RedirectResponse:
     )
 
 
+async def _bind_to_this_browser(
+    request: Request, response: RedirectResponse, auth_url: str, integration_id: str
+) -> None:
+    """Tie the MCP flow this connect link starts to this browser, the only one its callback accepts."""
+    # SameSite defaults to lax: the provider's redirect back is a top-level GET, which lax lets through.
+    response.set_cookie(
+        key=oauth_browser_cookie(integration_id),
+        value=await bind_oauth_state_to_browser(oauth_state_token(auth_url)),
+        max_age=OAUTH_STATE_TTL,
+        path=MCP_OAUTH_CALLBACK_PATH,
+        secure=session_cookie_secure(request),
+        httponly=True,
+    )
+
+
 @router.post(
     "/connect-link", response_class=RedirectResponse, status_code=status.HTTP_303_SEE_OTHER
 )
 @limiter.limit("10/minute")
-async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) -> RedirectResponse:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
+async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) -> RedirectResponse:
     """Login-free entry point for bot / non-UI users: spend the code, 303 into OAuth.
 
     POST-only because spending the code is a state change: link-preview
@@ -263,12 +255,7 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         resource=integration_id,
     )
 
-    # Self-managed (Google) connectors use email as an OAuth login hint; others
-    # ignore it. user_id is trusted (it came from a server-bound, single-use code).
-    user_email = ""
-    try:
-        user_doc = await user_repository.get(user_id)
-    except InvalidId as e:
+    if not user_repository.is_valid_id(user_id):
         # A server-issued code that carries a non-ObjectId user_id means the
         # stored binding is corrupt — same opaque bounce for the client, but a
         # distinct failure in telemetry.
@@ -276,18 +263,14 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         log.warning(
             f"{LogTag.INTEGRATION} Connect link redemption rejected",
             failure="malformed_user_id",
-            error_type=type(e).__name__,
         )
         log.audit(
             "connect link redemption rejected",
             actor=user_id,
             resource=integration_id,
             reason="malformed_user_id",
-            error_type=type(e).__name__,
         )
         return _connect_link_error("invalid_or_expired_link")
-    if user_doc:
-        user_email = user_doc.email or ""
 
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
@@ -296,7 +279,6 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
     result = await initiate_integration_connection(
         user_id,
         resolved,
-        user_email=user_email,
         redirect_path="/integrations",
         reconnect_account_id=verified.account_id,
     )
@@ -306,7 +288,10 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
             IntegrationConnectInitiated(integration_id=integration_id, source="connect_link"),
         )
         log.set(outcome="redirect")
-        return RedirectResponse(url=result.redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+        response = RedirectResponse(url=result.redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+        if resolved.managed_by == MANAGED_BY_MCP:
+            await _bind_to_this_browser(request, response, result.redirect_url, integration_id)
+        return response
 
     log.set(outcome="error")
     return _connect_link_error("could_not_start")

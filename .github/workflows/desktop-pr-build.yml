@@ -11,11 +11,16 @@ name: Desktop PR Build
 # packages (electron-builder --dir, no installer). macOS additionally ad-hoc
 # signs and verifies the bundle seal.
 #
-# Tiered: a PR push packages Linux only; the merge queue (and a dispatch)
-# packages every OS. ci.yml calls it whenever nx says desktop:build (which
-# depends on web and shared-typescript) or this workflow is affected.
+# Tiered: a PR push packages Linux only, and only when apps/desktop or this
+# workflow changed (ci:desktop-package); the merge queue (and a dispatch)
+# packages every OS, also when only web or shared-typescript changed
+# (ci:desktop-package-deps, tools/ci/project.json).
 on:
   workflow_call:
+    secrets:
+      # Empty on a fork or Dependabot PR: the build then waits out the anonymous ceiling.
+      INTERNAL_API_TOKEN:
+        required: false
 
 env:
   NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
@@ -28,7 +33,7 @@ jobs:
   # ---------------------------------------------------------------------------
   prepare:
     name: Build + prepare payload
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,6 +41,9 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
       - name: Build web (standalone)
+        env:
+          # Prerender fetches count against the web server's ceiling, not one runner address's.
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
         run: pnpm nx build web --skip-nx-cache
       - name: Build Electron main/preload
         run: pnpm nx build desktop
@@ -58,7 +66,7 @@ jobs:
       - name: Upload packaging payload
         id: upload-payload
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-payload
           if-no-files-found: error
@@ -66,7 +74,7 @@ jobs:
           path: desktop-payload.tar.gz
       - name: Upload packaging payload (retry after a transient CreateArtifact timeout)
         if: steps.upload-payload.outcome == 'failure'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-payload
           if-no-files-found: error
@@ -86,7 +94,7 @@ jobs:
       matrix:
         # mac is out while GitHub's hosted macOS arm64 pool cannot acquire runners (2026-11-04); desktop-release.yml still packages mac
         target: ${{ fromJSON(github.event_name == 'pull_request' && '["linux"]' || '["win", "linux"]') }}
-    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'win' && 'windows-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-26' || matrix.target == 'win' && 'windows-2025-vs2026' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -159,7 +167,7 @@ jobs:
     name: Desktop build verdict
     needs: [prepare, package]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

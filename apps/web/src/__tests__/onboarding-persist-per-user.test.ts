@@ -9,7 +9,7 @@
 import { renderHook } from "@testing-library/react";
 import { useReducer } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
-
+import { questions } from "@/features/onboarding/constants";
 import { useOnboardingPersistence } from "@/features/onboarding/effects/useOnboardingPersistence";
 import { initialState } from "@/features/onboarding/state/initial";
 import {
@@ -34,6 +34,19 @@ describe("wizard persistence is scoped to the signed-in user", () => {
 
     expect(loadPersisted(BOB)).toBeNull();
     expect(loadPersisted(ALICE)?.questionIndex).toBe(2);
+  });
+
+  it("keeps a run whose answers are stored past a question added since", () => {
+    // Cached by the two-question build: the server already holds the answers,
+    // so a third question must not reopen the wizard, which would never save it.
+    savePersisted(ALICE, {
+      ...initialState,
+      questionIndex: 2,
+      responses: { profession: "founder" },
+      preferencesPersisted: true,
+    });
+
+    expect(loadPersisted(ALICE)?.questionIndex).toBe(questions.length);
   });
 
   it("clears only the restarting user's cache", () => {

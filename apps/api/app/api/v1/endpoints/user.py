@@ -1,7 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
-from bson import ObjectId
 from fastapi import (
     APIRouter,
     Depends,
@@ -34,7 +34,6 @@ from app.models.user_models import (
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
-    UserUpdate,
     UserUpdateResponse,
 )
 from app.services.account_fs import schedule_account_sync
@@ -43,9 +42,14 @@ from app.services.delivery.chat_channel import (
     get_chat_channel_priority,
     set_chat_channel_priority,
 )
+from app.services.oauth.oauth_state_service import is_safe_redirect_path
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
-from app.services.user_service import get_quiet_hours, set_quiet_hours, update_user_profile
+from app.services.quiet_hours import get_quiet_hours
+from app.services.user_quiet_hours import set_quiet_hours
+from app.services.user_service import update_user_profile
+from app.services.user_timezone import set_user_timezone
 from app.utils.auth_utils import clear_session_cookie
+from app.utils.errors import AppError
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics import UserId
@@ -220,10 +224,7 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        updated = await user_repository.update(user_id, UserUpdate(timezone=user_timezone.strip()))
-
-        if updated is None:
-            raise HTTPException(status_code=404, detail="User not found")
+        await set_user_timezone(user_id, user_timezone.strip())
 
         schedule_account_sync(user_id)
         log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
@@ -234,7 +235,7 @@ async def update_user_timezone(
             message="Timezone updated successfully",
             timezone=user_timezone.strip(),
         )
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except Exception as e:
         log.error(
@@ -259,7 +260,7 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
     try:
         log.set(operation="get_public_holo_card", card_id=card_id)
 
-        if not ObjectId.is_valid(card_id):
+        if not user_repository.is_valid_id(card_id):
             raise HTTPException(status_code=400, detail="Invalid card ID")
 
         user_doc = await user_repository.get(card_id)
@@ -376,10 +377,19 @@ async def logout(
     request: Request,
     response: Response,
     user: AuthenticatedUser = Depends(get_current_user),
+    return_url: str | None = None,
 ) -> LogoutResponse:
+    """Log the user out and return where the browser goes next.
+
+    return_url, a path on this site, is for switching accounts: the identity
+    provider's logout lands on the sign-in page, which then returns there.
     """
-    Logout user and return logout URL for frontend redirection.
-    """
+    if return_url is not None and not is_safe_redirect_path(return_url):
+        raise AppError(
+            message="return_url must be a path on this site",
+            status_code=422,
+            code="invalid_return_url",
+        )
     # Local mode: no hosted session to revoke; the JWT dies with the cookie.
     # This route still passes the auth middleware, so a valid session is
     # required to reach this point.
@@ -420,7 +430,14 @@ async def logout(
             capture(UserId(user_id), UserLoggedOut())
 
         # Verifies the session's JWT synchronously (a key fetch on a cache miss): off the loop.
-        logout_url = await asyncio.to_thread(session.get_logout_url)
+        logout_url = (
+            await asyncio.to_thread(
+                session.get_logout_url,
+                return_to=f"{settings.FRONTEND_URL}/login?{urlencode({'return_url': return_url})}",
+            )
+            if return_url
+            else await asyncio.to_thread(session.get_logout_url)
+        )
 
         log.audit("logged out", actor=user_id)
 

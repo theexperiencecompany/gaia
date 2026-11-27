@@ -14,21 +14,41 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp.shared.message import SessionMessage
+from mcp.types import (
+    CONNECTION_CLOSED,
+    ErrorData,
+    JSONRPCError,
+    JSONRPCMessage,
+    JSONRPCNotification,
+    JSONRPCRequest,
+    JSONRPCResponse,
+)
 import pytest
 
-from app.constants.device_bridge import FRAME_MCP_MSG
-from app.services.mcp.device_connector import DeviceConnector
+from app.constants import device_bridge
+from app.constants.device_bridge import (
+    FRAME_MCP_ERROR,
+    FRAME_MCP_MSG,
+)
+from app.services.device import up_listener
+from app.services.mcp.device_connector import DeviceConnectionError, DeviceConnector
+
+if TYPE_CHECKING:
+    # Head-only name; regression-proof imports this module against the base tree.
+    from app.services.device.bridge import BridgeFrame
 
 pytestmark = pytest.mark.unit
 
 
-def _connector_with_inbox(frames: list[dict[str, object]]) -> DeviceConnector:
+def _connector_with_inbox(frames: list[BridgeFrame]) -> DeviceConnector:
     connector = DeviceConnector(device_id="dev-1", server_key="server-1")
-    inbox: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+    inbox: asyncio.Queue[BridgeFrame] = asyncio.Queue()
     for frame in frames:
         inbox.put_nowait(frame)
     connector._inbox = inbox
@@ -73,7 +93,7 @@ async def test_malformed_frame_forwarded_as_error_without_killing_loop() -> None
     # Good frame #2 still arrives — proof the loop kept running after the bad
     # frame instead of tearing the session down.
     assert isinstance(second, SessionMessage)
-    assert second.message.root.method == "ping"
+    assert second.message.root == JSONRPCNotification(jsonrpc="2.0", method="ping", params={})
 
 
 async def test_valid_frames_after_malformed_frame_are_unaffected() -> None:
@@ -89,6 +109,139 @@ async def test_valid_frames_after_malformed_frame_are_unaffected() -> None:
 
     assert isinstance(results[0], Exception)
     assert isinstance(results[1], SessionMessage)
-    assert results[1].message.root.method == "tools/list"
+    assert results[1].message.root == JSONRPCNotification(
+        jsonrpc="2.0", method="tools/list", params={}
+    )
     assert isinstance(results[2], SessionMessage)
-    assert results[2].message.root.method == "ping"
+    assert results[2].message.root == JSONRPCNotification(jsonrpc="2.0", method="ping", params={})
+
+
+def _request(request_id: int) -> SessionMessage:
+    return SessionMessage(
+        JSONRPCMessage(JSONRPCRequest(jsonrpc="2.0", id=request_id, method="tools/call"))
+    )
+
+
+def _response_frame(request_id: int) -> BridgeFrame:
+    response = JSONRPCResponse(jsonrpc="2.0", id=request_id, result={})
+    return {"t": FRAME_MCP_MSG, "data": JSONRPCMessage(response).model_dump_json()}
+
+
+async def _lose_session_mid_call(loss: BridgeFrame) -> list[SessionMessage]:
+    """Send requests 1 and 2 down, answer 1, then lose the session; return what the session reads."""
+    connector = DeviceConnector(device_id="dev-1", server_key="server-1")
+    connector._inbox = asyncio.Queue()
+    write_send, write_recv = anyio.create_memory_object_stream[SessionMessage](4)
+    read_send, read_recv = anyio.create_memory_object_stream[SessionMessage | Exception](4)
+    with patch("app.services.mcp.device_connector.send_down", AsyncMock()):
+        pump = asyncio.create_task(connector._pump_downstream(write_recv))
+        await write_send.send(_request(1))
+        await write_send.send(_request(2))
+        await write_send.aclose()
+        await pump
+    connector._inbox.put_nowait(_response_frame(1))
+    connector._inbox.put_nowait(loss)
+    await asyncio.wait_for(connector._drain_inbox(read_send), timeout=2.0)
+    received: list[SessionMessage] = []
+    async for message in read_recv:
+        assert isinstance(message, SessionMessage)
+        received.append(message)
+    return received
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("loss", "reason"),
+    [
+        ({"t": FRAME_MCP_ERROR, "error": "Local server 'x' exited"}, "Local server 'x' exited"),
+        ({"t": FRAME_MCP_ERROR}, "device MCP error"),
+    ],
+    ids=["local-server-exited", "unexplained"],
+)
+async def test_a_lost_session_answers_only_its_unanswered_request_then_ends(
+    loss: BridgeFrame, reason: str
+) -> None:
+    """The daemon's mcp.error reached the session as an exception and its call waited 120s."""
+    answered, failed = await _lose_session_mid_call(loss)
+
+    assert answered.message.root == JSONRPCResponse(jsonrpc="2.0", id=1, result={})
+    assert failed.message.root == JSONRPCError(
+        jsonrpc="2.0", id=2, error=ErrorData(code=CONNECTION_CLOSED, message=reason)
+    )
+
+
+@pytest.mark.regression
+async def test_a_dropped_socket_answers_the_unanswered_request_with_the_disconnect() -> None:
+    """Regression for #1144: nothing told the session its socket dropped, so its call waited 120s."""
+    reason = device_bridge.DEVICE_DISCONNECTED_MESSAGE
+    answered, failed = await _lose_session_mid_call({"t": device_bridge.FRAME_TUNNEL_CLOSED})
+
+    assert answered.message.root == JSONRPCResponse(jsonrpc="2.0", id=1, result={})
+    assert failed.message.root == JSONRPCError(
+        jsonrpc="2.0", id=2, error=ErrorData(code=CONNECTION_CLOSED, message=reason)
+    )
+
+
+async def test_a_failure_while_opening_fails_the_open_with_its_reason() -> None:
+    connector = _connector_with_inbox([{"t": FRAME_MCP_ERROR, "error": "Local server 'x' exited"}])
+    connector._opened = asyncio.get_running_loop().create_future()
+    read_send, _ = anyio.create_memory_object_stream[SessionMessage | Exception](1)
+
+    await asyncio.wait_for(connector._drain_inbox(read_send), timeout=2.0)
+
+    with pytest.raises(DeviceConnectionError, match="Local server 'x' exited"):
+        await connector._opened
+
+
+async def test_a_request_sent_while_the_session_ends_does_not_break_the_ending() -> None:
+    """A request admitted mid-loop once raised 'Set changed size' and skipped closing the stream."""
+    connector = DeviceConnector(device_id="dev-1", server_key="server-1")
+    connector._unanswered = {1, 2}
+    read_send, read_recv = anyio.create_memory_object_stream[SessionMessage | Exception](0)
+    ending = asyncio.create_task(connector._end_session(read_send, "gone"))
+
+    first = await asyncio.wait_for(read_recv.receive(), timeout=2.0)
+    connector._unanswered.add(3)
+    rest = [message async for message in read_recv]
+    await asyncio.wait_for(ending, timeout=2.0)
+
+    answered = [
+        m.message.root.id
+        for m in (first, *rest)
+        if isinstance(m, SessionMessage) and isinstance(m.message.root, JSONRPCError)
+    ]
+    assert sorted(answered) == [1, 2]
+    assert connector._unanswered == {3}
+
+
+@pytest.mark.regression
+async def test_a_connector_whose_session_the_device_ended_opens_a_new_one_on_next_use() -> None:
+    """A lost session stayed cached, so every later call on the connector failed until eviction."""
+    sent: list[str] = []
+
+    async def send_down(device_id: str, frame: BridgeFrame) -> None:
+        sent.append(frame["t"])
+        if frame["t"] == "mcp.open":
+            up_listener._inboxes[str(frame["sid"])].put_nowait(
+                {"t": "mcp.opened", "sid": frame["sid"]}
+            )
+
+    connector = DeviceConnector(device_id="dev-1", server_key="server-1")
+    with (
+        patch("app.services.mcp.device_connector.redis_cache", MagicMock()),
+        patch("app.services.mcp.device_connector.is_online", AsyncMock(return_value=True)),
+        patch("app.services.mcp.device_connector.send_down", send_down),
+    ):
+        await connector.connect()
+        lost_session = connector.session_id
+        up_listener._inboxes[lost_session].put_nowait({"t": "tunnel.closed"})
+        assert connector._reader_task is not None
+        await asyncio.wait_for(connector._reader_task, timeout=2.0)
+        assert not connector.is_connected
+
+        await connector.connect()
+
+        assert connector.is_connected
+        assert connector.session_id != lost_session
+        assert sent == ["mcp.open", "mcp.close", "mcp.open"]
+        await connector.disconnect()

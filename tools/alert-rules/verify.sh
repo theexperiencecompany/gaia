@@ -8,6 +8,8 @@ set -euo pipefail
 #   2. lint the extracted rules with pint (offline checks)
 #   3. validate the extracted rule file with promtool check rules
 #   4. prove every rule fires and stays quiet with promtool test rules
+#   5. prove every metric a rule queries is registered and recorded by
+#      production code, or is a listed exporter series
 #
 # The tool versions are tools/alert-rules/tool-versions.env, what production
 # runs. CI runs this script with the pinned binaries installed; elsewhere it
@@ -61,5 +63,8 @@ echo "==> promtool test rules"
 # rule_files inside each test is relative to the test file, so paths stay repo-relative.
 test_files=("$TESTS"/*.yaml)
 run_tool promtool test rules "${test_files[@]}"
+
+echo "==> metric contract"
+uv run --frozen --no-build --isolated --only-group harness python3 tools/lints/check_alert_metric_contract.py
 
 echo "OK: all ${#test_files[@]} alert-rule test files pass"

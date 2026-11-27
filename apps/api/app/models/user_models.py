@@ -6,6 +6,7 @@ import re
 from typing import Annotated, Any, TypedDict
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -16,12 +17,17 @@ from pydantic import (
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.first_steps_models import FirstStepsState
-from app.models.quiet_hours_models import QuietHours
+from app.models.quiet_hours_models import HoldsQuietHours, QuietHours
 from app.schemas.common import ResponseModel
+from app.utils.email_utils import canonical_email
 from app.utils.timezone import is_valid_timezone
-from shared.py.analytics.catalog.onboarding import OnboardingStep, ReportedOnboardingStep
+from shared.py.analytics.catalog.onboarding import (
+    HeardFrom,
+    OnboardingStep,
+    ReportedOnboardingStep,
+)
 
 # Shared field doc for the `message` field on the success/message response models.
 _RESPONSE_MESSAGE_DESC = "Response message"
@@ -240,6 +246,10 @@ class OnboardingPreferences(BaseModel):
         default=None,
         description='The user\'s browser language as a primary subtag ("de", "pt"), set at onboarding',
     )
+    heard_from: HeardFrom | None = Field(
+        default=None,
+        description="Where the user says they first heard about GAIA (onboarding Q3)",
+    )
     # Removed timezone field - now only stored at user.timezone root level
 
     @field_validator("language", mode="before")
@@ -275,7 +285,7 @@ class OnboardingPreferences(BaseModel):
 
 
 class OnboardingAnswers(BaseModel):
-    """The wizard's answers — Q1 (profession) and Q2 (needs).
+    """The wizard's answers — Q1 (profession), Q2 (needs) and Q3 (where they heard of GAIA).
 
     The name is derived from the email server-side, so it is not submitted;
     nothing else is generated at onboarding, so nothing else is collected.
@@ -297,6 +307,10 @@ class OnboardingAnswers(BaseModel):
     language: str | None = Field(
         default=None,
         description='The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")',
+    )
+    heard_from: HeardFrom | None = Field(
+        default=None,
+        description="Where the user says they first heard about GAIA (onboarding Q3)",
     )
 
     @field_validator("language", mode="before")
@@ -370,12 +384,6 @@ class LogoutResponse(ResponseModel):
     logout_url: str | None = Field(None, description="Identity-provider logout URL to redirect to")
 
 
-class OnboardingResponse(ResponseModel):
-    success: bool = Field(..., description="Whether onboarding was successful")
-    message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
-    user: dict[str, Any] | None = Field(None, description="Updated user data")
-
-
 class OnboardingPhaseUpdateRequest(BaseModel):
     """A wizard step the browser reached; the server stamps and reports it once per onboarding run."""
 
@@ -443,7 +451,6 @@ class OnboardingSubdocument(BaseModel):
     completed_at: datetime | None = None
     phase: OnboardingPhase | None = None
     preferences: OnboardingPreferences | None = None
-    focus: str = ""
     clarify_answers: list[dict[str, Any]] = Field(default_factory=list)
     #: When each wizard step was first reached this run; the stamp is what makes its event fire once.
     steps_reached: dict[OnboardingStep, datetime] = Field(default_factory=dict)
@@ -533,7 +540,7 @@ class OnboardingSubdocument(BaseModel):
         return {**value, "profession": None}
 
 
-class UserDocument(MongoDocument):
+class UserDocument(MongoDocument, HoldsQuietHours):
     """A user as stored in MongoDB.
 
     ``extra="allow"`` (not the usual ``ignore``): the auth layer's
@@ -553,7 +560,7 @@ class UserDocument(MongoDocument):
 
     model_config = ConfigDict(extra="allow")
 
-    email: str | None = None
+    email: Annotated[str, AfterValidator(canonical_email)] | None = None
     name: str | None = None
     picture: str | None = None
     timezone: str | None = None
@@ -600,10 +607,24 @@ class UserDocument(MongoDocument):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
-    # Unset means the default 22:00 to 08:00; read through user_service.get_quiet_hours.
-    quiet_hours: QuietHours | None = None
     # Self-host (local auth) accounts only; hosted users never carry a role.
     role: InstanceRole | None = None
+
+
+class UserHours(HoldsQuietHours):
+    """Projection of a user's timezone and quiet hours: all placing a daily schedule reads."""
+
+    timezone: str | None = None
+
+
+class NamedEmailRow(BaseModel):
+    """Projection of a user's id, name and email: all the derived-name cleanup reads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    email: str
 
 
 class AuthenticatedUser(BaseModel):
@@ -698,6 +719,19 @@ class OnboardingStatusResponse(BaseModel):
     # The "Getting started" conversation seeded at completion — what the web
     # redirects into once the wizard closes.
     getting_started_conversation_id: str | None = None
+
+
+class OnboardingUser(BaseModel):
+    """The user an onboarding write updated: its id and the onboarding state it left."""
+
+    user_id: str
+    onboarding: OnboardingStatusResponse
+
+
+class OnboardingResponse(ResponseModel):
+    success: bool = Field(..., description="Whether onboarding was successful")
+    message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
+    user: OnboardingUser = Field(..., description="Updated user data")
 
 
 class AuthenticatedUserResponse(BaseModel):

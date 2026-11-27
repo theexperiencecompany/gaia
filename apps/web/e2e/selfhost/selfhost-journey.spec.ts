@@ -26,7 +26,8 @@ const REPO_ROOT = process.env.GAIA_REPO_ROOT;
 const STUB_BASE_URL = process.env.LLM_STUB_BASE_URL;
 const STUB_MODEL = "gaia-e2e-stub";
 const COMPOSER_PLACEHOLDER = "What can I do for you today?";
-const CHAT_STREAM_PATH = "/chat-stream";
+const SEND_PATH = /\/conversations\/[^/]+\/messages$/;
+const HTTP_ACCEPTED = 202;
 
 const ADMIN = {
   email: "admin@selfhost.example",
@@ -73,23 +74,21 @@ async function signUp(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "Create account" }).click();
 }
 
-/** Send one chat message and return the whole streamed response body. */
-async function sendChat(page: Page, message: string): Promise<string> {
+/** Send one chat message and wait for the server to accept it; the reply arrives on the events stream. */
+async function sendChat(page: Page, message: string): Promise<void> {
   await page.goto("/c");
   const composer = visible(
     page.getByPlaceholder(COMPOSER_PLACEHOLDER, { exact: false }),
   );
   await expect(composer).toBeVisible();
-  const stream = page.waitForResponse(
+  const accepted = page.waitForResponse(
     (response: Response) =>
-      response.url().includes(CHAT_STREAM_PATH) &&
+      SEND_PATH.test(new URL(response.url()).pathname) &&
       response.request().method() === "POST",
   );
   await composer.fill(message);
   await composer.press("Enter");
-  const response = await stream;
-  expect(response.status()).toBe(200);
-  return response.text();
+  expect((await accepted).status()).toBe(HTTP_ACCEPTED);
 }
 
 async function newPage(browser: Browser): Promise<Page> {
@@ -138,7 +137,9 @@ test.describe("self-host journey", () => {
   test("a chat message gets the stub's reply", async () => {
     const reply = "Hello from the self-host stub.";
     await sendChat(adminPage, `[[say:${reply}]]`);
-    await expect(visible(adminPage.getByText(reply)).first()).toBeVisible();
+    await expect(
+      visible(adminPage.getByText(reply, { exact: true })).first(),
+    ).toBeVisible();
   });
 
   test("a scripted tool call creates a todo", async () => {
@@ -148,7 +149,7 @@ test.describe("self-host journey", () => {
       `[[tool:create_todo {"title":"${title}"}]] [[say:Todo added.]]`,
     );
     await expect(
-      visible(adminPage.getByText("Todo added.")).first(),
+      visible(adminPage.getByText("Todo added.", { exact: true })).first(),
     ).toBeVisible();
 
     const todos = await adminPage.request.get("/api/v1/todos");
@@ -253,13 +254,21 @@ test.describe("self-host journey", () => {
 
   test("code runs in the local sandbox and returns its real output", async () => {
     // 6*7*1000003 = 42000126: the result appears nowhere in the command text.
-    const streamed = await sendChat(
+    await sendChat(
       adminPage,
       `[[tool:bash {"command":"echo $((6*7*1000003))"}]] [[say:Code ran.]]`,
     );
     await expect(
-      visible(adminPage.getByText("Code ran.")).first(),
+      visible(adminPage.getByText("Code ran.", { exact: true })).first(),
     ).toBeVisible();
-    expect(streamed).toContain("42000126");
+    // The output is where a user reads it: the reply's tool thread, then the command's row.
+    await visible(
+      adminPage.getByRole("button", { name: /^Used \d+ tools?$/ }),
+    ).click();
+    const thread = adminPage.getByRole("group", { name: /^Used \d+ tools?$/ });
+    await thread.getByRole("button", { name: "Running a command" }).click();
+    await expect(
+      visible(thread.getByText("stdout: 42000126", { exact: true })),
+    ).toBeVisible();
   });
 });

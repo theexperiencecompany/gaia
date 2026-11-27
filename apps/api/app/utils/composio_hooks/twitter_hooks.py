@@ -560,25 +560,14 @@ def twitter_followers_after_hook(
 def twitter_post_created_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
 ) -> AfterHookResponse:
-    """Send created post data to frontend."""
+    """Summarise the created post for the model: its id, text and link."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = current_stream_writer()
-
         if isinstance(raw, dict) and "error" in raw:
             return raw
 
         post = TwitterCreateTweetResponse.model_validate(raw).data
         url = f"https://twitter.com/i/status/{post.id}"
-
-        payload = {
-            "twitter_post_created": {
-                "id": post.id,
-                "text": post.text,
-                "url": url,
-            },
-        }
-        writer(payload)
 
         summary: PostCreatedSummary = {
             "success": True,

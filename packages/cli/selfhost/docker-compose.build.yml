@@ -9,9 +9,15 @@ services:
       context: ../../..
       dockerfile: apps/api/Dockerfile
 
-  # Same Dockerfile as gaia-backend: the second build is a full cache hit, and
-  # declaring it keeps compose from pulling a registry worker beside a local API.
+  # Same Dockerfile as gaia-backend: each further build is a full cache hit, and
+  # declaring them keeps compose from pulling a registry worker beside a local API.
   arq_worker:
+    build: *api_build
+
+  migrate:
+    build: *api_build
+
+  gaia-migrate:
     build: *api_build
 
   gaia-web:

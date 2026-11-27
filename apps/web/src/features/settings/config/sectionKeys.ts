@@ -1,4 +1,9 @@
-export const DEFAULT_SECTION = "account";
+import { DEFAULT_SETTINGS_SECTION } from "../../../../settings-redirects.mjs";
+
+export const DEFAULT_SECTION = DEFAULT_SETTINGS_SECTION;
+
+/** Where an in-app Settings entry opens: straight to a section, never through the /settings redirect. */
+export const DEFAULT_SETTINGS_PATH = `/settings/${DEFAULT_SECTION}`;
 
 export const VALID_SECTIONS = [
   "account",
@@ -15,6 +20,8 @@ export const VALID_SECTIONS = [
   "memory",
   "skills",
   "notifications",
+  "briefings",
+  "postmarks",
   "devices",
   "browser",
   "experimental",

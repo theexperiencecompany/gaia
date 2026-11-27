@@ -13,6 +13,7 @@ from scripts.move_inbox_alerts_to_threads import (
 )
 
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.constants.workflows import WorkflowDelivery
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.trigger_subscription_models import (
     ConditionOperator,
@@ -49,14 +50,14 @@ def _desk(desk_id: str, user_id: str, *watches: TriggerSubscription) -> TodoDocu
 
 
 def _thread(
-    todo_id: str, parent: str | None, *, notify_on_run: bool, user_id: str = "u-1"
+    todo_id: str, parent: str | None, *, delivery: WorkflowDelivery, user_id: str = "u-1"
 ) -> TodoDocument:
     return TodoDocument(
         id=todo_id,
         user_id=user_id,
         title="Reply to Sam",
         parent_todo_id=parent,
-        notify_on_run=notify_on_run,
+        delivery=delivery,
         external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=f"thread-{todo_id}"),
     )
 
@@ -91,7 +92,7 @@ async def _run(
 
 async def test_a_dry_run_reports_what_would_change_and_writes_nothing(seams: _Seams) -> None:
     legacy = _watch(LEGACY_DESK_WATCH_CONDITIONS)
-    silent = _thread("t-1", "d-1", notify_on_run=False)
+    silent = _thread("t-1", "d-1", delivery=WorkflowDelivery.SILENT)
 
     result = await _run([_desk("d-1", "u-1", legacy)], [silent], dry_run=True)
 
@@ -123,10 +124,10 @@ async def test_only_gaias_own_mail_watch_is_removed(seams: _Seams) -> None:
 
 
 async def test_only_a_desks_silent_thread_todos_start_delivering(seams: _Seams) -> None:
-    silent = _thread("t-1", "d-1", notify_on_run=False)
-    already = _thread("t-2", "d-1", notify_on_run=True)
-    top_level = _thread("t-3", None, notify_on_run=False)
-    other_parent = _thread("t-4", "not-a-desk", notify_on_run=False)
+    silent = _thread("t-1", "d-1", delivery=WorkflowDelivery.SILENT)
+    already = _thread("t-2", "d-1", delivery=WorkflowDelivery.NOW)
+    top_level = _thread("t-3", None, delivery=WorkflowDelivery.SILENT)
+    other_parent = _thread("t-4", "not-a-desk", delivery=WorkflowDelivery.SILENT)
 
     result = await _run(
         [_desk("d-1", "u-1")], [silent, already, top_level, other_parent], dry_run=False
@@ -144,7 +145,10 @@ async def test_a_todo_that_fails_is_reported_and_the_rest_still_run(seams: _Seam
 
     result = await _run(
         [_desk("d-1", "u-1", first), _desk("d-2", "u-2", second)],
-        [_thread("t-1", "d-1", notify_on_run=False), _thread("t-2", "d-2", notify_on_run=False)],
+        [
+            _thread("t-1", "d-1", delivery=WorkflowDelivery.SILENT),
+            _thread("t-2", "d-2", delivery=WorkflowDelivery.SILENT),
+        ],
         dry_run=False,
     )
 

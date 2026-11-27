@@ -94,16 +94,15 @@ describe("useOnboardingGuard", () => {
     expect(redirect).not.toHaveBeenCalled();
   });
 
-  // Regression: a never-paid account on /c got a non-dismissable wall whose
-  // only exit was Log out, instead of the wizard's paywall it left.
-  it("sends a never-subscribed account from the app to the onboarding paywall", () => {
+  // The wall offers the plans page as well as checkout, so it is no dead end.
+  it("leaves a never-subscribed account in the app, where the UpgradeModal stands", () => {
     usePathname.mockReturnValue("/c");
     useEntitlement.mockReturnValue("never_subscribed");
     useCurrentUser.mockReturnValue(completedUser("conv-123"));
 
     renderHook(() => useOnboardingGuard());
 
-    expect(redirect).toHaveBeenCalledWith("/onboarding", "replace");
+    expect(redirect).not.toHaveBeenCalled();
   });
 
   it("keeps a never-subscribed account on the onboarding paywall", () => {
@@ -145,30 +144,18 @@ describe("useOnboardingGuard", () => {
     expect(redirect).not.toHaveBeenCalled();
   });
 
-  // Regression: a failed checkout resume cleared the pending plan without a
-  // re-render, so the guard never re-ran and the user sat on the shell spinner.
-  it("routes a never-subscribed account to the paywall once a resume fails", () => {
-    writePendingCheckout("pro");
-    usePathname.mockReturnValue("/c");
-    useEntitlement.mockReturnValue("never_subscribed");
-    useCurrentUser.mockReturnValue(completedUser("conv-123"));
-    renderHook(() => useOnboardingGuard());
-    expect(redirect).not.toHaveBeenCalled();
+  it.each(["never_subscribed", "lapsed"])(
+    "leaves a %s account under the UpgradeModal once a resume fails",
+    (entitlement) => {
+      writePendingCheckout("pro");
+      usePathname.mockReturnValue("/c");
+      useEntitlement.mockReturnValue(entitlement);
+      useCurrentUser.mockReturnValue(completedUser("conv-123"));
+      renderHook(() => useOnboardingGuard());
 
-    act(() => clearPendingCheckout());
+      act(() => clearPendingCheckout());
 
-    expect(redirect).toHaveBeenCalledWith("/onboarding", "replace");
-  });
-
-  it("leaves a lapsed account under the UpgradeModal once a resume fails", () => {
-    writePendingCheckout("pro");
-    usePathname.mockReturnValue("/c");
-    useEntitlement.mockReturnValue("lapsed");
-    useCurrentUser.mockReturnValue(completedUser("conv-123"));
-    renderHook(() => useOnboardingGuard());
-
-    act(() => clearPendingCheckout());
-
-    expect(redirect).not.toHaveBeenCalled();
-  });
+      expect(redirect).not.toHaveBeenCalled();
+    },
+  );
 });

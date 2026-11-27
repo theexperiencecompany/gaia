@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.constants.todos import INBOX_DESK_AUTOMATED_SENDERS
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
@@ -65,7 +66,7 @@ LEGACY_DESK_WATCH_CONDITIONS = frozenset(
     )
 )
 
-SPEAKING_THREAD = TodoUpdate(notify_on_run=True)
+SPEAKING_THREAD = TodoUpdate(delivery=WorkflowDelivery.NOW)
 _MIGRATED_BY = "GAIA, moving inbox alerts from the desk to its thread todos"
 
 
@@ -99,7 +100,11 @@ async def run_migration(*, dry_run: bool) -> MigrationResult:
     result = MigrationResult(
         dry_run=dry_run,
         watched={desk.id: subs for desk in desks if (subs := legacy_watches(desk))},
-        silent_threads=[t for t in threads if t.parent_todo_id in desk_ids and not t.notify_on_run],
+        silent_threads=[
+            t
+            for t in threads
+            if t.parent_todo_id in desk_ids and t.delivery is WorkflowDelivery.SILENT
+        ],
     )
     if dry_run:
         return result

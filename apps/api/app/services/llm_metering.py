@@ -22,6 +22,7 @@ from typing import Any, TypedDict
 
 from google.genai.errors import ServerError as GeminiServerError
 from langchain_core.messages import AIMessage
+import openai
 from openrouter.errors import (
     BadGatewayResponseError,
     BadRequestResponseError,
@@ -60,14 +61,19 @@ from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.cost_budget import record_model_call_usage
 from app.services.llm_usage_analytics import capture_llm_call
 from app.utils.background_tasks import spawn_background_task
+from app.utils.hot_path import after_first_text
 from shared.py.wide_events import current_workflow_execution_id, log
 
 # Exception types per :func:`classify_error_family`. Curated tuples rather than
 # message matching, and ordered most-specific-first at the call site.
-_RATE_LIMIT_ERRORS: tuple[type[BaseException], ...] = (TooManyRequestsResponseError,)
+RATE_LIMIT_ERRORS: tuple[type[BaseException], ...] = (
+    TooManyRequestsResponseError,
+    openai.RateLimitError,
+)
 _TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (
     RequestTimeoutResponseError,
     EdgeNetworkTimeoutResponseError,
+    openai.APITimeoutError,
     # asyncio.TimeoutError IS TimeoutError on 3.11+, so the invoke seam's own
     # wall-clock ceiling lands here too.
     TimeoutError,
@@ -79,6 +85,8 @@ _UNAVAILABLE_ERRORS: tuple[type[BaseException], ...] = (
     ProviderOverloadedResponseError,
     NoResponseError,
     GeminiServerError,
+    openai.InternalServerError,
+    openai.APIConnectionError,
     ConnectionError,
 )
 _INVALID_REQUEST_ERRORS: tuple[type[BaseException], ...] = (
@@ -88,6 +96,11 @@ _INVALID_REQUEST_ERRORS: tuple[type[BaseException], ...] = (
     ForbiddenResponseError,
     NotFoundResponseError,
     PayloadTooLargeResponseError,
+    openai.BadRequestError,
+    openai.UnprocessableEntityError,
+    openai.AuthenticationError,
+    openai.PermissionDeniedError,
+    openai.NotFoundError,
     # Out of credits is our account being wrong, not the upstream being down.
     PaymentRequiredResponseError,
 )
@@ -235,6 +248,7 @@ async def _insert_ledger_row(doc: LLMCallDocument) -> None:
     event, so a Mongo blip costs only an analytics row (and its event, since
     PostHog mirrors the ledger). Logged as a warning so a gap is measurable.
     """
+    await after_first_text()
     try:
         stored = await llm_calls_repository.create(doc)
     except Exception as e:
@@ -572,7 +586,7 @@ def classify_error_family(error: BaseException) -> ErrorFamily:
     so type gives the handful of actionable buckets. Order matters:
     rate-limit and timeout types are also members of broader unavailability sets.
     """
-    if isinstance(error, _RATE_LIMIT_ERRORS):
+    if isinstance(error, RATE_LIMIT_ERRORS):
         return "rate_limit"
     if isinstance(error, _TIMEOUT_ERRORS):
         return "timeout"

@@ -1,10 +1,11 @@
 import asyncio
-from contextlib import suppress
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from functools import cache
 import math
 import time
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, Literal, TypedDict, TypeVar, cast
 from urllib.parse import urlparse
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -28,7 +29,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openrouter.utils import BackoffStrategy, RetryConfig
-from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, SecretStr, ValidationError
 
 from app.agents.llm.dev_lane import (
     build_custom_chat_model,
@@ -41,6 +42,17 @@ from app.agents.llm.exceptions import (
     LLMNotConfiguredError,
     MalformedStructuredOutputError,
 )
+from app.agents.llm.failure_fields import FailedCallFields, failed_call_fields
+from app.agents.llm.metrics import (
+    UNKNOWN_PROVIDER,
+    LLMFallbackOutcome,
+    fallback_leg,
+    observe_llm_call_failed,
+    observe_llm_call_ok,
+    observe_llm_call_timed_out,
+    observe_llm_fallback,
+)
+from app.agents.llm.schema_caps import without_size_caps
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
 from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
@@ -98,6 +110,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
+    RATE_LIMIT_ERRORS,
     LLMCallContext,
     TokenUsage,
     extract_finish_reason,
@@ -152,15 +165,28 @@ def without_sdk_retry(llm: _LLMT) -> _LLMT:  # NOSONAR python:S3516
     return llm
 
 
-def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS) -> Runnable:
+#: The retry set without the rate limits the call classifier names.
+_RETRYABLE_EXCEPT_RATE_LIMITS: tuple[type[BaseException], ...] = tuple(
+    error for error in LLM_RETRYABLE_EXCEPTIONS if not issubclass(error, RATE_LIMIT_ERRORS)
+)
+
+
+def with_llm_retry(
+    runnable: Runnable,
+    *,
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    retry_rate_limits: bool = True,
+) -> Runnable:
     """Wrap runnable with the single, canonical LLM retry policy.
 
     Applied AFTER bind_tools so the RunnableRetry wrapper never has to expose
     bind_tools. max_attempts=1 disables retry for callers on a hard latency
-    budget.
+    budget; retry_rate_limits=False sends a rate limit straight to the fallback.
     """
     return runnable.with_retry(
-        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS,
+        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS
+        if retry_rate_limits
+        else _RETRYABLE_EXCEPT_RATE_LIMITS,
         stop_after_attempt=max_attempts,
         wait_exponential_jitter=True,
     )
@@ -748,21 +774,29 @@ def _one_shot_model(provider: LLMProviderName, use: ModelUse) -> str | None:
     return chat_model(provider)
 
 
-def one_shot_route(use: ModelUse) -> tuple[LLMProviderName, str] | None:
+def one_shot_route(
+    use: ModelUse, exclude: LLMProviderName | None = None
+) -> tuple[LLMProviderName, str] | None:
     """Return the provider and model a one-shot use runs on, or None when nothing configured can serve it.
 
     A configured OVERRIDE_PROVIDER comes first everywhere. Then production runs the
     hosted table and nothing else; elsewhere the hosted provider, then every
-    configured provider in priority order.
+    configured provider in priority order. A fallback excludes the provider that
+    just failed, and takes its PINNED_FALLBACKS target first, as chat_route does.
     """
-    hosted = HOSTED_ONE_SHOT_PROVIDERS[use]
-    candidates = (
-        (OVERRIDE_PROVIDER, hosted)
-        if settings.deployment.hosted_models
-        else (OVERRIDE_PROVIDER, hosted, *LLM_PROVIDER_PRIORITY)
-    )
+    pinned = PINNED_FALLBACKS.get(exclude) if exclude else None
+    candidates = [
+        *([pinned] if pinned else []),
+        OVERRIDE_PROVIDER,
+        HOSTED_ONE_SHOT_PROVIDERS[use],
+        *(() if settings.deployment.hosted_models else LLM_PROVIDER_PRIORITY),
+    ]
     for provider in candidates:
-        if provider_configured(provider) and (model := _one_shot_model(provider, use)):
+        if (
+            provider != exclude
+            and provider_configured(provider)
+            and (model := _one_shot_model(provider, use))
+        ):
             return provider, model
     return None
 
@@ -772,12 +806,13 @@ def resolve_model(
     *,
     temperature: float = DEFAULT_LLM_TEMPERATURE,
     reasoning: ReasoningLevel | None = None,
+    exclude: LLMProviderName | None = None,
 ) -> BaseChatModel:
     """Return the chat model a one-shot call for use runs on: the one place a one-shot's model is chosen.
 
     Sim mode wins, then the forced dev lane (every use on the custom endpoint),
-    then one_shot_route. reasoning None keeps the model's default. Raises
-    LLMNotConfiguredError naming the use when no configured provider can serve it.
+    then one_shot_route, which never picks exclude. reasoning None keeps the model's
+    default. Raises LLMNotConfiguredError naming the use when no configured provider can serve it.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
@@ -788,14 +823,25 @@ def resolve_model(
             endpoint=custom_endpoint(),
             reasoning=reasoning,
         )
-    route = one_shot_route(use)
+    route = one_shot_route(use, exclude)
     if route is None:
         raise LLMNotConfiguredError(
             f"No configured AI provider can serve {use.value} calls. Configure "
             f"{HOSTED_ONE_SHOT_PROVIDERS[use].value} (or, off production, any provider that "
             "serves it) in Settings → AI Providers or via its API-key env var."
         )
-    provider, model = route
+    return one_shot_client(*route, use=use, temperature=temperature, reasoning=reasoning)
+
+
+def one_shot_client(
+    provider: LLMProviderName,
+    model: str,
+    *,
+    use: ModelUse,
+    temperature: float,
+    reasoning: ReasoningLevel | None,
+) -> BaseChatModel:
+    """Build the one-shot client that runs model on provider; reasoning None keeps the model's default."""
     match provider:
         case LLMProviderName.OPENROUTER:
             return _openrouter_one_shot(
@@ -910,9 +956,9 @@ def _build_openai_wire_one_shot(
     return llm
 
 
-def memory_lane_available() -> bool:
-    """Whether resolve_model(MEMORY) can serve a call instead of raising."""
-    return settings.GAIA_SIM_MODE or one_shot_route(ModelUse.MEMORY) is not None
+def memory_lane_available(exclude: LLMProviderName | None = None) -> bool:
+    """Whether resolve_model(MEMORY) can serve a call, off exclude, instead of raising."""
+    return settings.GAIA_SIM_MODE or one_shot_route(ModelUse.MEMORY, exclude) is not None
 
 
 def aux_lane_available() -> bool:
@@ -1008,14 +1054,62 @@ def _is_openai_wire(runnable: Runnable) -> bool:
     return _is_default_or_host(base, "api.openai.com")
 
 
+def _primary_leg(
+    label: str, provider: LLMProviderName | None, primary: Runnable
+) -> dict[str, object]:
+    """Return the llm log fields naming a call, and the provider and model it asked first."""
+    return {
+        "label": label,
+        "provider": provider.value if provider else UNKNOWN_PROVIDER,
+        "model": _requested_model(primary),
+    }
+
+
+@contextmanager
+def _fallback_attempt(
+    leg: dict[str, object],
+    primary_error: BaseException,
+    *,
+    fallback: Runnable,
+    config: RunnableConfig | None,
+    model: str,
+) -> Iterator[None]:
+    """Count the fallback call inside the block; when it fails too, log both legs and both failures on one line.
+
+    fallback is the runnable before its retry wrapper, which hides the client the provider is read off.
+    config is the fallback's own, never the primary's, which names the provider that just failed.
+    """
+    try:
+        with fallback_leg():
+            yield
+    except Exception as fallback_error:
+        fallback_provider = _call_provider(fallback, config)
+        log.warning(
+            f"{LogTag.AGENT} llm call failed on the fallback too",
+            llm={
+                **leg,
+                "fell_back": True,
+                "fallback_provider": fallback_provider.value
+                if fallback_provider
+                else UNKNOWN_PROVIDER,
+                "fallback_model": model,
+            },
+            primary_failure=failed_call_fields(primary_error),
+            **failed_call_fields(fallback_error),
+        )
+        raise
+
+
 def _resolve_fallback(
     fallback: LLMFallback,
     label: str,
     primary_error: BaseException,
     *,
+    primary: Runnable,
+    provider: LLMProviderName | None,
     session_id: str | None = None,
-) -> tuple[Runnable, str]:
-    """Materialize the fallback, log the downgrade, and return the retry-wrapped runnable and the model it asks for.
+) -> tuple[Runnable, str, Runnable]:
+    """Materialize the fallback, log the downgrade, and return it retry-wrapped, the model it asks for, and unwrapped.
 
     Re-raises primary_error when no fallback is available.
     """
@@ -1023,17 +1117,51 @@ def _resolve_fallback(
     # the wire, while a bind survives bind_tools. Only onto an OpenRouter-wire fallback --
     # Google's client rejects unknown kwargs and would raise on the outage path itself.
     resolved = _materialize_fallback(fallback)
+    leg = _primary_leg(label, provider, primary)
     if resolved is None:
+        observe_llm_fallback(LLMFallbackOutcome.EXHAUSTED)
+        log.warning(
+            f"{LogTag.AGENT} llm call failed with no fallback to try",
+            llm={**leg, "fell_back": False},
+            **failed_call_fields(primary_error),
+        )
         raise primary_error
     log.warning(
         f"{LogTag.AGENT} llm call failed; falling back to the default model",
-        llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
-        error=str(primary_error),
+        llm={**leg, "fell_back": True},
+        **failed_call_fields(primary_error),
     )
     requested = _requested_model(resolved)
     if session_id and _is_openrouter_wire(resolved):
         resolved = resolved.bind(session_id=session_id)
-    return with_llm_retry(resolved), requested
+    return with_llm_retry(resolved), requested, resolved
+
+
+def _retries_rate_limits(provider: LLMProviderName | None, fallback: LLMFallback) -> bool:
+    """Whether a rate limited call is retried on its own provider before the fallback.
+
+    Workers AI limits per minute, so a retry seconds later fails again and only
+    delays the fallback. With no fallback the retries are all the call has.
+    """
+    return provider is not LLMProviderName.CLOUDFLARE or fallback is None
+
+
+def _call_provider(runnable: Runnable, config: RunnableConfig | None) -> LLMProviderName | None:
+    """Return the provider a call runs on: the lane's when its config names one, else the client's own; None when neither says."""
+    configurable: AgentConfigurable = agent_configurable(config)
+    named = configurable.get("provider")
+    if named in LLMProviderName:
+        return LLMProviderName(named)
+    client = _wire_client(runnable)
+    if isinstance(client, ChatOpenRouter):
+        return LLMProviderName.OPENROUTER
+    if isinstance(client, ChatGoogleGenerativeAI):
+        return LLMProviderName.GEMINI
+    if isinstance(client, ChatWorkersAI):
+        return LLMProviderName.CLOUDFLARE
+    if _is_openai_wire(runnable):
+        return LLMProviderName.OPENAI
+    return None
 
 
 def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool = False) -> str | None:
@@ -1055,12 +1183,13 @@ def _requested_model(runnable: Any) -> str:  # noqa: ANN401 -- any Runnable shap
     """Return the model id this runnable was going to ask for, or UNKNOWN_MODEL_NAME.
 
     A failed call has no reply to read the served model off, so the ledger's
-    model_requested is all there is. Read defensively: the bound runnable is a
-    chat model on the graph lane but a with_structured_output wrapper on the
-    auxiliary one.
+    model_requested is all there is. Read off the client the wrappers end in:
+    the runnable is a chat model on the graph lane but a with_structured_output
+    sequence on the auxiliary one, and a sequence names no model itself.
     """
+    client = _wire_client(runnable)
     for attribute in ("model_name", "model"):
-        value = getattr(runnable, attribute, None)
+        value = getattr(client, attribute, None)
         if isinstance(value, str) and value:
             return value
     return UNKNOWN_MODEL_NAME
@@ -1129,6 +1258,10 @@ class StructuredCallOptions:
     use: ModelUse = ModelUse.HELPER
     #: 1 disables retry, for a caller on a hard latency budget.
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
+    #: Have the provider hold the reply to the schema (strict tools on an OpenAI wire, the
+    #: response schema on Gemini), so a model cannot leave a field out. Every field of the
+    #: schema must then be required, with no defaults. Size caps are checked after, not held.
+    schema_held: bool = False
 
 
 _DEFAULT_STRUCTURED_OPTIONS = StructuredCallOptions()
@@ -1162,6 +1295,9 @@ async def ainvoke_llm(
     generation_handler = _GenerationIdCallback() if opts.meter_auxiliary else None
     call_configurable: AgentConfigurable = agent_configurable(config)
     user_id = call_configurable.get("user_id")
+    provider = _call_provider(primary, config)
+    primary_counted = False
+    failure: FailedCallFields | None = None
     # Wall time of the whole provider interaction, including retries and the
     # fallback attempt. Started before the timeout scope so a killed call still
     # reports how long it burned.
@@ -1170,34 +1306,51 @@ async def ainvoke_llm(
         try:
             async with asyncio.timeout(opts.timeout):
                 try:
-                    return await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
+                    reply = await with_llm_retry(
+                        primary,
+                        max_attempts=opts.max_attempts,
+                        retry_rate_limits=_retries_rate_limits(provider, fallback),
+                    ).ainvoke(
                         messages,
                         config=_with_usage_handler(
                             _with_usage_handler(config, usage_handler), generation_handler
                         ),
                     )
+                    observe_llm_call_ok(provider)
+                    return reply
                 except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                    observe_llm_call_failed(provider, primary_error)
+                    primary_counted = True
                     # Runs under ``fallback_config``: reusing ``config`` made failover
                     # a no-op, since LangChain merges a passed config OVER a
                     # ``with_config`` one, putting the just-failed provider back.
-                    fallback_runnable, fallback_requested = _resolve_fallback(
+                    fallback_runnable, fallback_requested, fallback_asked = _resolve_fallback(
                         fallback,
                         label,
                         primary_error,
+                        primary=primary,
+                        provider=provider,
                         session_id=opts.sticky_session_id
                         or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
                     )
-                    return _stamp_fallback(
-                        await fallback_runnable.ainvoke(
+                    fallback_model = opts.fallback_model or fallback_requested
+                    with _fallback_attempt(
+                        _primary_leg(label, provider, primary),
+                        primary_error,
+                        fallback=fallback_asked,
+                        config=fallback_config,
+                        model=fallback_model,
+                    ):
+                        fallback_reply = await fallback_runnable.ainvoke(
                             messages,
                             config=_with_usage_handler(
                                 _with_usage_handler(fallback_config or config, usage_handler),
                                 generation_handler,
                             ),
-                        ),
-                        opts.fallback_model or fallback_requested,
-                    )
+                        )
+                    return _stamp_fallback(fallback_reply, fallback_model)
         except Exception as call_error:
+            failure = failed_call_fields(call_error)
             # One row per failed CALL, not per attempt. ``except Exception``
             # deliberately excludes ``CancelledError`` — a caller hanging up is
             # not the provider failing.
@@ -1212,6 +1365,9 @@ async def ainvoke_llm(
                     duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
                 ),
             )
+            # The deadline fires outside the provider call, so a hung provider is counted here.
+            if isinstance(call_error, TimeoutError) and not primary_counted:
+                observe_llm_call_timed_out(provider)
             raise
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
@@ -1228,6 +1384,7 @@ async def ainvoke_llm(
                     duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
                 ),
                 facts=(generation_handler.facts if generation_handler else ResponseFacts()),
+                failure=failure,
             )
 
 
@@ -1249,29 +1406,43 @@ def invoke_llm(
     opts = options or LLMInvokeOptions()
     fallback = _allowed_fallback(fallback)
     config = _with_call_label(config, label)
+    provider = _call_provider(primary, config)
     try:
-        return with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
-            messages, config=config
-        )
+        reply = with_llm_retry(
+            primary,
+            max_attempts=opts.max_attempts,
+            retry_rate_limits=_retries_rate_limits(provider, fallback),
+        ).invoke(messages, config=config)
+        observe_llm_call_ok(provider)
+        return reply
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
-        fallback_runnable, fallback_requested = _resolve_fallback(
+        observe_llm_call_failed(provider, primary_error)
+        fallback_runnable, fallback_requested, fallback_asked = _resolve_fallback(
             fallback,
             label,
             primary_error,
+            primary=primary,
+            provider=provider,
             # Passed through like the async path — this branch used to hand
             # _resolve_fallback nothing, so a sync fallback silently landed
             # on whatever provider the router picked.
             session_id=opts.sticky_session_id or _sticky_session_id(config),
         )
-        return _stamp_fallback(
-            fallback_runnable.invoke(
+        fallback_model = opts.fallback_model or fallback_requested
+        with _fallback_attempt(
+            _primary_leg(label, provider, primary),
+            primary_error,
+            fallback=fallback_asked,
+            config=opts.fallback_config,
+            model=fallback_model,
+        ):
+            fallback_reply = fallback_runnable.invoke(
                 messages,
                 config=_with_call_label(opts.fallback_config, label)
                 if opts.fallback_config
                 else config,
-            ),
-            opts.fallback_model or fallback_requested,
-        )
+            )
+        return _stamp_fallback(fallback_reply, fallback_model)
 
 
 # Marks an internal one-shot LLM call so the chat stream drops its output instead of rendering
@@ -1510,6 +1681,7 @@ async def _record_auxiliary_usage(
     *,
     context: LLMCallContext,
     facts: ResponseFacts,
+    failure: FailedCallFields | None = None,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -1527,6 +1699,8 @@ async def _record_auxiliary_usage(
     # Same rule for the upstream: a fan-out cannot say which model any one
     # provider served, and naming the wrong one is worse than naming none.
     booked_provider = facts.provider if attributable else None
+    # Named, or the log facade stamps the failing call's message on the warning below.
+    failed_with: Mapping[str, object] = {} if failure is None else failure
     for model_name, model_usage in handler.usage_metadata.items():
         usage: UsageMetadata = model_usage
         input_tokens = int(usage.get("input_tokens", 0) or 0)
@@ -1543,6 +1717,7 @@ async def _record_auxiliary_usage(
                 f"{LogTag.AGENT} auxiliary llm spend not metered — no user_id in "
                 "config.configurable (threading gap?)",
                 llm={"label": label, "model": model_name},
+                **failed_with,
             )
 
         cost = await record_llm_call(
@@ -1589,11 +1764,15 @@ async def _record_auxiliary_usage(
 
 
 class _OpenAIFunctionSpec(BaseModel):
-    """The function block of an OpenAI tool spec, read for the name the model calls."""
+    """The function block of an OpenAI tool spec: the name the model calls and its arguments' schema.
 
-    model_config = ConfigDict(extra="ignore")
+    Its description and strict flag ride along as extras, so a spec dumps back whole.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     name: str
+    parameters: JsonValue = None
 
 
 class _OpenAIToolSpec(BaseModel):
@@ -1601,6 +1780,7 @@ class _OpenAIToolSpec(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    type: Literal["function"] = "function"
     function: _OpenAIFunctionSpec
 
 
@@ -1684,22 +1864,29 @@ def _structured_tool_choice(llm: BaseChatModel) -> str:
     return "required" if forced else "auto"
 
 
-def _structured_tool_runnable(llm: BaseChatModel, schema: type[_StructuredT]) -> Runnable:
+def _structured_tool_runnable(
+    llm: BaseChatModel, schema: type[_StructuredT], *, strict: bool = False
+) -> Runnable:
     """Build the one-tool structured runnable every non-Gemini one-shot runs on.
 
     Not with_structured_output: it forces the tool by name, and it parses streamed
     arguments leniently. The call is unstreamed (streaming=False also holds under
     astream_events), so :func:_parse_structured_reply sees the arguments exactly as sent.
+    strict has the OpenAI wire hold the arguments to the schema, less its size caps.
     """
-    tool = convert_to_openai_tool(schema)
+    spec = _OpenAIToolSpec.model_validate(convert_to_openai_tool(schema, strict=strict or None))
+    if strict:
+        spec.function.parameters = without_size_caps(spec.function.parameters)
+    tool = spec.model_dump()
     tool_choice = _structured_tool_choice(llm)
     bound = llm.model_copy(update={"streaming": False}).bind_tools(
-        [schema],
+        [tool],
         tool_choice=tool_choice,
         ls_structured_output_format={
             "kwargs": {"method": "function_calling", "tool_choice": tool_choice},
             "schema": tool,
         },
+        **({"strict": True} if strict else {}),
     )
     return bound | RunnableLambda(
         lambda message: _parse_structured_reply(message, schema),
@@ -1707,21 +1894,73 @@ def _structured_tool_runnable(llm: BaseChatModel, schema: type[_StructuredT]) ->
     )
 
 
-def _structured_runnable(
-    schema: type[_StructuredT], config: RunnableConfig | None, options: StructuredCallOptions
+def _parse_json_reply(message: BaseMessage, schema: type[_StructuredT]) -> _StructuredT:
+    """Return the schema filled from a JSON reply; raise MalformedStructuredOutputError otherwise."""
+    name = _structured_tool_name(schema)
+    if not isinstance(message, AIMessage):
+        raise MalformedStructuredOutputError(
+            f"{name}: expected an AI reply, got {type(message).__name__}"
+        )
+    if _ReplyMetadata.model_validate(message.response_metadata).stopped_at_output_cap():
+        raise MalformedStructuredOutputError(f"{name}: reply stopped at the output cap")
+    try:
+        return schema.model_validate_json(message.text)
+    except ValidationError as error:
+        raise MalformedStructuredOutputError(
+            f"{name}: the reply does not fit the schema: {error}", llm_output=message.text
+        ) from error
+
+
+def _gemini_schema_runnable(llm: ChatGoogleGenerativeAI, schema: type[_StructuredT]) -> Runnable:
+    """Build a Gemini one-shot whose reply the response schema holds: JSON that fits, field for field."""
+    bound = llm.bind(
+        response_mime_type="application/json",
+        response_json_schema=without_size_caps(schema.model_json_schema()),
+    )
+    return bound | RunnableLambda(
+        lambda message: _parse_json_reply(message, schema), name=_structured_tool_name(schema)
+    )
+
+
+def structured_runnable(
+    model: BaseChatModel, schema: type[_StructuredT], *, held: bool
 ) -> Runnable:
-    """Build the structured runnable a one-shot runs on, on the model resolve_model picks for it.
+    """Build the runnable that has model answer in schema; held has the provider hold the reply to it."""
+    if held and isinstance(model, ChatGoogleGenerativeAI):
+        return _gemini_schema_runnable(model, schema)
+    return _structured_tool_runnable(model, schema, strict=held)
+
+
+def _structured_runnable(
+    schema: type[_StructuredT],
+    config: RunnableConfig | None,
+    options: StructuredCallOptions,
+    exclude: LLMProviderName | None = None,
+) -> Runnable:
+    """Build the structured runnable a one-shot runs on, on the model resolve_model picks for it off exclude.
 
     Aux one-shots get their OWN suffixed sticky session, bound after bind_tools
     (which drops outer bindings): sharing the conversation's session_id re-pinned
     its provider (measured: rotation dips). Only an OpenRouter wire receives it.
     """
-    model = resolve_model(options.use, temperature=options.temperature, reasoning=options.reasoning)
-    structured = _structured_tool_runnable(model, schema)
+    model = resolve_model(
+        options.use, temperature=options.temperature, reasoning=options.reasoning, exclude=exclude
+    )
+    structured = structured_runnable(model, schema, held=options.schema_held)
     session_id = _sticky_session_id(config, auxiliary=True)
     if session_id and _is_openrouter_wire(structured):
         structured = structured.bind(session_id=session_id)
     return structured
+
+
+def _structured_fallback(
+    schema: type[_StructuredT], config: RunnableConfig | None, options: StructuredCallOptions
+) -> LLMFallback:
+    """Return the same structured call on the next provider that serves its use; None when there is no other."""
+    primary = one_shot_route(options.use)
+    if primary is None or one_shot_route(options.use, primary[0]) is None:
+        return None
+    return lambda: _structured_runnable(schema, config, options, primary[0])
 
 
 async def ainvoke_structured(
@@ -1734,8 +1973,8 @@ async def ainvoke_structured(
 ) -> _StructuredT:
     """Run the single canonical one-shot structured call on the model options.use resolves to.
 
-    Adds retry + fallback via :func:ainvoke_llm. Raises LLMNotConfiguredError
-    when that model's provider has no key.
+    Adds retry via :func:ainvoke_llm, then the same call on another provider when
+    one serves its use. Raises LLMNotConfiguredError when that model's provider has no key.
     """
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
@@ -1744,6 +1983,7 @@ async def ainvoke_structured(
         await ainvoke_llm(
             _structured_runnable(schema, config, options),
             prompt,
+            fallback=_structured_fallback(schema, config, options),
             config=config,
             label=label,
             options=LLMInvokeOptions(timeout=options.timeout, max_attempts=options.max_attempts),
@@ -1751,9 +1991,13 @@ async def ainvoke_structured(
     )
 
 
-def _memory_structured_runnable(schema: type[_StructuredT], temperature: float) -> Runnable:
-    """Build the direct-Gemini structured runnable the memory pipeline falls back to."""
-    return resolve_model(ModelUse.MEMORY, temperature=temperature).with_structured_output(schema)
+def _memory_structured_runnable(
+    schema: type[_StructuredT], temperature: float, exclude: LLMProviderName | None = None
+) -> Runnable:
+    """Build the memory-lane structured runnable the memory pipeline falls back to, off exclude."""
+    return resolve_model(
+        ModelUse.MEMORY, temperature=temperature, exclude=exclude
+    ).with_structured_output(schema)
 
 
 async def ainvoke_structured_gemini(
@@ -1795,9 +2039,11 @@ async def ainvoke_structured_gemini(
         )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
+    primary = one_shot_route(options.use)
+    failed = primary[0] if primary else None
     fallback: LLMFallback = (
-        (lambda: _memory_structured_runnable(schema, options.temperature))
-        if memory_lane_available()
+        (lambda: _memory_structured_runnable(schema, options.temperature, failed))
+        if memory_lane_available(failed)
         else None
     )
     return cast(

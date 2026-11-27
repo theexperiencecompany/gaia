@@ -1,0 +1,102 @@
+name: Self-host end to end
+
+# `gaia up --code-sandbox` from this checkout's CLI build on a GitHub-hosted
+# runner, the scripted LLM stub as the `custom` provider, and a Playwright
+# journey through setup, chat, tools, uploads, invites, roles, readiness and the
+# code sandbox (scripts/ci/selfhost.sh + apps/web/e2e/selfhost). ci.yml calls it
+# behind quality-gate in the merge queue and on dispatch when nx says
+# cli:selfhost-e2e is affected; selfhost-smoke.yml calls it on its own dispatch.
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Pull gaia + gaia-web at this tag (e.g. a master commit sha) instead of building them"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  # Builds both images from the checkout (`gaia up --build`) unless image_tag
+  # names a published tag. The stub runs on the runner's private address.
+  selfhost-e2e:
+    name: Self-host end to end (gaia up + Playwright)
+    runs-on: ubuntu-24.04
+    # Measured 18 min (run 45281784353); with select-runner and detect's caps it stays under the queue's 60.
+    timeout-minutes: 40
+    env:
+      E2E_OUT: ${{ github.workspace }}/selfhost-e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - uses: ./.github/actions/setup-uv
+
+      - name: Prepare the runner and record this checkout as the install
+        id: prepare
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        run: bash scripts/ci/selfhost.sh prepare
+
+      - name: Start the scripted LLM stub
+        id: stub
+        env:
+          OUT_DIR: ${{ env.E2E_OUT }}
+        run: bash scripts/ci/selfhost.sh stub
+
+      - name: gaia up --yes --code-sandbox
+        id: up
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: bash scripts/ci/selfhost.sh up
+
+      - name: Install Chromium for Playwright
+        run: bash scripts/ci/browser.sh install-playwright
+
+      - name: Drive the self-host journey
+        id: journey
+        working-directory: apps/web
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/web/ -- bash -e {0}
+        env:
+          CI: "true"
+          GAIA_REPO_ROOT: ${{ github.workspace }}
+          LLM_STUB_BASE_URL: ${{ steps.stub.outputs.base_url }}
+        run: pnpm exec playwright test -c playwright.selfhost.config.ts
+      # Before the log collection below: the failing tests are readable now.
+      - name: Upload the verdict so far (a step above failed)
+        if: always() && env.GAIA_VERDICT_PENDING == '1'
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-e2e
+          partial: "true"
+
+      - name: Collect the stack's logs
+        if: always()
+        env:
+          OUT_DIR: ${{ env.E2E_OUT }}/logs
+        run: bash scripts/ci/selfhost.sh logs
+
+      - name: Upload screenshots, traces and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: selfhost-e2e
+          path: |
+            apps/web/test-results/selfhost
+            apps/web/playwright-report/selfhost
+            ${{ env.E2E_OUT }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-e2e

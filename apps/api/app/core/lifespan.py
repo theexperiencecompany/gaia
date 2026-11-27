@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from posthog import Posthog
 
+from app.agents.llm.metrics import create_llm_series
+from app.api.v1.middleware.internal_caller_metrics import create_internal_caller_series
 from app.config.settings import settings
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.log_tags import LogTag
@@ -16,11 +18,25 @@ from app.core.runtime_config_subscriber import (
     start_runtime_config_subscriber,
     stop_runtime_config_subscriber,
 )
+from app.core.shutdown_signal import install_shutdown_signal, remove_shutdown_signal
+from app.services.composio.webhook_metrics import create_composio_webhook_series
+from app.services.conversation.composition import (
+    build_runtime_ports,
+    drain_conversation_steps,
+)
+from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.stream_metrics import create_events_stream_series
 from app.services.device.revoke_listener import (
     start_revoke_listener,
     stop_revoke_listener,
 )
 from app.services.device.up_listener import start_up_listener, stop_up_listener
+from app.services.latency_metrics import create_chat_turn_series
+from app.services.links.metrics import create_link_mint_series
+from app.services.oauth.metrics import create_oauth_callback_series
+from app.services.payments.webhook_metrics import create_payment_webhook_series
+from app.services.render.chromium import close_chromium
+from app.services.scheduler_metrics import create_scheduled_task_series
 from app.utils.browser_reaper import start_browser_reaper, stop_browser_reaper
 from app.utils.context_utils import _CONTEXT_EXECUTOR
 from app.utils.crawl_obscura import shutdown_crawl_obscura
@@ -51,24 +67,39 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
                     f"{LogTag.STARTUP} PostHog not configured — analytics captures will no-op",
                     missing_var=missing_var,
                 )
+            install_shutdown_signal()
             await unified_startup("main_app")
+            install_runtime_ports(build_runtime_ports())
             if settings.POSTHOG_PROJECT_TOKEN and settings.POSTHOG_HOST:
                 posthog_client = providers.get(POSTHOG_PROVIDER_KEY)
             start_browser_reaper()
             start_revoke_listener()
             start_up_listener()
             start_runtime_config_subscriber()
+            create_link_mint_series()
+            create_internal_caller_series()
+            create_chat_turn_series()
+            create_events_stream_series()
+            create_llm_series()
+            create_scheduled_task_series()
+            create_payment_webhook_series()
+            create_oauth_callback_series()
+            create_composio_webhook_series()
         yield
 
     except Exception as e:
         raise RuntimeError("Startup failed") from e
 
     finally:
+        # First, while Mongo and Redis are still up: running steps settle, none start.
+        await drain_conversation_steps()
+        remove_shutdown_signal()
         await stop_up_listener()
         await stop_revoke_listener()
         await stop_runtime_config_subscriber()
         await stop_browser_reaper()
         await shutdown_crawl_obscura()
+        await close_chromium()
         if posthog_client is not None:
             # shutdown(), not flush(): flush() only flushes the queue, leaving the
             # consumer threads and feature-flag poller running; an atexit hook

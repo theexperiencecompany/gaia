@@ -6,7 +6,6 @@ Provides CRUD operations, execution, and status endpoints.
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
@@ -15,6 +14,9 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
+from app.constants.public_pages import PublicPageDomain
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
@@ -42,6 +44,7 @@ from app.models.workflow_models import (
 )
 from app.services.analytics_service import capture
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.services.public_pages import invalidate_public_pages
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow.execution_service import (
     get_workflow_executions as get_executions,
@@ -131,12 +134,15 @@ async def create_workflow(
                 trigger_type=trigger_type,
                 steps_count=len(workflow.steps) if workflow.steps else 0,
                 generated_immediately=request.generate_immediately,
+                delivery=request.delivery.value,
             ),
         )
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow created successfully"
         )
 
+    except AppError:
+        raise
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
         raise HTTPException(
@@ -522,6 +528,7 @@ async def create_workflow_from_todo(
             prompt=todo_description or f"Complete todo: {todo_title}",
             trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
             generate_immediately=True,  # Generate steps immediately for todos
+            delivery=WorkflowDelivery.NOW,
         )
 
         workflow = await WorkflowService.create_workflow(
@@ -536,7 +543,10 @@ async def create_workflow_from_todo(
             ),
             outcome="success",
         )
-        capture(UserId(user.user_id), WorkflowCreated(origin="todo_converted"))
+        capture(
+            UserId(user.user_id),
+            WorkflowCreated(origin="todo_converted", delivery=workflow_request.delivery.value),
+        )
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow created from todo successfully"
         )
@@ -579,7 +589,7 @@ async def publish_workflow(
         existing_slug = workflow.slug
         slug = existing_slug
 
-        # Retry on DuplicateKeyError so a concurrent publish racing on the
+        # Retry on AlreadyExistsError so a concurrent publish racing on the
         # same suffix can't corrupt the unique index. Only a freshly generated
         # slug is retried; an existing slug that collides re-raises.
         for _ in range(5):
@@ -592,7 +602,7 @@ async def publish_workflow(
                     slug=slug or "",  # pragma: no mutate — slug is never empty here
                 )
                 break
-            except DuplicateKeyError:
+            except AlreadyExistsError:
                 if existing_slug:
                     raise
                 continue
@@ -601,6 +611,8 @@ async def publish_workflow(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Could not allocate a unique slug, please retry",
             )
+
+        await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
 
         log.set(outcome="success")
         log.info(
@@ -654,6 +666,7 @@ async def unpublish_workflow(
             )
 
         await workflow_repository.unpublish(workflow_id)
+        await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
 
         log.set(outcome="success")
         log.info(
@@ -899,17 +912,22 @@ async def update_workflow(
     )
 
     try:
+        before = await WorkflowService.get_workflow(workflow_id, user.user_id)
         workflow = await WorkflowService.update_workflow(
             workflow_id, request, user.user_id, user_timezone=user_timezone
         )
-        if not workflow:
+        if not workflow or not before:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Workflow {workflow_id} not found",
             )
 
         log.set(outcome="success")
-        capture(UserId(user.user_id), WorkflowUpdated())
+        changed = request.delivery is not None and request.delivery is not before.delivery
+        capture(
+            UserId(user.user_id),
+            WorkflowUpdated(delivery=request.delivery.value if changed else None),
+        )
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow updated successfully"
         )

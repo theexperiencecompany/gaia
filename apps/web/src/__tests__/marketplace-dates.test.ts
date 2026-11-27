@@ -125,7 +125,20 @@ describe("marketplace page dates", () => {
           return Response.json({ workflows: [], total: 0 });
         }
         if (pathname.endsWith("/integrations/config")) {
-          return Response.json({ integrations: [] });
+          return Response.json({
+            integrations: [
+              {
+                id: GMAIL.integrationId,
+                slug: GMAIL.slug,
+                name: GMAIL.name,
+                description: GMAIL.description,
+                category: GMAIL.category,
+                source: "platform",
+                available: true,
+                displayPriority: 1,
+              },
+            ],
+          });
         }
         return new Response("not stubbed", { status: 500 });
       }),

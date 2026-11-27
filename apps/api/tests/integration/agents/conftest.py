@@ -1,7 +1,6 @@
 """Agent-specific integration test fixtures."""
 
 import asyncio
-import importlib
 import os
 from typing import Any
 from unittest.mock import patch
@@ -20,6 +19,8 @@ import pytest
 from app.agents.llm import client as llm_client
 from app.agents.llm.client import _build_default_llm, _sim_llm, with_llm_retry
 from app.config.settings import settings
+from app.db import redis as redis_module
+from app.db.mongodb import collections as mongo_collections, mongodb as mongo_module
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 from tests.integration.conftest import SimpleState
 
@@ -56,9 +57,9 @@ def single_llm_attempt(monkeypatch: pytest.MonkeyPatch):
     override a partial's bound keyword.
     """
 
-    def _single_attempt(runnable: Runnable, *, max_attempts: int = 1) -> Runnable:
-        del max_attempts  # the caller's budget is exactly what this fixture removes
-        return with_llm_retry(runnable, max_attempts=1)
+    def _single_attempt(runnable: Runnable, **policy: Any) -> Runnable:
+        # The caller's attempt budget is what this fixture removes; the rest of its policy stands.
+        return with_llm_retry(runnable, **{**policy, "max_attempts": 1})
 
     monkeypatch.setattr(llm_client, "with_llm_retry", _single_attempt)
 
@@ -183,12 +184,9 @@ async def _mongo_client_follows_the_test_loop() -> None:
     loop = asyncio.get_running_loop()
     if _mongo_client_loop is loop:
         return
-    mongo_collections = importlib.import_module("app.db.mongodb.collections")
-    mongo_module = importlib.import_module("app.db.mongodb.mongodb")
     # init_mongodb is lru_cached: without clearing it the "new" instance is the old client.
     mongo_module.init_mongodb.cache_clear()
     mongo_collections._mongodb_instance = None
     mongo_collections._collections_cache.clear()
-    redis_module = importlib.import_module("app.db.redis")
     redis_module.redis_cache.redis = None
     _mongo_client_loop = loop

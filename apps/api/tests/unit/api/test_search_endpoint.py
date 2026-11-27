@@ -4,18 +4,21 @@ Tests the search endpoints with mocked service layer
 to verify routing, status codes, response bodies, and validation.
 """
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 import pytest
 
-from app.models.chat_models import MessageModel
+from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.models.search_models import MessageSearchResult, SearchResultsResponse
 from app.utils.log_identifiers import user_text_shape
 from app.utils.search.models import SearchResultItem, WebSearchResult
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.search import SearchPerformed
 from tests.conftest import FAKE_USER
+from tests.factories import make_reply_item
 
 SEARCH_BASE = "/api/v1"
 ANALYTICS_PATCH = "app.api.v1.endpoints.search.capture"
@@ -46,7 +49,7 @@ class TestSearchMessages:
             messages=[
                 MessageSearchResult(
                     conversation_id="conv-1",
-                    message=MessageModel(type="bot", response="hello"),
+                    item=make_reply_item("hello", seq=1),
                     snippet="hello",
                 )
             ],
@@ -105,7 +108,7 @@ class TestSearchAnalytics:
             messages=[
                 MessageSearchResult(
                     conversation_id="conv-1",
-                    message=MessageModel(type="bot", response="hello"),
+                    item=make_reply_item("hello", seq=1),
                     snippet="hello",
                 )
             ],
@@ -258,6 +261,12 @@ class TestSearchEmail:
 
 class TestFetchUrlMetadata:
     """POST /api/v1/fetch-url-metadata."""
+
+    @pytest.fixture(autouse=True)
+    def _signed_in(self, test_app: FastAPI) -> Iterator[None]:
+        test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
+        yield
+        test_app.dependency_overrides.pop(get_optional_user)
 
     @patch(
         "app.api.v1.endpoints.search.fetch_url_metadata",

@@ -9,9 +9,9 @@ field lives in a separate key space: the skill catalog and activation key on it.
 """
 
 from dataclasses import dataclass
-from typing import Literal
 
 from app.models.mcp_config import MCPConfig, SubAgentConfig
+from app.models.oauth_models import ManagedBy
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +19,7 @@ class Subagent:
     id: str
     name: str
     provider: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     config: SubAgentConfig
     short_name: str | None = None
     mcp_config: MCPConfig | None = None

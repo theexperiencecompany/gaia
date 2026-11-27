@@ -1,0 +1,223 @@
+import type { ConversationPage } from "@shared/conversation";
+import {
+  createConversationFollower,
+  type SavedConversation,
+} from "@shared/conversation/live";
+import { v4 as uuidv4 } from "uuid";
+import {
+  ConversationEventsRefusedError,
+  ConversationNotFoundError,
+  chatApi,
+} from "@/features/chat/api/chatApi";
+import { db } from "@/lib/db/chatDb";
+import { streamLog, streamLogError } from "@/lib/streamLogger";
+import {
+  type LocalSend,
+  liveConversation,
+  useLiveConversationStore,
+} from "./liveConversationStore";
+
+const PERSIST_DEBOUNCE_MS = 400;
+
+const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function persistNow(conversationId: string): void {
+  const timer = persistTimers.get(conversationId);
+  if (timer) clearTimeout(timer);
+  persistTimers.delete(conversationId);
+  const { view, sends, olderBefore } = liveConversation(conversationId);
+  db.putConversationLog({
+    conversationId,
+    items: [...view.items],
+    head: view.screenHead,
+    olderBefore,
+    sends: { ...sends },
+  }).catch((error: unknown) => {
+    console.error("[conversation] failed to save the screen locally:", error);
+  });
+}
+
+/** Save the conversation's screen, head and sends to IndexedDB, coalescing bursts of frames. */
+export function persistConversation(
+  conversationId: string,
+  { immediately = false } = {},
+): void {
+  if (immediately) {
+    persistNow(conversationId);
+    return;
+  }
+  if (persistTimers.has(conversationId)) return;
+  persistTimers.set(
+    conversationId,
+    setTimeout(() => persistNow(conversationId), PERSIST_DEBOUNCE_MS),
+  );
+}
+
+async function savedConversation(
+  conversationId: string,
+): Promise<SavedConversation<LocalSend>> {
+  const saved = await db.getConversationLog(conversationId);
+  return {
+    items: saved?.items ?? [],
+    head: saved?.head ?? 0,
+    olderBefore: saved?.olderBefore ?? null,
+    sends: saved?.sends ?? {},
+  };
+}
+
+async function restore(conversationId: string): Promise<void> {
+  useLiveConversationStore
+    .getState()
+    .restore(conversationId, await savedConversation(conversationId));
+}
+
+/** Take pages of the server's screen into their conversations, over what this device saved of them, in one store write, and save the results. */
+export async function applyConversationPages(
+  pages: readonly { conversationId: string; page: ConversationPage }[],
+): Promise<void> {
+  const saved = await Promise.all(
+    pages.map(async ({ conversationId, page }) => ({
+      conversationId,
+      page,
+      saved: await savedConversation(conversationId),
+    })),
+  );
+  useLiveConversationStore.getState().applyPages(saved);
+  for (const { conversationId } of pages) {
+    persistConversation(conversationId, { immediately: true });
+  }
+}
+
+// The sidebar and the header read the title from the conversation list, which this update feeds.
+function retitle(conversationId: string, description: string): void {
+  db.updateConversationFields(conversationId, {
+    description,
+    title: description,
+  }).catch((error: unknown) => {
+    console.error("[conversation] failed to save the title:", error);
+  });
+}
+
+const follower = createConversationFollower({
+  subscribe: chatApi.subscribeToConversationEvents,
+  isNotFound: (error) => error instanceof ConversationNotFoundError,
+  statusOf: (error) =>
+    error instanceof ConversationEventsRefusedError ? error.status : undefined,
+  apply: (conversationId, frame) => {
+    const gap = useLiveConversationStore
+      .getState()
+      .applyFrames(conversationId, [frame]);
+    persistConversation(conversationId);
+    return gap;
+  },
+  retitle,
+  prepare: async (conversationId) => {
+    await restore(conversationId);
+    deliverOutstandingSends(conversationId);
+  },
+  onInvalidFrame: (conversationId, error) => {
+    streamLogError("sse", "conversation-frame-invalid", {
+      conversationId,
+      detail: { ...error },
+    });
+    console.error("[conversation] unreadable frame:", error);
+  },
+  onReopen: (conversationId, gap) => {
+    streamLog("sse", "conversation-reopen-on-gap", {
+      conversationId,
+      detail: {
+        status: gap.status,
+        at: gap.status === "index_gap" ? gap.expected : undefined,
+      },
+    });
+  },
+  onDrop: (_conversationId, error) => {
+    console.error("[conversation] events stream dropped:", error);
+  },
+});
+
+/** Follow a conversation's events while anything holds it open; the returned release closes it. */
+export const openConversation = follower.open;
+
+/** Each conversation's newest delivery: the server orders messages as they arrive, so the next waits on it. */
+const deliveries = new Map<string, Promise<void>>();
+
+/** The message ids this tab has a delivery queued or in flight for; a chat opening mid-send must not post them again. */
+const delivering = new Set<string>();
+
+/** POST a queued send after the conversation's earlier sends were answered; a failure marks its bubble failed, and the retry resends the same request. */
+export function deliverSend(
+  conversationId: string,
+  messageId: string,
+): Promise<void> {
+  delivering.add(messageId);
+  const delivery = afterEarlierDeliveries(conversationId, () =>
+    postSend(conversationId, messageId),
+  );
+  const settle = () => delivering.delete(messageId);
+  delivery.then(settle, settle);
+  return delivery;
+}
+
+/** Ask the server to answer the user message target again, in order with this device's sends; it keeps the message's one bubble. */
+export function deliverRetry(
+  conversationId: string,
+  target: string,
+): Promise<void> {
+  return afterEarlierDeliveries(conversationId, async () => {
+    await chatApi.retryConversationMessage(conversationId, {
+      message_id: uuidv4(),
+      target,
+    });
+    follower.wake(conversationId);
+  });
+}
+
+function afterEarlierDeliveries(
+  conversationId: string,
+  post: () => Promise<void>,
+): Promise<void> {
+  // An earlier send's failure is its own caller's to handle; this one goes out regardless.
+  const delivery = (deliveries.get(conversationId) ?? Promise.resolve()).then(
+    post,
+    post,
+  );
+  deliveries.set(conversationId, delivery);
+  const forget = () => {
+    if (deliveries.get(conversationId) === delivery)
+      deliveries.delete(conversationId);
+  };
+  delivery.then(forget, forget);
+  return delivery;
+}
+
+async function postSend(
+  conversationId: string,
+  messageId: string,
+): Promise<void> {
+  const send = liveConversation(conversationId).sends[messageId];
+  if (!send)
+    throw new Error(`No queued send ${messageId} in ${conversationId}`);
+  const store = useLiveConversationStore.getState();
+  store.setSendFailed(conversationId, messageId, false);
+  try {
+    await chatApi.sendConversationMessage(conversationId, send.body);
+  } catch (error) {
+    store.setSendFailed(conversationId, messageId, true);
+    persistConversation(conversationId, { immediately: true });
+    throw error;
+  }
+  follower.wake(conversationId);
+}
+
+/** Resend what this device queued and never saw accepted, as a reload finds it; failed sends wait for their retry, and sends this tab is delivering keep that one delivery. */
+function deliverOutstandingSends(conversationId: string): void {
+  const { view, sends } = liveConversation(conversationId);
+  for (const pending of view.pending) {
+    if (sends[pending.id]?.failed !== false || delivering.has(pending.id))
+      continue;
+    deliverSend(conversationId, pending.id).catch((error: unknown) => {
+      console.error("[sendMessage] resend failed:", error);
+    });
+  }
+}

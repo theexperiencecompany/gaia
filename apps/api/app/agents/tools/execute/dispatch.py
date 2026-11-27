@@ -36,8 +36,8 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.execute_models import AccountChoice, DispatchError, DispatchErrorKind
 from app.services.analytics_service import capture
-from app.services.storage.metrics import _register_once
 from app.services.tool_shape_service import record_observed_shape
+from app.utils.prometheus_registry import register_once
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolExecuteFailed
 from shared.py.wide_events import log, spawn_logged_task
@@ -45,7 +45,7 @@ from shared.py.wide_events import log, spawn_logged_task
 # Health metric of the proxy migration: invalid_args/ok is the
 # retries-per-successful-action ratio. Charted in Grafana; labels are the
 # closed outcome set below, never tool names (unbounded cardinality).
-_EXECUTE_DISPATCH_TOTAL = _register_once(
+_EXECUTE_DISPATCH_TOTAL = register_once(
     "gaia_execute_dispatch_total",
     lambda: Counter(
         "gaia_execute_dispatch_total",
@@ -338,7 +338,7 @@ async def _dispatch_ticket(
             run_config=config,
         )
         text = (
-            f"Executed '{approval_id}' ({result.state.value}): {result.detail}"
+            f"Executed '{approval_id}' ({result.action}): {result.detail}"
             if result.ok
             else f"Could not run '{approval_id}': {result.detail}"
         )
@@ -371,12 +371,13 @@ def _failure(user_id: str | None, tool_name: str, error: DispatchError) -> ToolE
 
 
 def _validate_args(tool: BaseTool, data: dict[str, object]) -> dict[str, object] | DispatchError:
-    """``data`` coerced through the tool's schema, or the correction to return.
+    """``data`` coerced through the tool's model-facing schema, or the correction to return.
 
     Provider-side constrained decoding is gone under the proxy — this check is
     what stands in for it, so it fails loud with the exact Pydantic errors.
+    tool_call_schema drops the args the runtime injects (InjectedToolArg).
     """
-    schema = tool.args_schema
+    schema = tool.tool_call_schema
     if not (isinstance(schema, type) and issubclass(schema, BaseModel)):
         # Dict-style JSON schemas (some MCP adapters) have no Pydantic model to
         # coerce through; the tool's own run performs its validation.

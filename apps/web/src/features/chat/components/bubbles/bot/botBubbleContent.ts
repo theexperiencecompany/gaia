@@ -7,7 +7,8 @@ interface BotBubbleContentInput {
   imageData: unknown;
   isConvoSystemGenerated: boolean | undefined;
   systemPurpose: SystemPurpose | undefined;
-  toolDataLength: number | undefined;
+  /** Whether the timeline draws a tool thread or a card. */
+  showsTools: boolean;
   emailProcessingPurpose: SystemPurpose;
   /** The user stopped this turn: the "Stopped" line is content on its own. */
   stopped?: boolean | null;
@@ -23,7 +24,7 @@ export function describeBotBubbleContent({
   imageData,
   isConvoSystemGenerated,
   systemPurpose,
-  toolDataLength,
+  showsTools,
   emailProcessingPurpose,
   stopped,
 }: BotBubbleContentInput): { hasError: boolean; hasContent: boolean } {
@@ -35,7 +36,7 @@ export function describeBotBubbleContent({
     !!text ||
     hasError ||
     isEmailProcessing ||
-    !!toolDataLength ||
+    showsTools ||
     !!stopped;
   return { hasError, hasContent };
 }

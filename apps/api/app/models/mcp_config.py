@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 # Auth kinds a probe can report. The extra ``unknown`` (vs MCPConfig.auth_type)
 # is what probing reports when the server could not be reached at all.
 ProbedAuthType = Literal["none", "oauth", "bearer", "unknown"]
+AuthType = Literal["none", "oauth", "bearer"]
 
 
 class McpAuthChallenge(TypedDict, total=False):
@@ -81,6 +82,13 @@ class OAuthPendingState(BaseModel):
 
     state: str
     code_verifier: str | None = None
+
+
+class OAuthStateOwner(BaseModel):
+    """Who an MCP OAuth state token was minted for; the callback's only credential."""
+
+    user_id: str
+    integration_id: str
 
 
 class MCPUseServerConfig(TypedDict, total=False):
@@ -159,7 +167,7 @@ class MCPConfig(BaseModel):
     # on /mcp vs /mcp/). Unique per creator (partial index, custom source only); absent on legacy docs until backfilled.
     server_url_normalized: str | None = None
     requires_auth: bool = False
-    auth_type: Literal["none", "oauth", "bearer"] | None = None
+    auth_type: AuthType | None = None
     transport: str | None = None
     client_id: str | None = None
     client_secret: str | None = None

@@ -9,15 +9,24 @@
  * against.
  */
 
-import type { PlatformName } from "@gaia/shared/bots";
+import type { QuietHours } from "@gaia/shared/api/generated";
+import { allCommands, type PlatformName, withTimeout } from "@gaia/shared/bots";
 import { HarnessAdapter } from "./adapter";
 import { isEmulatablePlatform, resolveEmulation } from "./emulation";
-import type { Scenario, ScenarioAssertion } from "./scenario.types";
+import type {
+  BurstMessage,
+  Scenario,
+  ScenarioAssertion,
+  ScenarioTurn,
+} from "./scenario.types";
 import { TranscriptRecorder } from "./transcript";
 import type { TranscriptEvent } from "./transcript.types";
 
 /** Default API port, matching `apps/api/project.json`'s `${API_PORT:-8000}`. */
 const DEFAULT_API_PORT = "8000";
+
+/** How long a restart turn waits for the reply to reach its restartAfterSends-th message. */
+const RESTART_TRIGGER_TIMEOUT_MS = 60_000;
 
 /**
  * Resolves the API base URL: explicit arg → `GAIA_API_URL` → `API_PORT` on
@@ -81,8 +90,10 @@ export async function linkDevUser(
   const seeded = await postJson<{ platform_user_ids: Record<string, string> }>(
     `${apiUrl}/api/v1/dev/seed`,
     {
-      email,
+      email: user.email,
       platform_links: [platform],
+      // Every bot reply is paid-only; a scenario user without Pro only ever sees the paywall.
+      pro: true,
     },
   );
   // The seeded id is the seed endpoint's contract — never re-derive its format.
@@ -98,6 +109,57 @@ export async function linkDevUser(
     name: user.name,
     platformUserId,
   };
+}
+
+/** Calls the API as the dev user and returns its JSON body, failing the run on any refusal. */
+async function asDevUser<T>(
+  apiUrl: string,
+  email: string,
+  method: "GET" | "PUT" | "PATCH",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(`${apiUrl}${path}`, {
+    method,
+    headers: { "content-type": "application/json", "X-Dev-User": email },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `${method} ${path} for ${email} returned ${res.status}: ${await res.text()}`,
+    );
+  }
+  return (await res.json()) as T;
+}
+
+/**
+ * Asks before every call of `askFor` and before no other: the per-tool asks sit
+ * on top of "allow always", which is how a user sets them in settings.
+ */
+async function askBefore(
+  apiUrl: string,
+  email: string,
+  askFor: readonly string[],
+): Promise<void> {
+  await asDevUser(apiUrl, email, "PUT", "/api/v1/approvals/preferences", {
+    mode: "always_allow",
+    tool_overrides: Object.fromEntries(askFor.map((tool) => [tool, true])),
+    never_auto_tools: [],
+  });
+}
+
+/**
+ * Turns the user's quiet hours off, so a proactive delivery (a todo run's question)
+ * arrives whatever the hour the run happens at, not held for the user's morning.
+ */
+async function quietHoursOff(apiUrl: string, email: string): Promise<void> {
+  const path = "/api/v1/user/quiet-hours";
+  const hours = await asDevUser<QuietHours>(apiUrl, email, "GET", path);
+  await asDevUser<QuietHours>(apiUrl, email, "PATCH", path, {
+    ...hours,
+    enabled: false,
+  } satisfies QuietHours);
 }
 
 /**
@@ -146,7 +208,8 @@ async function bootAdapter(
     consumesOutbound,
   });
   try {
-    await adapter.boot([]);
+    // The same commands the real bots register, so /stop, /new and /help behave as they do live.
+    await adapter.boot(allCommands);
   } catch (error: unknown) {
     // Boot can fail after the outbound consumer is up; left running it keeps
     // the process alive and silently takes another run's replies.
@@ -202,7 +265,9 @@ export async function sendOneShot(params: {
   const cutShort = terminationRequested();
   try {
     await Promise.race([
-      adapter.simulateMessage(user.platformUserId, message, { channelId }),
+      adapter
+        .simulateMessage(user.platformUserId, message, { channelId })
+        .then(() => adapter.settleTurn()),
       cutShort,
     ]);
     await settle(settleMs, cutShort);
@@ -238,17 +303,39 @@ export async function runScenario(
   }
   const platform = scenario.emulate;
   const user = await linkDevUser(apiUrl, scenario.user, platform);
+  await askBefore(apiUrl, user.email, scenario.askBefore ?? []);
+  await quietHoursOff(apiUrl, user.email);
   const transcript = new TranscriptRecorder(platform, outPath);
-  const adapter = await bootAdapter(platform, apiUrl, transcript);
+  let adapter = await bootAdapter(platform, apiUrl, transcript);
   const cutShort = terminationRequested();
   const failures: string[] = [];
 
   try {
+    // A fresh session, as /new gives the user: no earlier run's turns in the scenario's context.
+    await deliverTurn(adapter, user.platformUserId, { send: "/new" });
     for (const [index, turn] of scenario.turns.entries()) {
       const before = transcript.getEvents().length;
-      await adapter.simulateMessage(user.platformUserId, turn.send, {
-        channelId: turn.channelId,
-      });
+      if (turn.outage) adapter.startOutage(turn.outage);
+      const held = turn.restartOnReact ? adapter.holdNextReaction() : null;
+      await deliverTurnMessages(adapter, user.platformUserId, turn);
+      const restart = scriptedRestart(turn, transcript, before, held);
+      let restartedAt = 0;
+      if (restart) {
+        await restart.trigger;
+        adapter.dieInHeldReaction();
+        // As the bot process does on Ctrl-C: its follows stop where they are.
+        await adapter.shutdown("restart");
+        restartedAt = transcript.getEvents().length;
+        adapter = await bootAdapter(platform, apiUrl, transcript);
+      }
+      await adapter.settleTurn();
+      const notResumed = restart?.resumed(
+        transcript.getEvents().slice(before),
+        restartedAt - before,
+      );
+      if (notResumed) {
+        failures.push(`turn ${index + 1} (${turnLabel(turn)}): ${notResumed}`);
+      }
       // Settle BEFORE slicing: a late outbound delivery belongs to the turn
       // that caused it, and its assertions must be able to see it.
       await settle(
@@ -258,10 +345,12 @@ export async function runScenario(
       const turnEvents = transcript.getEvents().slice(before);
       for (const assertion of turn.expect ?? []) {
         for (const failure of evaluateAssertion(turnEvents, assertion)) {
-          failures.push(`turn ${index + 1} ("${turn.send}"): ${failure}`);
+          failures.push(`turn ${index + 1} (${turnLabel(turn)}): ${failure}`);
         }
       }
     }
+    // Leave nothing running or pending: a later run's bot would resume it and wait on it.
+    await deliverTurn(adapter, user.platformUserId, { send: "/stop" });
   } finally {
     await adapter.shutdown("harness").catch(() => undefined);
   }
@@ -275,16 +364,317 @@ export async function runScenario(
   };
 }
 
+/** A turn's scripted bot restart: what it waits for, and what the fresh bot must have done after it. */
+interface TurnRestart {
+  trigger: Promise<void>;
+  /** Why the turn's events show no resume past restartedAt, or null when they do. */
+  resumed: (
+    events: readonly TranscriptEvent[],
+    restartedAt: number,
+  ) => string | null;
+}
+
+/** Whether the turn's events after restartedAt hold one of type. */
+const happenedSince =
+  (type: TranscriptEvent["type"], missing: string) =>
+  (events: readonly TranscriptEvent[], restartedAt: number): string | null =>
+    events.slice(restartedAt).some((e) => e.type === type) ? null : missing;
+
+/** The restart a turn scripts, if any; held is its react call held open, for restartOnReact. */
+function scriptedRestart(
+  turn: ScenarioTurn,
+  transcript: TranscriptRecorder,
+  before: number,
+  held: Promise<void> | null,
+): TurnRestart | null {
+  const { restartAfterSends, restartAfterMs } = turn;
+  const scripted = [restartAfterSends, restartAfterMs, held ?? undefined];
+  if (scripted.filter((trigger) => trigger !== undefined).length > 1) {
+    throw new Error("a scenario turn scripts at most one bot restart");
+  }
+  if (restartAfterSends !== undefined) {
+    return {
+      trigger: withTimeout(
+        transcript.until(
+          (events) =>
+            events.slice(before).filter((e) => e.type === "send").length >=
+            restartAfterSends,
+        ),
+        RESTART_TRIGGER_TIMEOUT_MS,
+        `the reply never sent ${restartAfterSends} messages to restart after`,
+      ),
+      resumed: restartResumedABubble,
+    };
+  }
+  if (restartAfterMs !== undefined) {
+    return {
+      trigger: new Promise((resolve) => setTimeout(resolve, restartAfterMs)),
+      resumed: happenedSince(
+        "send",
+        "the restart came after everything was sent: the fresh bot sent nothing, so the resume was not exercised",
+      ),
+    };
+  }
+  if (held) {
+    return {
+      trigger: withTimeout(
+        held,
+        RESTART_TRIGGER_TIMEOUT_MS,
+        "the turn never reacted to restart inside",
+      ),
+      resumed: happenedSince(
+        "reaction",
+        "the fresh bot placed no reaction, so the reaction the dead one held was lost",
+      ),
+    };
+  }
+  return null;
+}
+
+/** A turn's messages: its single `send`, or its burst. */
+function turnMessages(turn: ScenarioTurn): BurstMessage[] {
+  if (turn.send !== undefined && turn.burst === undefined) {
+    return [{ send: turn.send }];
+  }
+  if (turn.burst !== undefined && turn.send === undefined) {
+    if (turn.burst.length === 0) {
+      throw new Error("a scenario burst needs at least one message");
+    }
+    return turn.burst;
+  }
+  throw new Error("a scenario turn sets exactly one of `send` and `burst`");
+}
+
+function turnLabel(turn: ScenarioTurn): string {
+  return turnMessages(turn)
+    .map((message) => `"${message.send}"`)
+    .join(" + ");
+}
+
+/**
+ * Injects a turn's messages at their scripted gaps, each without waiting for
+ * the reply to the one before, and resolves once every reply has been shown or
+ * the conversation waits on an approval the user was asked.
+ */
+export async function deliverTurn(
+  adapter: HarnessAdapter,
+  platformUserId: string,
+  turn: ScenarioTurn,
+): Promise<void> {
+  await deliverTurnMessages(adapter, platformUserId, turn);
+  await adapter.settleTurn();
+}
+
+/** Injects a turn's messages at their scripted gaps and resolves once each is posted. */
+async function deliverTurnMessages(
+  adapter: HarnessAdapter,
+  platformUserId: string,
+  turn: ScenarioTurn,
+): Promise<void> {
+  const handled: Promise<void>[] = [];
+  for (const message of turnMessages(turn)) {
+    if (message.afterMs) {
+      await new Promise((resolve) => setTimeout(resolve, message.afterMs));
+    }
+    handled.push(
+      adapter.simulateMessage(platformUserId, message.send, {
+        channelId: turn.channelId,
+      }),
+    );
+  }
+  await Promise.all(handled);
+}
+
+/**
+ * The final text of everything still delivered, in the order each first appeared:
+ * a bubble holds its last edit, and with `proactive` a
+ * backend delivery and an attachment caption are entries of their own.
+ */
+function deliveredTexts(
+  events: readonly TranscriptEvent[],
+  proactive: boolean,
+): string[] {
+  const texts: (string | null)[] = [];
+  const indexById = new Map<string, number>();
+  for (const event of events) {
+    if (event.type === "send" || event.type === "edit") {
+      const index = indexById.get(event.messageId);
+      if (index === undefined) {
+        indexById.set(event.messageId, texts.length);
+        texts.push(event.text);
+      } else {
+        texts[index] = event.text;
+      }
+    } else if (event.type === "delete") {
+      const index = indexById.get(event.messageId);
+      if (index !== undefined) texts[index] = null;
+    } else if (
+      proactive &&
+      (event.type === "outbound-delivery" ||
+        event.type === "outbound-attachment")
+    ) {
+      texts.push(event.text);
+    }
+  }
+  return texts.filter((text) => text !== null);
+}
+
+/** 1-based positions of the inbound messages that received a reaction. */
+/** Each emoji placed on one message more than once, as "<message> <emoji>". */
+function repeatedReactions(events: readonly TranscriptEvent[]): string[] {
+  const placed = events.flatMap((e) =>
+    e.type === "reaction" ? [`${e.targetMessageId} ${e.emoji}`] : [],
+  );
+  return [...new Set(placed.filter((key, at) => placed.indexOf(key) !== at))];
+}
+
+function reactedPositions(events: readonly TranscriptEvent[]): number[] {
+  const reacted = new Set(
+    events.flatMap((e) => (e.type === "reaction" ? [e.targetMessageId] : [])),
+  );
+  const positions: number[] = [];
+  let inboundCount = 0;
+  for (const event of events) {
+    if (event.type !== "inbound") continue;
+    inboundCount += 1;
+    if (reacted.has(event.messageId)) positions.push(inboundCount);
+  }
+  return positions;
+}
+
+/** Bubbles deleted, or edited to text shorter than they showed: what the user saw taken back. */
+function takeBacks(events: readonly TranscriptEvent[]): string[] {
+  const shown = new Map<string, string>();
+  const found: string[] = [];
+  for (const event of events) {
+    if (event.type === "send") shown.set(event.messageId, event.text);
+    if (event.type === "edit") {
+      const before = shown.get(event.messageId);
+      if (before !== undefined && event.text.length < before.length) {
+        found.push(
+          `${event.messageId} shrank from ${JSON.stringify(before)} to ${JSON.stringify(event.text)}`,
+        );
+      }
+      shown.set(event.messageId, event.text);
+    }
+    if (event.type === "delete") {
+      found.push(
+        `${event.messageId} was deleted: ${JSON.stringify(shown.get(event.messageId))}`,
+      );
+    }
+  }
+  return found;
+}
+
+/** Each bubble's final text and the 1-based turn position of the inbound message it quotes, or null. */
+function bubbleQuotes(
+  events: readonly TranscriptEvent[],
+): { text: string; quotes: number | null }[] {
+  const inbound = events.flatMap((e) =>
+    e.type === "inbound" ? [e.messageId] : [],
+  );
+  const bubbles = new Map<string, { text: string; quotes: number | null }>();
+  for (const event of events) {
+    if (event.type === "send") {
+      const at =
+        event.replyTo === undefined ? -1 : inbound.indexOf(event.replyTo);
+      bubbles.set(event.messageId, {
+        text: event.text,
+        quotes: at < 0 ? null : at + 1,
+      });
+    } else if (event.type === "edit") {
+      const bubble = bubbles.get(event.messageId);
+      if (bubble) bubble.text = event.text;
+    } else if (event.type === "delete") {
+      bubbles.delete(event.messageId);
+    }
+  }
+  return [...bubbles.values()];
+}
+
 /** All text-bearing events carry a `text` field; this narrows to it. */
 function eventText(event: TranscriptEvent): string | null {
   return "text" in event && typeof event.text === "string" ? event.text : null;
+}
+
+/** The quotes, take-back and excluded-text checks of an assertion: what the user saw and how. */
+function shownTextFailures(
+  events: readonly TranscriptEvent[],
+  assertion: ScenarioAssertion,
+): string[] {
+  const failures: string[] = [];
+  if (assertion.quotes !== undefined) {
+    const bubbles = bubbleQuotes(events);
+    for (const [text, wanted] of Object.entries(assertion.quotes)) {
+      const bubble = bubbles.find((b) => b.text.includes(text));
+      if (!bubble) {
+        failures.push(`no bubble reads "${text}" to check what it quotes`);
+      } else if (bubble.quotes !== wanted) {
+        failures.push(
+          `the bubble "${text}" quotes inbound ${bubble.quotes}, expected ${wanted}`,
+        );
+      }
+    }
+  }
+  if (assertion.typingOnAMessage) {
+    const inbound = events.flatMap((e) =>
+      e.type === "inbound" ? [e.messageId] : [],
+    );
+    const shownOn = events.flatMap((e) =>
+      e.type === "typing" && e.state === "start"
+        ? [e.answering === undefined ? 0 : inbound.indexOf(e.answering) + 1]
+        : [],
+    );
+    if (shownOn.length === 0 || shownOn.includes(0)) {
+      failures.push(
+        `typing was shown on inbound ${JSON.stringify(shownOn)} (0 is no message), expected each on one of the turn's`,
+      );
+    }
+  }
+  if (assertion.noTakeBacks) {
+    for (const takeBack of takeBacks(events)) {
+      failures.push(`shown text was taken back: ${takeBack}`);
+    }
+  }
+  const finalTexts = deliveredTexts(events, true);
+  for (const banned of assertion.excludes ?? []) {
+    const shown = finalTexts.find((text) => text.includes(banned));
+    if (shown !== undefined) {
+      failures.push(
+        `delivered text contains "${banned}": ${JSON.stringify(shown)}`,
+      );
+    }
+  }
+  return failures;
+}
+
+/**
+ * Why a restart turn tested nothing, or null when it did: the fresh bot must
+ * finish in place a bubble the stopped one had opened. A reply that ended
+ * before the restart leaves the scenario passing without exercising the resume.
+ */
+function restartResumedABubble(
+  events: readonly TranscriptEvent[],
+  restartedAt: number,
+): string | null {
+  const opened = new Set(
+    events
+      .slice(0, restartedAt)
+      .flatMap((e) => (e.type === "send" ? [e.messageId] : [])),
+  );
+  const finishedInPlace = events
+    .slice(restartedAt)
+    .some((e) => e.type === "edit" && opened.has(e.messageId));
+  return finishedInPlace
+    ? null
+    : "the restart hit no open bubble: nothing the stopped bot sent was finished in place after it (the bubble finished before the bot stopped)";
 }
 
 /**
  * Checks one assertion against a turn's events, returning a list of human
  * readable failure messages (empty when the assertion holds).
  */
-function evaluateAssertion(
+export function evaluateAssertion(
   events: readonly TranscriptEvent[],
   assertion: ScenarioAssertion,
 ): string[] {
@@ -344,6 +734,49 @@ function evaluateAssertion(
       if (!present.has(wanted as TranscriptEvent["type"])) {
         failures.push(`expected an event of type "${wanted}"`);
       }
+    }
+  }
+  const orderedChecks: [string, string[] | undefined, string[]][] = [
+    ["delivered", assertion.delivered, deliveredTexts(events, true)],
+    ["bubbles", assertion.bubbles, deliveredTexts(events, false)],
+  ];
+  for (const [name, wanted, actual] of orderedChecks) {
+    if (wanted === undefined) continue;
+    const matches =
+      actual.length === wanted.length &&
+      wanted.every((text, i) => actual[i].includes(text));
+    if (!matches) {
+      failures.push(
+        `expected ${name} ${JSON.stringify(wanted)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  }
+  failures.push(...shownTextFailures(events, assertion));
+  failures.push(...reactionFailures(events, assertion));
+  return failures;
+}
+
+/** The reaction assertions: which inbound messages were reacted to, and that none twice. */
+function reactionFailures(
+  events: readonly TranscriptEvent[],
+  assertion: ScenarioAssertion,
+): string[] {
+  const failures: string[] = [];
+  if (assertion.noRepeatedReactions) {
+    const repeated = repeatedReactions(events);
+    if (repeated.length > 0) {
+      failures.push(
+        `expected no reaction placed twice, got ${JSON.stringify(repeated)}`,
+      );
+    }
+  }
+  if (assertion.reactedTo !== undefined) {
+    const actual = reactedPositions(events);
+    const wanted = [...assertion.reactedTo].sort((a, b) => a - b);
+    if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
+      failures.push(
+        `expected reactions on inbound ${JSON.stringify(wanted)}, got ${JSON.stringify(actual)}`,
+      );
     }
   }
   return failures;

@@ -12,6 +12,56 @@
         "command": "pnpm vitest run --config vitest.config.ts",
         "cwd": "{projectRoot}"
       }
+    },
+    "selfhost-e2e": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{projectRoot}/**/*",
+        "{workspaceRoot}/apps/api/Dockerfile",
+        "{workspaceRoot}/apps/api/Dockerfile.dockerignore",
+        "{workspaceRoot}/.dockerignore",
+        "{workspaceRoot}/scripts/docker-entrypoint.sh",
+        "{workspaceRoot}/apps/web/Dockerfile",
+        "{workspaceRoot}/infra/docker/**/*",
+        "{workspaceRoot}/apps/api/app/main.py",
+        "{workspaceRoot}/apps/api/app/worker.py",
+        "{workspaceRoot}/apps/api/app/core/app_factory.py",
+        "{workspaceRoot}/apps/api/app/core/lifespan.py",
+        "{workspaceRoot}/apps/api/app/core/provider_registration.py",
+        "{workspaceRoot}/apps/api/app/core/lazy_loader.py",
+        "{workspaceRoot}/apps/api/app/config/settings.py",
+        "{workspaceRoot}/apps/api/app/config/settings_validator.py",
+        "{workspaceRoot}/apps/api/app/config/deployment.py",
+        "{workspaceRoot}/apps/api/app/config/secrets.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/health.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/readiness.py",
+        "{workspaceRoot}/apps/api/scripts/post_deploy.py",
+        "{workspaceRoot}/apps/api/scripts/migrate_conversations.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/setup.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/auth_local.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/members.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/blob.py",
+        "{workspaceRoot}/apps/web/src/features/setup-wizard/**/*",
+        "{workspaceRoot}/apps/web/src/features/auth/**/*",
+        "{workspaceRoot}/apps/web/e2e/selfhost/**/*",
+        "{workspaceRoot}/apps/web/playwright.selfhost.config.ts",
+        "{workspaceRoot}/tools/llm-stub/**/*",
+        "{workspaceRoot}/.github/workflows/selfhost-smoke.yml",
+        "{workspaceRoot}/.github/workflows/selfhost-e2e.yml",
+        "{workspaceRoot}/scripts/ci/selfhost.sh",
+        "{workspaceRoot}/scripts/ci/lib/log.sh",
+        "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
+        "{workspaceRoot}/.github/actions/setup-uv/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "selfhost-e2e",
+          "events": ["merge_group", "workflow_dispatch"]
+        }
+      }
     }
   }
 }

@@ -20,7 +20,6 @@ from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.constants import executor as executor_constants
 from app.constants.executor import (
-    EXECUTOR_ERROR_MALFORMED_APPROVAL,
     EXECUTOR_ERROR_PREP_FAILED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
 )
@@ -54,7 +53,7 @@ async def _run_with(
         patch.object(
             er, "prepare_executor_execution", AsyncMock(return_value=prepared or (ctx, None))
         ),
-        patch.object(er, "make_redis_stream_writer", lambda _sid: None),
+        patch.object(er, "make_session_writer", lambda _sid: None),
         patch.object(
             er,
             "execute_subagent_stream",
@@ -63,7 +62,7 @@ async def _run_with(
             else AsyncMock(side_effect=side_effect),
         ),
     ):
-        return await er._execute_executor("do the thing", {}, run, None)
+        return await er._execute_executor("do the thing", {}, run)
 
 
 @pytest.fixture
@@ -175,15 +174,6 @@ class TestAFailureBeforeOrInsteadOfARunNamesItsCause:
         assert result.type == "final"
         assert result.stopped is True
 
-    async def test_a_pause_with_no_approval_id_is_a_malformed_approval(self) -> None:
-        result = await _run_with(SubagentOutcome(text="", interrupt={"summary": "x"}))
-
-        assert (result.text, result.type, result.error_type) == (
-            "Approval request was malformed",
-            "error",
-            EXECUTOR_ERROR_MALFORMED_APPROVAL,
-        )
-
 
 @pytest.mark.unit
 class TestALivenessFailureIsAFailedRun:
@@ -207,6 +197,59 @@ class TestALivenessFailureIsAFailedRun:
         assert [
             (type(c.args[1]), getattr(c.args[1], "reason", None)) for c in capture.call_args_list
         ] == [(AgentRunStarted, None), (AgentRunFailed, "ConnectionError")]
+
+
+@pytest.mark.unit
+@pytest.mark.regression
+async def test_a_run_cancelled_mid_run_is_finalized_stopped_never_done() -> None:
+    run = ExecutorRun(
+        stream_id="stream-1",
+        conversation_id="conv-1",
+        user=AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91cc"),
+        kind=RunKind.LIVE,
+        task_id="task-1",
+        user_message_id=None,
+        bot_message_id=None,
+    )
+    finalize = AsyncMock()
+    with (
+        patch.object(er, "keep_alive", AsyncMock(return_value=MagicMock())),
+        patch.object(er, "_execute_executor", AsyncMock(side_effect=asyncio.CancelledError)),
+        patch.object(er, "_finalize_executor_run", finalize),
+        patch("app.services.analytics_service.capture"),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await er.run_executor_background(run=run, task="do the thing", configurable={})
+
+    assert finalize.await_args.args == (run, "", "final", None)
+    assert finalize.await_args.kwargs == {"cut": er.RunCut.INTERRUPTED}
+
+
+@pytest.mark.unit
+async def test_a_cancel_after_the_run_answered_keeps_its_answer() -> None:
+    run = ExecutorRun(
+        stream_id="stream-1",
+        conversation_id="conv-1",
+        user=AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91cc"),
+        kind=RunKind.LIVE,
+        task_id="task-1",
+        user_message_id=None,
+        bot_message_id=None,
+    )
+    finalize = AsyncMock()
+    answered = er._ExecutorResult("the answer", "final")
+    with (
+        patch.object(er, "keep_alive", AsyncMock(return_value=MagicMock())),
+        patch.object(er, "_execute_executor", AsyncMock(return_value=answered)),
+        patch.object(er, "stop_requested", AsyncMock(side_effect=asyncio.CancelledError)),
+        patch.object(er, "_finalize_executor_run", finalize),
+        patch("app.services.analytics_service.capture"),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await er.run_executor_background(run=run, task="do the thing", configurable={})
+
+    assert finalize.await_args.args == (run, "the answer", "final", None)
+    assert finalize.await_args.kwargs == {"cut": None}
 
 
 @pytest.mark.unit

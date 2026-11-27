@@ -16,6 +16,11 @@ import {
   Tornado02Icon,
   VisionIcon,
 } from "@icons";
+import {
+  FIXED_LOCALE,
+  formatTime as formatTimeOfDay,
+  formatWeekday,
+} from "@shared/utils";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { accordionVariants } from "@/components/shared/accordionVariants";
@@ -43,7 +48,7 @@ interface WeatherCardProps {
 // Helper function to convert timestamp to readable time, taking into account timezone
 const formatTime = (timestamp: number, timezone: number): string => {
   const date = new Date((timestamp + timezone) * 1000);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatTimeOfDay(date);
 };
 
 // Helper function to convert celsius to fahrenheit
@@ -54,7 +59,7 @@ const celsiusToFahrenheit = (celsius: number): number => {
 // Helper function to get day of week from date string
 const getDayOfWeek = (dateStr: string): string => {
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", { weekday: "long" });
+  return formatWeekday(date, "long", FIXED_LOCALE);
 };
 
 // Helper function to get weather icon component based on weather condition

@@ -71,7 +71,7 @@ describe("Q1 profession chips", () => {
 
     fireEvent.click(chip("Founder / CEO"));
 
-    expect(seen.state.draftProfession).toBe("founder");
+    expect(seen.state.draftChoice).toBe("founder");
     expect(seen.state.responses).toEqual({});
     expect(seen.state.questionIndex).toBe(0);
   });
@@ -128,7 +128,7 @@ describe("Q2 needs chips", () => {
     expect(continueButton().disabled).toBe(false);
 
     fireEvent.click(continueButton());
-    expect(seen.state.questionIndex).toBe(questions.length);
+    expect(seen.state.questionIndex).toBe(2);
   });
 
   it("'Something else' opens a field whose text alone can submit on Enter", () => {
@@ -145,7 +145,7 @@ describe("Q2 needs chips", () => {
     expect(continueButton().disabled).toBe(false);
 
     fireEvent.keyDown(field, { key: "Enter" });
-    expect(seen.state.questionIndex).toBe(questions.length);
+    expect(seen.state.questionIndex).toBe(2);
   });
 
   it("keeps the catch-all out of the needs list and clears it when un-picked", () => {
@@ -202,5 +202,28 @@ describe("Q2 needs chips", () => {
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
 
     expect(seen.state.questionIndex).toBe(1);
+  });
+});
+
+describe("Q3 where-did-you-hear chips", () => {
+  const atQ3: OnboardingState = {
+    ...initialState,
+    responses: { profession: "founder" },
+    selectedNeeds: ["inbox"],
+    questionIndex: 2,
+  };
+
+  it("is single-select and closes the questions on Continue", () => {
+    const seen = renderComposer(atQ3);
+
+    expect(continueButton().disabled).toBe(true);
+    fireEvent.click(chip("Reddit"));
+    fireEvent.click(chip("Product Hunt"));
+    expect(pressedState("Reddit")).toBe("false");
+    expect(pressedState("Product Hunt")).toBe("true");
+
+    fireEvent.click(continueButton());
+    expect(seen.state.responses.heard_from).toBe("product_hunt");
+    expect(seen.state.questionIndex).toBe(questions.length);
   });
 });

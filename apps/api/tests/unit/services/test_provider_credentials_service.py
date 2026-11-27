@@ -15,21 +15,20 @@ from cryptography.fernet import Fernet
 import pytest
 
 from app.agents.llm.client import reset_aux_llm_caches
+from app.config.deployment import DeploymentKind
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.providers import CredentialSource
+from app.constants.providers import CredentialProviderName, CredentialSource
 from app.core.lazy_loader import providers as provider_registry
 from app.db.redis import redis_cache
 import app.services.providers.provider_credentials_service as service_module
 from app.services.providers.provider_credentials_service import (
     CloudinaryAccount,
     CredentialResolution,
-    GoogleOAuthClient,
     ProviderConfig,
     cloudinary_account,
     delete,
     env_config,
-    google_oauth_client,
     inspect_credential,
     invalidate,
     is_usable,
@@ -113,8 +112,6 @@ def clean_state(monkeypatch):
         "CLOUDINARY_CLOUD_NAME",
         "CLOUDINARY_API_KEY",
         "CLOUDINARY_API_SECRET",
-        "GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET",
         "FIRECRAWL_API_KEY",
         "INSTANCE_SECRET",
     ):
@@ -222,7 +219,7 @@ def decrypt_payload(ciphertext: str) -> dict[str, Any]:
 class TestUpsertResolveRoundtrip:
     async def test_stored_config_resolves_back(self, repo, fixed_secret) -> None:
         await upsert(
-            "openrouter",
+            CredentialProviderName.OPENROUTER,
             ProviderConfig(
                 api_key="sk-or-live-1",
                 base_url="https://or.example/v1",
@@ -230,7 +227,7 @@ class TestUpsertResolveRoundtrip:
             ),
         )
 
-        config = await resolve("openrouter")
+        config = await resolve(CredentialProviderName.OPENROUTER)
 
         assert config == ProviderConfig(
             api_key="sk-or-live-1",
@@ -239,16 +236,16 @@ class TestUpsertResolveRoundtrip:
         )
 
     async def test_preset_only_config_roundtrips(self, repo, fixed_secret) -> None:
-        await upsert("custom", ProviderConfig(preset="opencode"))
+        await upsert(CredentialProviderName.CUSTOM, ProviderConfig(preset="opencode"))
 
-        config = await resolve("custom")
+        config = await resolve(CredentialProviderName.CUSTOM)
 
         assert config == ProviderConfig(
             preset="opencode",
         )
 
     async def test_ciphertext_never_contains_raw_api_key(self, repo, fixed_secret) -> None:
-        await upsert("gemini", ProviderConfig(api_key="AIzaSUPERSECRET-VALUE"))
+        await upsert(CredentialProviderName.GEMINI, ProviderConfig(api_key="AIzaSUPERSECRET-VALUE"))
 
         ciphertext = repo.ciphertexts["gemini"]
         assert "AIzaSUPERSECRET-VALUE" not in ciphertext
@@ -256,8 +253,8 @@ class TestUpsertResolveRoundtrip:
         assert decrypt_payload(ciphertext)["api_key"] == "AIzaSUPERSECRET-VALUE"
 
     async def test_upsert_overwrites_previous_value(self, repo, fixed_secret) -> None:
-        await upsert("tavily", ProviderConfig(api_key="tvly-old"))
-        await upsert("tavily", ProviderConfig(api_key="tvly-new"))
+        await upsert(CredentialProviderName.TAVILY, ProviderConfig(api_key="tvly-old"))
+        await upsert(CredentialProviderName.TAVILY, ProviderConfig(api_key="tvly-new"))
 
         assert len(repo.upsert_calls) == 2
         assert decrypt_payload(repo.ciphertexts["tavily"])["api_key"] == "tvly-new"
@@ -276,9 +273,9 @@ class TestUpsertResolveRoundtrip:
         }
         repo.ciphertexts["custom"] = fernet.encrypt(json.dumps(legacy).encode()).decode()
 
-        config = await resolve("custom")
+        config = await resolve(CredentialProviderName.CUSTOM)
         assert config is not None
-        await upsert("custom", config)
+        await upsert(CredentialProviderName.CUSTOM, config)
 
         rewritten = fernet.decrypt(repo.ciphertexts["custom"].encode())
         assert rewritten == json.dumps(legacy).encode()
@@ -290,7 +287,7 @@ class TestUpsertResolveRoundtrip:
         legacy = {"api_key": "sk-old", "base_url": None, "model": None, "preset": None}
         repo.ciphertexts["openrouter"] = fernet.encrypt(json.dumps(legacy).encode()).decode()
 
-        assert await resolve("openrouter") == ProviderConfig(api_key="sk-old")
+        assert await resolve(CredentialProviderName.OPENROUTER) == ProviderConfig(api_key="sk-old")
 
     async def test_a_row_with_unknown_or_non_string_fields_resolves_without_them(
         self, repo, fixed_secret
@@ -299,7 +296,7 @@ class TestUpsertResolveRoundtrip:
         row = {"api_key": "sk-row", "region": "eu", "model": 7}
         repo.ciphertexts["openrouter"] = fernet.encrypt(json.dumps(row).encode()).decode()
 
-        assert await resolve("openrouter") == ProviderConfig(api_key="sk-row")
+        assert await resolve(CredentialProviderName.OPENROUTER) == ProviderConfig(api_key="sk-row")
 
 
 # ---------------------------------------------------------------------------
@@ -310,9 +307,9 @@ class TestUpsertResolveRoundtrip:
 class TestResolvePrecedenceAndFallbacks:
     async def test_db_credential_beats_env(self, repo, fixed_secret) -> None:
         settings.OPENROUTER_API_KEY = "sk-env-key"
-        await upsert("openrouter", ProviderConfig(api_key="sk-db-key"))
+        await upsert(CredentialProviderName.OPENROUTER, ProviderConfig(api_key="sk-db-key"))
 
-        config = await resolve("openrouter")
+        config = await resolve(CredentialProviderName.OPENROUTER)
 
         assert config is not None and config.api_key == "sk-db-key"
 
@@ -320,7 +317,7 @@ class TestResolvePrecedenceAndFallbacks:
         settings.OPENROUTER_API_KEY = "sk-env-key"
         settings.OPENROUTER_BASE_URL = "http://localhost:9999/v1"
 
-        config = await resolve("openrouter")
+        config = await resolve(CredentialProviderName.OPENROUTER)
 
         assert config == ProviderConfig(
             api_key="sk-env-key",
@@ -330,13 +327,13 @@ class TestResolvePrecedenceAndFallbacks:
     async def test_gemini_env_fallback(self, repo) -> None:
         settings.GOOGLE_API_KEY = "g-emini-key"
 
-        config = await resolve("gemini")
+        config = await resolve(CredentialProviderName.GEMINI)
 
         assert config is not None and config.api_key == "g-emini-key"
 
     async def test_ollama_env_fallback_returns_base_url(self, repo, monkeypatch) -> None:
         monkeypatch.setattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
-        config = await resolve("ollama")
+        config = await resolve(CredentialProviderName.OLLAMA)
 
         assert config == ProviderConfig(
             base_url="http://localhost:11434",
@@ -345,22 +342,22 @@ class TestResolvePrecedenceAndFallbacks:
     async def test_ollama_without_an_endpoint_is_not_configured(self, repo, monkeypatch) -> None:
         """A guessed default endpoint would die on connect from a bare instance."""
         monkeypatch.setattr(settings, "OLLAMA_BASE_URL", None)
-        assert await resolve("ollama") is None
+        assert await resolve(CredentialProviderName.OLLAMA) is None
 
     async def test_tavily_env_fallback(self, repo) -> None:
         settings.TAVILY_API_KEY = "tvly-env-key"
 
-        config = await resolve("tavily")
+        config = await resolve(CredentialProviderName.TAVILY)
 
         assert config is not None and config.api_key == "tvly-env-key"
 
     async def test_custom_dev_env_fallback(self, repo) -> None:
-        settings.ENV = "development"
+        settings.ENV = DeploymentKind.DEVELOPMENT
         settings.DEV_LLM_BASE_URL = "http://llm.example/v1"
         settings.DEV_LLM_API_KEY = "sk-dev"
         settings.DEV_LLM_MODEL = "deepseek-x"
 
-        config = await resolve("custom")
+        config = await resolve(CredentialProviderName.CUSTOM)
 
         assert config == ProviderConfig(
             api_key="sk-dev",
@@ -369,17 +366,17 @@ class TestResolvePrecedenceAndFallbacks:
         )
 
     async def test_custom_outside_development_is_none(self, repo) -> None:
-        assert await resolve("custom") is None
+        assert await resolve(CredentialProviderName.CUSTOM) is None
 
     async def test_unconfigured_provider_is_none(self, repo) -> None:
-        assert await resolve("openrouter") is None
+        assert await resolve(CredentialProviderName.OPENROUTER) is None
 
 
 class TestToolProviderEnvFallbacks:
     """Resolve tool/integration lanes all-or-nothing.
 
-    Single-key providers resolve from their one env var; the multi-variable pairs
-    (cloudinary, google_oauth) resolve ONLY when every variable is present, so a
+    Single-key providers resolve from their one env var; the multi-variable
+    cloudinary account resolves ONLY when every variable is present, so a
     half-set env must never report the provider as configured.
     """
 
@@ -405,7 +402,7 @@ class TestToolProviderEnvFallbacks:
         settings.CLOUDINARY_API_KEY = "cl-key"
         settings.CLOUDINARY_API_SECRET = "cl-secret"
 
-        config = await resolve("cloudinary")
+        config = await resolve(CredentialProviderName.CLOUDINARY)
 
         assert config is not None and config.api_key == "cl-key"
 
@@ -424,27 +421,7 @@ class TestToolProviderEnvFallbacks:
         settings.CLOUDINARY_API_KEY = key
         settings.CLOUDINARY_API_SECRET = secret
 
-        assert await resolve("cloudinary") is None
-
-    async def test_google_oauth_pair_resolves_secret_as_key(self, repo) -> None:
-        settings.GOOGLE_CLIENT_ID = "client-id.apps.googleusercontent.com"
-        settings.GOOGLE_CLIENT_SECRET = "GOCSPID-test"
-
-        config = await resolve("google_oauth")
-
-        assert config is not None and config.api_key == "GOCSPID-test"
-
-    @pytest.mark.parametrize(
-        ("client_id", "client_secret"),
-        [(None, "GOCSPID-test"), ("client-id", None)],
-    )
-    async def test_google_oauth_half_pair_is_not_configured(
-        self, repo, client_id, client_secret
-    ) -> None:
-        settings.GOOGLE_CLIENT_ID = client_id
-        settings.GOOGLE_CLIENT_SECRET = client_secret
-
-        assert await resolve("google_oauth") is None
+        assert await resolve(CredentialProviderName.CLOUDINARY) is None
 
 
 # ---------------------------------------------------------------------------
@@ -453,22 +430,16 @@ class TestToolProviderEnvFallbacks:
 
 
 class TestCardSavedAccounts:
-    """Cloudinary and Google OAuth work from what their Settings card saves, with no .env."""
+    """Cloudinary works from what its Settings card saves, with no .env."""
 
     @pytest.fixture(autouse=True)
     def _no_env_halves(self) -> None:
-        for name in (
-            "CLOUDINARY_CLOUD_NAME",
-            "CLOUDINARY_API_KEY",
-            "CLOUDINARY_API_SECRET",
-            "GOOGLE_CLIENT_ID",
-            "GOOGLE_CLIENT_SECRET",
-        ):
+        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"):
             setattr(settings, name, None)
 
     async def test_a_saved_cloudinary_account_works_without_env(self, repo, fixed_secret) -> None:
         await upsert(
-            "cloudinary",
+            CredentialProviderName.CLOUDINARY,
             ProviderConfig(
                 api_key="cl-key",
                 account_id="my-cloud",
@@ -476,35 +447,22 @@ class TestCardSavedAccounts:
             ),
         )
 
-        config = await resolve("cloudinary")
+        config = await resolve(CredentialProviderName.CLOUDINARY)
 
-        assert is_usable("cloudinary", config)
+        assert is_usable(CredentialProviderName.CLOUDINARY, config)
         assert cloudinary_account(config) == CloudinaryAccount(
             cloud_name="my-cloud", api_key="cl-key", api_secret="cl-secret"
-        )
-
-    async def test_a_saved_google_client_works_without_env(self, repo, fixed_secret) -> None:
-        await upsert(
-            "google_oauth",
-            ProviderConfig(api_key="GOCSPX-secret", account_id="id.apps.example"),
-        )
-
-        config = await resolve("google_oauth")
-
-        assert google_oauth_client(config) == GoogleOAuthClient(
-            client_id="id.apps.example", client_secret="GOCSPX-secret"
         )
 
     @pytest.mark.parametrize(
         ("provider", "fields"),
         [
-            ("cloudinary", {"api_key": "k", "account_id": "c"}),
-            ("cloudinary", {"api_key": "k", "api_secret": "s"}),
-            ("google_oauth", {"api_key": "s"}),
+            (CredentialProviderName.CLOUDINARY, {"api_key": "k", "account_id": "c"}),
+            (CredentialProviderName.CLOUDINARY, {"api_key": "k", "api_secret": "s"}),
         ],
     )
     async def test_a_partial_saved_account_is_not_usable(
-        self, repo, fixed_secret, provider: str, fields: dict[str, str]
+        self, repo, fixed_secret, provider: CredentialProviderName, fields: dict[str, str]
     ) -> None:
         await upsert(provider, ProviderConfig.model_validate(fields))
 
@@ -523,29 +481,37 @@ class TestCardSavedAccounts:
 def test_a_custom_endpoint_is_usable_only_with_key_endpoint_and_model(
     fields: dict[str, str], usable: bool
 ) -> None:
-    assert is_usable("custom", ProviderConfig.model_validate(fields)) is usable
+    assert is_usable(CredentialProviderName.CUSTOM, ProviderConfig.model_validate(fields)) is usable
 
 
-@pytest.mark.parametrize("provider", ["openrouter", "tavily", "custom", "cloudinary"])
-def test_an_unresolved_provider_is_never_usable(provider: str) -> None:
+@pytest.mark.parametrize(
+    "provider",
+    [
+        CredentialProviderName.OPENROUTER,
+        CredentialProviderName.TAVILY,
+        CredentialProviderName.CUSTOM,
+        CredentialProviderName.CLOUDINARY,
+    ],
+)
+def test_an_unresolved_provider_is_never_usable(provider: CredentialProviderName) -> None:
     assert is_usable(provider, None) is False
 
 
 class TestResolveCache:
     async def test_hits_within_ttl_and_expires_after(self, repo, fixed_secret, clock) -> None:
-        await upsert("tavily", ProviderConfig(api_key="tvly-key"))
+        await upsert(CredentialProviderName.TAVILY, ProviderConfig(api_key="tvly-key"))
 
-        await resolve("tavily")
-        await resolve("tavily")
+        await resolve(CredentialProviderName.TAVILY)
+        await resolve(CredentialProviderName.TAVILY)
         assert repo.find_calls == 1  # second read served from cache
 
         clock.advance(61)
-        await resolve("tavily")
+        await resolve(CredentialProviderName.TAVILY)
         assert repo.find_calls == 2  # entry expired → DB re-read
 
     async def test_negative_result_cached_too(self, repo, clock) -> None:
-        await resolve("gemini")  # unconfigured → None
-        await resolve("gemini")
+        await resolve(CredentialProviderName.GEMINI)  # unconfigured → None
+        await resolve(CredentialProviderName.GEMINI)
         assert repo.find_calls == 1
 
 
@@ -558,10 +524,10 @@ class TestInvalidate:
     async def test_clears_cache_and_fans_out(
         self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls, clock
     ) -> None:
-        await resolve("openrouter")  # populate the cache from env fallback
+        await resolve(CredentialProviderName.OPENROUTER)  # populate the cache from env fallback
         assert "openrouter" in service_module._cache
 
-        await invalidate("openrouter")
+        await invalidate(CredentialProviderName.OPENROUTER)
 
         assert "openrouter" not in service_module._cache
         assert registry_reset_calls == ["openrouter_llm"]
@@ -573,7 +539,7 @@ class TestInvalidate:
     async def test_non_llm_provider_skips_registry_reset_but_still_fans_out(
         self, redis_fake, registry_reset_calls, aux_cache_calls
     ) -> None:
-        await invalidate("tavily")
+        await invalidate(CredentialProviderName.TAVILY)
 
         assert registry_reset_calls == []  # tavily has no LLM loader
         assert aux_cache_calls == [1]
@@ -589,7 +555,7 @@ class TestInvalidate:
 
         monkeypatch.setattr(provider_registry, "reset", _missing)
 
-        await invalidate("ollama")  # must not raise
+        await invalidate(CredentialProviderName.OLLAMA)  # must not raise
 
         assert aux_cache_calls == [1]
         assert len(redis_fake.published) == 1
@@ -601,7 +567,7 @@ class TestInvalidate:
         redis_fake.fail_publish = True
 
         async with captured_wide_event() as event:
-            await invalidate("gemini")
+            await invalidate(CredentialProviderName.GEMINI)
 
         assert "gemini" not in service_module._cache
         assert aux_cache_calls == [1]
@@ -619,7 +585,7 @@ class TestInvalidate:
         monkeypatch.setattr(redis_cache, "redis", None)
 
         async with captured_wide_event() as event:
-            await invalidate("gemini")
+            await invalidate(CredentialProviderName.GEMINI)
 
         assert "errors" not in event
 
@@ -628,31 +594,31 @@ class TestInvalidate:
     ) -> None:
         """A save warms the snapshot with the value just written, not empty."""
         stale_at = time.monotonic()
-        service_module._cache["openrouter"] = (
+        service_module._cache[CredentialProviderName.OPENROUTER] = (
             stale_at - 3600,
             ProviderConfig(api_key="sk-stale"),
         )
 
-        await upsert("openrouter", ProviderConfig(api_key="sk-v1"))
+        await upsert(CredentialProviderName.OPENROUTER, ProviderConfig(api_key="sk-v1"))
 
         assert registry_reset_calls == ["openrouter_llm"]
-        _, cached = service_module._cache["openrouter"]
+        _, cached = service_module._cache[CredentialProviderName.OPENROUTER]
         assert cached.api_key == "sk-v1"
 
     async def test_delete_invalidates_too(
         self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls, monkeypatch
     ) -> None:
-        await upsert("ollama", ProviderConfig(base_url="http://o/v1"))
+        await upsert(CredentialProviderName.OLLAMA, ProviderConfig(base_url="http://o/v1"))
         registry_reset_calls.clear()
         aux_cache_calls.clear()
 
-        await delete("ollama")
+        await delete(CredentialProviderName.OLLAMA)
 
         assert repo.delete_calls == ["ollama"]
         # After deletion: no store row AND no explicit OLLAMA_BASE_URL env →
         # the code default must NOT masquerade as a working endpoint.
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
-        assert await resolve("ollama") is None
+        assert await resolve(CredentialProviderName.OLLAMA) is None
         assert registry_reset_calls == ["ollama_llm"]
 
 
@@ -666,10 +632,10 @@ class TestInvalidateLocally:
         self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls
     ) -> None:
         """Run a remote pod update with no publish; publishing would echo the update forever."""
-        await resolve("openrouter")
+        await resolve(CredentialProviderName.OPENROUTER)
         assert "openrouter" in service_module._cache
 
-        service_module.invalidate_locally("openrouter")
+        service_module.invalidate_locally(CredentialProviderName.OPENROUTER)
 
         assert "openrouter" not in service_module._cache
         assert registry_reset_calls == ["openrouter_llm"]
@@ -687,10 +653,10 @@ class TestInspectCredential:
         self, repo, fixed_secret
     ) -> None:
         settings.GOOGLE_API_KEY = "env-key"
-        await upsert("gemini", ProviderConfig(api_key="saved-key"))
+        await upsert(CredentialProviderName.GEMINI, ProviderConfig(api_key="saved-key"))
 
         async with captured_wide_event() as event:
-            resolution = await inspect_credential("gemini")
+            resolution = await inspect_credential(CredentialProviderName.GEMINI)
 
         assert resolution.source is CredentialSource.STORED
         assert resolution.shadows_env is True
@@ -700,9 +666,9 @@ class TestInspectCredential:
         self, repo, fixed_secret
     ) -> None:
         settings.GOOGLE_API_KEY = "same-key"
-        await upsert("gemini", ProviderConfig(api_key="same-key"))
+        await upsert(CredentialProviderName.GEMINI, ProviderConfig(api_key="same-key"))
 
-        resolution = await inspect_credential("gemini")
+        resolution = await inspect_credential(CredentialProviderName.GEMINI)
 
         assert resolution == CredentialResolution(
             config=resolution.config, source=CredentialSource.STORED, shadows_env=False
@@ -714,7 +680,7 @@ class TestInspectCredential:
         settings.GOOGLE_API_KEY = "env-key"
         repo.ciphertexts["gemini"] = "not-a-fernet-token"
 
-        resolution = await inspect_credential("gemini")
+        resolution = await inspect_credential(CredentialProviderName.GEMINI)
 
         assert resolution.source is CredentialSource.ENV
         assert resolution.config is not None and resolution.config.api_key == "env-key"
@@ -723,12 +689,12 @@ class TestInspectCredential:
         self, repo, fixed_secret, monkeypatch
     ) -> None:
         settings.GOOGLE_API_KEY = "env-key"
-        await upsert("gemini", ProviderConfig(api_key="saved-key"))
+        await upsert(CredentialProviderName.GEMINI, ProviderConfig(api_key="saved-key"))
         monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
         repo.find_calls = 0
 
-        resolution = await inspect_credential("gemini")
+        resolution = await inspect_credential(CredentialProviderName.GEMINI)
 
         assert resolution.source is CredentialSource.ENV
         assert resolution.shadows_env is False
@@ -746,29 +712,25 @@ class TestEnvConfigShapes:
     def test_searxng(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "SEARXNG_BASE_URL", "http://searx:8080")
 
-        assert env_config("searxng") == ProviderConfig(base_url="http://searx:8080")
+        assert env_config(CredentialProviderName.SEARXNG) == ProviderConfig(
+            base_url="http://searx:8080"
+        )
 
     def test_cloudinary(self) -> None:
         settings.CLOUDINARY_CLOUD_NAME = "cloud"
         settings.CLOUDINARY_API_KEY = "ck"
         settings.CLOUDINARY_API_SECRET = "cs"  # pragma: allowlist secret
 
-        assert env_config("cloudinary") == ProviderConfig(
+        assert env_config(CredentialProviderName.CLOUDINARY) == ProviderConfig(
             api_key="ck",
             account_id="cloud",
             api_secret="cs",  # pragma: allowlist secret
         )
 
-    def test_google_oauth(self) -> None:
-        settings.GOOGLE_CLIENT_ID = "gid"
-        settings.GOOGLE_CLIENT_SECRET = "gsecret"  # pragma: allowlist secret
-
-        assert env_config("google_oauth") == ProviderConfig(api_key="gsecret", account_id="gid")
-
     def test_a_single_key_tool(self) -> None:
         settings.TAVILY_API_KEY = "tvly"
 
-        assert env_config("tavily") == ProviderConfig(api_key="tvly")
+        assert env_config(CredentialProviderName.TAVILY) == ProviderConfig(api_key="tvly")
 
     @pytest.mark.parametrize(
         "present",
@@ -777,20 +739,20 @@ class TestEnvConfigShapes:
     def test_the_custom_lane_needs_all_three_of_its_settings(
         self, present: tuple[str, ...]
     ) -> None:
-        settings.ENV = "development"
+        settings.ENV = DeploymentKind.DEVELOPMENT
         for field in present:
             setattr(settings, field, "set")
 
-        assert env_config("custom") is None
+        assert env_config(CredentialProviderName.CUSTOM) is None
 
 
 class TestOperatorFacingFailures:
     async def test_a_shadowed_env_key_warning_names_the_fix(self, repo, fixed_secret) -> None:
         settings.GOOGLE_API_KEY = "env-key"
-        await upsert("gemini", ProviderConfig(api_key="saved-key"))
+        await upsert(CredentialProviderName.GEMINI, ProviderConfig(api_key="saved-key"))
 
         async with captured_wide_event() as event:
-            await inspect_credential("gemini")
+            await inspect_credential(CredentialProviderName.GEMINI)
 
         assert event["warnings"] == [
             {
@@ -807,7 +769,7 @@ class TestOperatorFacingFailures:
         repo.ciphertexts["gemini"] = "not-a-fernet-token"
 
         async with captured_wide_event() as event:
-            await inspect_credential("gemini")
+            await inspect_credential(CredentialProviderName.GEMINI)
 
         [error] = event["errors"]
         assert error["msg"] == f"{LogTag.API} Stored provider credential cannot be decrypted"
@@ -822,7 +784,7 @@ class TestOperatorFacingFailures:
         )
 
         with pytest.raises(ValueError) as refused:
-            await inspect_credential("gemini")
+            await inspect_credential(CredentialProviderName.GEMINI)
 
         assert str(refused.value) == "decrypted provider credential payload is not a JSON object"
 
@@ -833,7 +795,7 @@ class TestOperatorFacingFailures:
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
 
         with pytest.raises(RuntimeError) as refused:
-            await upsert("gemini", ProviderConfig(api_key="sk-x"))
+            await upsert(CredentialProviderName.GEMINI, ProviderConfig(api_key="sk-x"))
 
         assert str(refused.value) == (
             "This deployment reads provider credentials from the environment only; "
@@ -843,24 +805,24 @@ class TestOperatorFacingFailures:
 
 class TestCacheLifecycle:
     async def test_an_entry_expires_at_exactly_the_ttl(self, repo, fixed_secret, clock) -> None:
-        await resolve("tavily")
+        await resolve(CredentialProviderName.TAVILY)
         clock.advance(service_module._CACHE_TTL_SECONDS)
-        await resolve("tavily")
+        await resolve(CredentialProviderName.TAVILY)
 
         assert repo.find_calls == 2
 
     async def test_a_delete_leaves_the_cache_warm(self, repo, fixed_secret, redis_fake) -> None:
-        await upsert("tavily", ProviderConfig(api_key="tvly-key"))
-        await delete("tavily")
+        await upsert(CredentialProviderName.TAVILY, ProviderConfig(api_key="tvly-key"))
+        await delete(CredentialProviderName.TAVILY)
         reads = repo.find_calls
 
-        assert await resolve("tavily") is None
+        assert await resolve(CredentialProviderName.TAVILY) is None
         assert repo.find_calls == reads
 
     def test_a_registered_hook_runs_on_every_local_invalidation(self) -> None:
         runs: list[str] = []
         service_module.on_local_invalidation(lambda: runs.append("ran"))
 
-        service_module.invalidate_locally("gemini")
+        service_module.invalidate_locally(CredentialProviderName.GEMINI)
 
         assert runs == ["ran"]

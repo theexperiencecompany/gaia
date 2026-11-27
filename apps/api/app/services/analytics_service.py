@@ -17,6 +17,12 @@ from app.constants.analytics import (
     AT_MOST_ONCE_TASK_NAME,
     POSTHOG_PROVIDER_KEY,
 )
+from app.constants.briefing import (
+    BRIEF_COMPOSITION_LABEL,
+    BRIEF_HEADING_CHECK_LABEL,
+    BRIEF_VOICE_LABEL,
+)
+from app.constants.scouts import SCOUT_AGENT_NAME
 from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
 from app.utils.background_tasks import spawn_background_task
@@ -74,12 +80,7 @@ class AIFeature(StrEnum):
     VISION = "vision", ("image_to_text", "tool_media_vision", "vision_fallback")
     HIL = (
         "hil",
-        (
-            "hil_conversational_resolve",
-            "hil_conversational_resolve_batch",
-            "hil_intent_judge",
-            "hil_tool_classification",
-        ),
+        ("hil_tool_classification", "hil_tool_read_only_classification"),
     )
     ONBOARDING = (
         "onboarding",
@@ -104,6 +105,10 @@ class AIFeature(StrEnum):
     FOLLOW_UPS = "follow_ups", ("follow_up_actions",)
     RESEARCH = "research", ("research_queries",)
     TODO_MAINTENANCE = "todo_maintenance", ("todo_health_check",)
+    BRIEFING = (
+        "briefing",
+        (BRIEF_COMPOSITION_LABEL, BRIEF_HEADING_CHECK_LABEL, BRIEF_VOICE_LABEL, SCOUT_AGENT_NAME),
+    )
     MODERATION = "moderation", ("profanity",)
     BROWSER = "browser", ("browser_task",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
@@ -214,7 +219,6 @@ class AgentRunOutcome:
     """A run's terminal outcome and executor timings, set by a body that reports instead of raising."""
 
     failure_reason: str | None = None
-    paused: bool = False
     queued: bool | None = None
     queue_wait_ms: float | None = None
     executor_ttft_ms: float | None = None
@@ -230,8 +234,7 @@ def agent_run_lifecycle(
     """Emit run_started, then exactly one of run_completed or run_failed, as the agent's work.
 
     A raised exception fails the run with its type as reason, a cancellation with
-    "cancelled"; a body that handles its own failure sets failure_reason, and a
-    paused run emits no terminal event.
+    "cancelled"; a body that handles its own failure sets failure_reason.
     dedupe keys the terminal event. No user id, no events.
     """
     outcome = AgentRunOutcome()
@@ -250,8 +253,7 @@ def agent_run_lifecycle(
         outcome.failure_reason = type(exc).__name__
         _capture_run_terminal(distinct_id, run, outcome, dedupe)
         raise
-    if not outcome.paused:
-        _capture_run_terminal(distinct_id, run, outcome, dedupe)
+    _capture_run_terminal(distinct_id, run, outcome, dedupe)
 
 
 def _capture_run_terminal(

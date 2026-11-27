@@ -8,18 +8,22 @@ import os
 import time
 from unittest.mock import AsyncMock, patch
 
-from pymongo.errors import PyMongoError
 import pytest
 import time_machine
 
 from app.db.redis import redis_cache
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.usage_daily import (
     UsageDailyDocument,
     UsageDailyIncrement,
     usage_daily_repository,
 )
-from app.services import usage_activity
-from app.services.usage_activity import get_activity, record_cost
+from app.services.usage_activity import (
+    count_daily_actions,
+    get_activity,
+    record_cost,
+)
+from shared.py.wide_events import log
 
 USER = "user-activity-1"
 TODAY = "2026-03-04"
@@ -27,7 +31,7 @@ FROZEN = "2026-03-04T09:30:00+00:00"
 
 
 def _row(date: str, **fields: object) -> UsageDailyDocument:
-    return UsageDailyDocument(user_id=USER, date=date, **fields)
+    return UsageDailyDocument.model_validate({"user_id": USER, "date": date, **fields})
 
 
 @pytest.fixture(autouse=True)
@@ -73,6 +77,40 @@ def _spend(
 def increment() -> Iterator[AsyncMock]:
     with patch.object(usage_daily_repository, "increment", AsyncMock()) as mock:
         yield mock
+
+
+@pytest.mark.unit
+class TestCountDailyActions:
+    async def test_the_actions_land_on_todays_utc_row(self, increment: AsyncMock) -> None:
+        await count_daily_actions(USER, 3)
+
+        increment.assert_awaited_once_with(USER, TODAY, UsageDailyIncrement(count=3))
+
+    async def test_one_action_is_counted_unless_told_otherwise(self, increment: AsyncMock) -> None:
+        await count_daily_actions(USER)
+
+        increment.assert_awaited_once_with(USER, TODAY, UsageDailyIncrement(count=1))
+
+    @pytest.mark.parametrize(("user_id", "amount"), [("", 1), (USER, 0), (USER, -1)])
+    async def test_no_user_or_no_actions_writes_nothing(
+        self, increment: AsyncMock, user_id: str, amount: int
+    ) -> None:
+        await count_daily_actions(user_id, amount)
+
+        increment.assert_not_awaited()
+
+    async def test_a_mongo_failure_is_logged_never_raised(self, increment: AsyncMock) -> None:
+        increment.side_effect = RepositoryError("count write failed")
+
+        with patch.object(log, "warning") as warned:
+            await count_daily_actions(USER)
+
+        assert warned.call_args.args == ("[MONGO] count_daily_actions failed",)
+        assert warned.call_args.kwargs == {
+            "user": {"id": USER},
+            "error": "count write failed",
+            "error_type": "RepositoryError",
+        }
 
 
 @pytest.mark.unit
@@ -184,9 +222,9 @@ class TestRecordCost:
         # record_cost runs after a model call has already completed and been
         # billed by the provider; raising here would fail a request the user
         # has already paid for.
-        increment.side_effect = PyMongoError("rollup write failed")
+        increment.side_effect = RepositoryError("rollup write failed")
 
-        with patch.object(usage_activity.log, "warning") as warned:
+        with patch("app.services.usage_activity.log.warning") as warned:
             await record_cost(USER, _spend(0.02, 300), charged=True)
 
         increment.assert_awaited_once()
@@ -195,7 +233,7 @@ class TestRecordCost:
         # missing and what actually failed — otherwise the loss is invisible.
         assert warned.call_args.kwargs["user"] == {"id": USER}
         assert warned.call_args.kwargs["error"] == "rollup write failed"
-        assert warned.call_args.kwargs["error_type"] == "PyMongoError"
+        assert warned.call_args.kwargs["error_type"] == "RepositoryError"
 
 
 @pytest.fixture

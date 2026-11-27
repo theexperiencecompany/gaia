@@ -49,3 +49,14 @@ class QuietHours(BaseModel):
 DEFAULT_QUIET_HOURS: Final = QuietHours(
     enabled=True, start_hour=QUIET_HOURS_START, end_hour=QUIET_HOURS_END
 )
+
+
+class HoldsQuietHours(BaseModel):
+    """A user record's quiet hours, unset meaning the default, read through effective_quiet_hours."""
+
+    quiet_hours: QuietHours | None = None
+
+    @property
+    def effective_quiet_hours(self) -> QuietHours:
+        """The user's own quiet hours, or the default when they never set any."""
+        return self.quiet_hours or DEFAULT_QUIET_HOURS

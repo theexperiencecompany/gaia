@@ -1,0 +1,41 @@
+# gaia-chat-turns-failing: fires when half of the answered turns fail, however many were cancelled; quiet when two turns fail, under the three-failure floor.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-chat-turns-failing fires when half of the answered turns fail, however many were cancelled
+    interval: 1m
+    input_series:
+      - series: 'chat_turn_total{job="gaia-api",source="web",status="error"}'
+        values: '0+1x60'
+      - series: 'chat_turn_total{job="gaia-api",source="web",status="ok"}'
+        values: '0+1x60'
+      - series: 'chat_turn_total{job="gaia-api",source="web",status="cancelled"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-chat-turns-failing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              notify: email
+              service: api
+              incident: availability
+            exp_annotations:
+              description: >-
+                Users on web, desktop, the bots and voice are sending messages and getting an error instead of a reply. The source label says which surface. Find the failed turns in the API and worker wide events and read what they share: a model provider (gaia-llm-fallback-exhausted fires alongside), Postgres checkpoints, or a bug in the last deploy.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-turns-failing
+              __dashboardUid__: gaia-latency
+              __panelId__: '4'
+
+  - name: gaia-chat-turns-failing stays quiet when two turns fail, under the three-failure floor
+    interval: 1m
+    input_series:
+      - series: 'chat_turn_total{job="gaia-api",source="web",status="error"}'
+        values: '0x30 2x30'
+      - series: 'chat_turn_total{job="gaia-api",source="web",status="ok"}'
+        values: '0x30 1x30'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-chat-turns-failing
+        exp_alerts: []

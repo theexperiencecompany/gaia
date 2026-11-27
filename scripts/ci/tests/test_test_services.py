@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import subprocess
+
+import pytest
 
 CI = Path(__file__).parent.parent
 SCRIPT = CI / "test-services.sh"
@@ -158,6 +161,24 @@ def test_github_hosted_uses_per_job_containers(tmp_path: Path) -> None:
     assert "5732" in proc.stdout  # 5432 + RUNNER_INDEX(3) * 100
 
 
+def test_per_job_up_starts_every_container_without_a_restart_policy(tmp_path: Path) -> None:
+    # macOS bash 3.2 treats an empty "${arr[@]}" as unbound under set -u, so a
+    # local per-job `up` died after starting Postgres alone.
+    proc = run(tmp_path, "up", RUNNER_NAME="GitHub Actions 1")
+    assert proc.returncode == 0, proc.stderr
+    runs = [line for line in docker_log(tmp_path).splitlines() if line.startswith("run ")]
+    assert len(runs) == 5
+    assert not any("--restart" in line for line in runs)
+
+
+def test_the_box_gives_every_container_a_restart_policy(tmp_path: Path) -> None:
+    proc = run(tmp_path, "up", RUNNER_NAME="gaia-home-1")
+    assert proc.returncode == 0, proc.stderr
+    runs = [line for line in docker_log(tmp_path).splitlines() if line.startswith("run ")]
+    assert len(runs) == 5
+    assert all("--restart unless-stopped" in line for line in runs)
+
+
 # --- up reconciles a running container against changed flags ----------------
 
 
@@ -220,10 +241,25 @@ def test_prepare_clears_the_other_four_namespaces(tmp_path: Path) -> None:
     assert proc.returncode == 0
     log = docker_log(tmp_path)
     assert "flushdb" in log  # Redis stripe
-    assert "gaia_test_r4_" in log  # Mongo worker databases
+    assert "dropDatabase" in log  # Mongo lane databases
     assert "delete_vhost r4" in log  # RabbitMQ, before add_vhost
     assert "add_vhost r4" in log
     assert (tmp_path / "curl.log").read_text().count("collections") >= 1  # Chroma
+
+
+@pytest.mark.parametrize("command", [("prepare", "4"), ("reset", "4")])
+def test_the_lane_drops_the_apps_database_and_its_workers_and_no_other_lanes(
+    tmp_path: Path, command: tuple[str, str]
+) -> None:
+    # The app's bare gaia_test_r4 survived every reset, so a legacy head an old job left in it
+    # made the next job's live-server fuzz refuse to boot.
+    proc = run(tmp_path, *command, RUNNER_NAME="gaia-home-1")
+    assert proc.returncode == 0
+    found = re.search(r"\.filter\(n => /(.+?)/\.test\(n\)\)", docker_log(tmp_path))
+    assert found is not None
+    lane = re.compile(found.group(1))
+    names = ["gaia_test_r4", "gaia_test_r4_gw0", "gaia_test_r40", "gaia_test_r41_gw0", "GAIA"]
+    assert [name for name in names if lane.search(name)] == ["gaia_test_r4", "gaia_test_r4_gw0"]
 
 
 def test_prepare_fails_when_chroma_cannot_list_its_collections(tmp_path: Path) -> None:
@@ -283,6 +319,69 @@ def test_perjob_prepare_publishes_endpoints_without_the_bookkeeping_list(
     assert "GAIA_TEST_CONTAINERS=" in written
     assert "GAIA_TEST_CONTAINERS=" not in gh_env.read_text()
     assert "DATABASE_URL=postgresql://gaia:gaia@localhost:5732/gaia_test" in gh_env.read_text()
+
+
+def test_a_developer_machine_defaults_to_a_lane_clear_of_the_dev_stacks_ports(
+    tmp_path: Path,
+) -> None:
+    # Lane 0 is the canonical 5432/6379/27017 a running `mise dev` already holds.
+    env = make_env(tmp_path)
+    del env["RUNNER_INDEX"]
+    env.pop("GITHUB_ACTIONS", None)
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "prepare"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        cwd=CI.parent.parent,
+    )
+    assert proc.returncode == 0, proc.stderr
+    written = (tmp_path / "gaia-test-services-12.env").read_text()
+    assert "DATABASE_URL=postgresql://gaia:gaia@localhost:6632/gaia_test" in written
+
+
+def test_a_github_runner_without_an_index_keeps_lane_zero(tmp_path: Path) -> None:
+    env = make_env(tmp_path, GITHUB_ACTIONS="true")
+    del env["RUNNER_INDEX"]
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "prepare"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        cwd=CI.parent.parent,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "localhost:5432/gaia_test" in (tmp_path / "gaia-test-services-0.env").read_text()
+
+
+def test_exec_runs_the_command_against_this_lanes_services(tmp_path: Path) -> None:
+    # Overrides what the caller exported: a worktree's mise env points REDIS_URL at the dev stack.
+    proc = run(
+        tmp_path,
+        "exec",
+        "--",
+        "bash",
+        "-c",
+        'echo "$REDIS_URL $MONGO_DB $USE_REAL_SERVICES"',
+        REDIS_URL="redis://localhost:7003/0",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip().splitlines()[-1] == (
+        "redis://localhost:6679/0 mongodb://gaia:gaia@localhost:27317/gaia_test?authSource=admin 1"
+    )
+    assert "run -d" in docker_log(tmp_path)
+
+
+def test_exec_passes_the_commands_exit_status_through(tmp_path: Path) -> None:
+    assert run(tmp_path, "exec", "--", "bash", "-c", "exit 7").returncode == 7
+
+
+def test_exec_without_a_command_is_a_usage_error(tmp_path: Path) -> None:
+    assert run(tmp_path, "exec").returncode == 2
 
 
 # --- the RabbitMQ probe that a root exec poisons ----------------------------

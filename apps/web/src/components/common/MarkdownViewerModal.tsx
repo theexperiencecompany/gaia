@@ -5,7 +5,7 @@ import { AlertCircleIcon } from "@icons";
 import type React from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { MarkdownRenderer } from "@/features/chat";
 
 interface MarkdownViewerModalProps {
   isOpen: boolean;

@@ -1,12 +1,12 @@
 """Unit tests for the integration connect prompt (card + agent copy)."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode, IntegrationStatus
 from app.constants.waits import WaitCondition
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
@@ -73,6 +73,9 @@ def _resolved_mcp(auth_type: str | None, integration_id: str = "posthog") -> Res
     )
 
 
+CHAT_RUN = {"conversation_id": "conv-1", "stream_id": "stream-1"}
+
+
 @contextmanager
 def _graph_run(
     category: str | None,
@@ -81,24 +84,24 @@ def _graph_run(
     expired: bool = False,
     execution_mode: str | None = None,
     frontend: str = _FAKE_FRONTEND,
-    conversation_id: str | None = None,
+    run_ids: Mapping[str, object] | None = None,
 ) -> Iterator[MagicMock]:
     """Run the prompt inside a graph run of category, yielding its stream writer.
 
     category=None simulates no runnable context; expired is the stored status
     distinguishing a dead grant from one never set up. The status stub checks
-    its actual arguments so a wrong user/integration id fails loudly.
+    its actual arguments so a wrong user/integration id fails loudly. run_ids
+    are the run's own keys: its conversation, stream, step and thread.
     """
 
     async def _is_expired(user_id: str, integration_id: str) -> bool:
         return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
 
     writer = MagicMock()
-    configurable = {"source_category": category}
+    configurable: dict[str, object] = {"source_category": category}
     if execution_mode is not None:
         configurable["execution_mode"] = execution_mode
-    if conversation_id is not None:
-        configurable.update(conversation_id=conversation_id, stream_id="stream-1")
+    configurable.update(run_ids or {})
     config_patch = (
         patch(
             "app.utils.integration_checker.get_config",
@@ -178,7 +181,7 @@ class TestConnectAskIsRemembered:
 
     async def test_showing_the_card_keeps_the_chat_waiting_on_the_integration(self) -> None:
         with (
-            _graph_run("ui", conversation_id="conv-1"),
+            _graph_run("ui", run_ids=CHAT_RUN),
             patch("app.utils.integration_checker.block_integration", AsyncMock(return_value=True)),
             patch("app.utils.integration_checker.wait_for_user", AsyncMock()) as remember,
         ):
@@ -202,6 +205,62 @@ class TestConnectAskIsRemembered:
             await request_integration_connection("gmail", "Gmail", _USER)
 
         remember.assert_not_awaited()
+
+
+STEP = {"epoch": 2, "batch_start": 4, "cause_through": 5, "answers": ["u4"], "asked": True}
+
+
+class TestTheNeedIsLoggedOnTheStepsConversation:
+    """A first ask on a step run logs the need, so connecting continues the conversation."""
+
+    async def test_a_first_ask_logs_the_need_with_its_step(self) -> None:
+        with (
+            _graph_run(
+                "ui",
+                run_ids={**CHAT_RUN, "conversation_step": STEP, "thread_id": "conv-1"},
+            ),
+            patch("app.utils.integration_checker.block_integration", AsyncMock(return_value=True)),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_awaited_once_with(STEP, "conv-1", _USER, "gmail", "Gmail")
+
+    @pytest.mark.parametrize(
+        ("run_ids", "first_ask"),
+        [
+            ({"thread_id": "conv-1"}, True),
+            ({"conversation_step": STEP, "thread_id": ""}, True),
+            ({"conversation_step": STEP}, True),
+            ({"conversation_step": STEP, "thread_id": "conv-1"}, False),
+        ],
+        ids=["no-step", "empty-thread", "no-thread", "asked-before"],
+    )
+    async def test_nothing_is_logged_without_a_step_a_thread_or_a_first_ask(
+        self, run_ids: Mapping[str, object], first_ask: bool
+    ) -> None:
+        with (
+            _graph_run("ui", run_ids={**CHAT_RUN, **run_ids}),
+            patch(
+                "app.utils.integration_checker.block_integration",
+                AsyncMock(return_value=first_ask),
+            ),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_not_awaited()
+
+    async def test_nothing_is_logged_outside_a_run(self) -> None:
+        with (
+            _graph_run(None),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_not_awaited()
 
 
 class TestExpiredConnectionPrompt:
@@ -278,8 +337,8 @@ class TestExpiredConnectionPrompt:
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
-        assert _MCP_AUTH_URL in bot_message
-        assert _MAGIC_LINK not in bot_message
+        assert _MAGIC_LINK in bot_message
+        assert _MCP_AUTH_URL not in bot_message
         assert "reconnect" in bot_message.lower()
 
     @pytest.mark.regression
@@ -307,15 +366,20 @@ class TestExpiredConnectionPrompt:
 
 
 class TestStandaloneMcpAuthorization:
-    """OAuth MCP servers hand out their provider URL; token-only servers say there is none."""
+    """OAuth MCP servers give bots the connect link; token-only servers say there is no URL."""
 
-    async def test_oauth_mcp_url_is_relayed_verbatim_on_ui_and_bots(self) -> None:
+    async def test_oauth_mcp_url_is_relayed_on_ui_and_bots_get_the_connect_link(self) -> None:
         build_url = _known_auth_url()
         with _graph_run("ui"), _mcp_oauth(build_url) as client:
-            ui_message = await request_integration_connection(
-                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
-            )
+            with patch(
+                "app.utils.integration_checker.get_mcp_client", AsyncMock(return_value=client)
+            ) as get_client:
+                ui_message = await request_integration_connection(
+                    "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+                )
 
+        # the OAuth state is minted in the requesting user's own token store
+        get_client.assert_awaited_once_with(user_id="user1")
         build_url.assert_awaited_once_with(
             client.token_store,
             integration_id="posthog",
@@ -330,10 +394,9 @@ class TestStandaloneMcpAuthorization:
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
-        assert _MCP_AUTH_URL in bot_message
-        assert "expires after about 10 minutes" in bot_message
-        assert "1 hour" not in bot_message
-        assert _MAGIC_LINK not in bot_message
+        assert _MAGIC_LINK in bot_message
+        assert "valid for 1 hour" in bot_message
+        assert _MCP_AUTH_URL not in bot_message
 
     async def test_token_only_mcp_says_so_and_never_mints_a_connect_link(self) -> None:
         with (
@@ -369,18 +432,16 @@ class TestStandaloneMcpAuthorization:
         assert "API key" in message
         assert "no standalone authorization URL exists" in message
 
-    async def test_discovery_failure_falls_back_to_the_integrations_page(self) -> None:
-        with (
-            _graph_run("bot"),
-            _mcp_oauth(_unavailable_auth_url()),
-        ):
+    async def test_a_chat_app_never_mints_a_provider_url_it_will_not_send(self) -> None:
+        """The connect link starts its own OAuth flow, so building one here only parks a dead state."""
+        build_url = _unavailable_auth_url()
+        with _graph_run("bot"), _mcp_oauth(build_url):
             message = await request_integration_connection(
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
-        assert "No standalone authorization URL is available" in message
-        assert f"{_FAKE_FRONTEND}/integrations" in message
-        assert _MAGIC_LINK not in message
+        build_url.assert_not_awaited()
+        assert _MAGIC_LINK in message
 
 
 class TestExactCopyPerBranch:
@@ -489,10 +550,9 @@ class TestExactCopyPerBranch:
             )
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
-            "to refresh access. The user is on a text-only platform (no UI). Include this "
-            "standalone authorization URL verbatim in your result so the comms agent can relay "
-            "it to the user, and tell them to open it soon because it expires after about 10 "
-            f"minutes: {_MCP_AUTH_URL}"
+            "to refresh access. The user is on a text-only platform (no UI). Include this URL "
+            "verbatim in your result so the comms agent can relay it to the user, and tell "
+            f"them it is valid for 1 hour: {_MAGIC_LINK}"
         )
 
     async def test_bot_token_only(self) -> None:
@@ -514,22 +574,7 @@ class TestExactCopyPerBranch:
             "PostHog there."
         )
 
-    async def test_bot_unavailable(self) -> None:
-        with (
-            _graph_run("bot"),
-            _mcp_oauth(_unavailable_auth_url()),
-        ):
-            msg = await request_integration_connection(
-                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
-            )
-        assert msg == (
-            "The user's PostHog connection needs fresh authorization; they need to reconnect "
-            "to refresh access. No standalone authorization URL is available for this "
-            "integration. The user is on a text-only platform (no UI); ask them to open "
-            f"{_FAKE_FRONTEND}/integrations and reconnect PostHog there."
-        )
-
-    async def test_bot_falls_back_to_a_connect_link_when_oauth_url_is_missing(self) -> None:
+    async def test_bot_gets_the_connect_link_for_an_oauth_integration(self) -> None:
         with _graph_run("bot"), _mcp_oauth(AsyncMock(return_value=None)):
             msg = await request_integration_connection(
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
@@ -723,7 +768,7 @@ class TestAddAccountPrompt:
 class TestAccountReconnectPrompt:
     """One expired account is signed back in place, named on the card and in the link."""
 
-    _DEAD = make_integration_account("ca_work", "expired", label="work@acme.com")
+    _DEAD = make_integration_account("ca_work", IntegrationStatus.EXPIRED, label="work@acme.com")
 
     async def test_the_card_names_the_account_and_carries_its_id(self) -> None:
         # The integration itself stays connected while another account works.

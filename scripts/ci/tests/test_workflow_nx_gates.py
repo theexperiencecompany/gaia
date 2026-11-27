@@ -89,9 +89,7 @@ def test_every_gated_job_is_one_a_check_names(jobs: dict[str, Any]) -> None:
     assert named <= CHECK_JOBS
 
 
-@pytest.mark.parametrize(
-    "name", sorted(CHECK_JOBS - {"selfhost-smoke", "test-python", "test-mutation"})
-)
+@pytest.mark.parametrize("name", sorted(CHECK_JOBS - {"test-python", "test-mutation"}))
 def test_a_job_starts_when_detect_names_it(name: str, jobs: dict[str, Any]) -> None:
     assert f"contains(fromJSON(needs.detect.outputs.jobs), '{name}')" in str(jobs[name]["if"])
 
@@ -137,14 +135,15 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         ("libs/shared/py/__init__.py", "api:test"),
         ("tools/gaia-connect/main.go", "gaia-connect:check"),
         ("config/pint.hcl", "alert-rules:check"),
+        # A refactor that drops a metric's callers must re-run the metric contract.
+        ("apps/api/app/services/latency_metrics.py", "alert-rules:check"),
+        ("libs/shared/ts/src/bots/metrics.ts", "alert-rules:check"),
         (".github/workflows/ci.yml", "ci:harness-tests"),
         # The per-Dockerfile ignore file decides what enters the build context.
         ("apps/api/Dockerfile.dockerignore", "ci:api-image"),
         (".dockerignore", "ci:api-image"),
         ("config/squirrel.toml", "ci:seo"),
         ("libs/shared/ts/src/index.ts", "ci:seo"),
-        ("packages/cli/src/index.ts", "ci:selfhost-e2e"),
-        ("packages/cli/selfhost/docker-compose.selfhost.yml", "ci:selfhost-e2e"),
         # The web bundle syncs the wake-word runtime and bundles shared-typescript.
         ("libs/wake-word/src/web/runtime.ts", "web:build"),
         ("libs/shared/ts/src/index.ts", "web:build"),
@@ -157,6 +156,18 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         ("uv.lock", "voice-agent:docker:build"),
         ("apps/bots/Dockerfile", "bot-discord:docker:build"),
         ("libs/shared/ts/src/index.ts", "bot-slack:docker:build"),
+        # The screen-over-time suite: the chat on web, the conversation runtime on the API.
+        ("apps/web/src/features/chat/live/connection.ts", "web:e2e-screen"),
+        ("libs/shared/ts/src/conversation/view.ts", "web:e2e-screen"),
+        ("apps/api/app/services/conversation/step.py", "web:e2e-screen"),
+        ("apps/web/e2e/screen-over-time.spec.ts", "web:e2e-screen"),
+        # The bot harness scenarios: the shared bot pipeline, the runtime and the scripts.
+        ("libs/shared/ts/src/bots/conversation/follower.ts", "bot-harness:e2e"),
+        ("apps/api/app/services/hil/conversational.py", "bot-harness:e2e"),
+        ("apps/bots/harness/scenarios/approval-yes-no.yaml", "bot-harness:e2e"),
+        # Anything the stack runs: a hand-kept list missed the services the flows go through.
+        ("apps/api/app/services/mail/email_verdict.py", "web:e2e-screen"),
+        ("apps/api/app/services/mail/email_verdict.py", "bot-harness:e2e"),
         # A deleted file is a change: a per-file-ignores entry for it goes stale.
         ("apps/api/app/gone_module.py", "ci:ignore-staleness"),
     ],
@@ -172,15 +183,155 @@ def test_detect_selects(path: str, task: str) -> None:
         ("apps/api/app/main.py", "ci:api-image"),
         ("apps/api/app/main.py", "ci:seo"),
         ("pnpm-lock.yaml", "api:test"),
-        ("apps/api/app/main.py", "ci:selfhost-e2e"),
         ("apps/api/app/main.py", "web:build"),
         ("scripts/ci/deploy.sh", "ci:desktop-package"),
         ("apps/api/CLAUDE.md", "api:docker:build"),
         ("pnpm-lock.yaml", "api:docker:build"),
+        # The sim lanes wake on what the stack runs, never on the API's own tests or another app.
+        ("apps/api/tests/conftest.py", "web:e2e-screen"),
+        ("apps/api/tests/conftest.py", "bot-harness:e2e"),
+        ("apps/voice-agent/src/agent.py", "bot-harness:e2e"),
+        ("apps/desktop/src/main/index.ts", "web:e2e-screen"),
     ],
 )
 def test_detect_leaves_out(path: str, task: str) -> None:
     assert task not in nx_affected.select([f"--files={path}"]).tasks
+
+
+SELFHOST_E2E = "cli:selfhost-e2e"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "packages/cli/src/index.ts",
+        "packages/cli/selfhost/docker-compose.selfhost.yml",
+        "packages/cli/selfhost/Caddyfile",
+        "apps/api/Dockerfile",
+        "apps/api/Dockerfile.dockerignore",
+        ".dockerignore",
+        "scripts/docker-entrypoint.sh",
+        "apps/web/Dockerfile",
+        "infra/docker/docker-compose.yml",
+        # API startup, settings and lifespan: what `gaia up` waits on before the journey starts.
+        "apps/api/app/main.py",
+        "apps/api/app/core/app_factory.py",
+        "apps/api/app/core/lifespan.py",
+        "apps/api/app/core/provider_registration.py",
+        "apps/api/app/config/settings.py",
+        "apps/api/app/config/deployment.py",
+        "apps/api/app/api/v1/endpoints/health.py",
+        "apps/api/app/api/v1/endpoints/readiness.py",
+        "apps/api/scripts/post_deploy.py",
+        "apps/api/app/worker.py",
+        # What the journey drives.
+        "apps/api/app/api/v1/endpoints/setup.py",
+        "apps/web/src/features/setup-wizard/constants.ts",
+        "apps/web/e2e/selfhost/selfhost-journey.spec.ts",
+        "apps/web/playwright.selfhost.config.ts",
+        "tools/llm-stub/server.py",
+        # The lane's own harness.
+        ".github/workflows/selfhost-smoke.yml",
+        ".github/workflows/selfhost-e2e.yml",
+        "scripts/ci/selfhost.sh",
+        "scripts/ci/lib/log.sh",
+        ".github/actions/setup-uv/action.yml",
+    ],
+)
+def test_the_selfhost_e2e_runs_when_the_change_reaches_the_selfhost_stack(path: str) -> None:
+    assert SELFHOST_E2E in nx_affected.select([f"--files={path}"]).tasks
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "apps/web/src/features/chat/components/composer/Composer.tsx",
+        "apps/api/app/services/todos/todo_service.py",
+        "docs/introduction.mdx",
+        ".github/workflows/build.yml",
+        # 9 of 14 queue runs that booted it in a week came from CI-only changes like these.
+        ".github/workflows/ci.yml",
+        "scripts/ci/changes.sh",
+        "scripts/ci/tests/test_audit.py",
+        ".github/actions/select-runner/action.yml",
+        # Any edit here re-selects every target of its project, so the lane lives outside it.
+        "tools/ci/project.json",
+    ],
+)
+def test_the_selfhost_e2e_skips_what_never_reaches_the_selfhost_stack(path: str) -> None:
+    assert SELFHOST_E2E not in nx_affected.select([f"--files={path}"]).tasks
+
+
+SELFHOST_E2E_WORKFLOW = "./.github/workflows/selfhost-e2e.yml"
+# The merge queue fails a group whose required check has not reported by then.
+QUEUE_TIMEOUT_MINUTES = 60
+
+
+def _workflow(name: str) -> dict[str, Any]:
+    return mapping(yaml.safe_load((WORKFLOWS / name).read_text()))
+
+
+def test_the_quality_gate_waits_on_the_selfhost_e2e() -> None:
+    jobs = _workflow("ci.yml")["jobs"]
+    assert "selfhost-e2e" in jobs["quality-gate"]["needs"]
+    assert jobs["selfhost-e2e"]["uses"] == SELFHOST_E2E_WORKFLOW
+    assert "continue-on-error" not in jobs["selfhost-e2e"]
+
+
+@pytest.mark.parametrize(
+    ("event", "runs"),
+    [
+        ("merge_group", True),
+        ("workflow_dispatch", True),
+        ("pull_request", False),
+        ("push", False),
+    ],
+)
+def test_the_selfhost_e2e_runs_only_in_the_full_tier(event: str, runs: bool) -> None:
+    selection = nx_affected.select(["--files=scripts/ci/selfhost.sh"])
+    tier = "fast" if event == "pull_request" else "full"
+    jobs = json.loads(nx_affected.outputs(selection, event, "master", tier)["jobs"])
+    assert ("selfhost-e2e" in jobs) is runs
+
+
+def test_a_verified_master_push_never_runs_the_selfhost_e2e() -> None:
+    selection = nx_affected.select(["--files=scripts/ci/selfhost.sh"])
+    outputs = nx_affected.outputs(selection, "push", "master", nx_affected.VERIFIED_TIER)
+    assert "selfhost-e2e" not in json.loads(outputs["jobs"])
+
+
+def test_the_merge_queue_runs_the_selfhost_e2e_once() -> None:
+    smoke = _workflow("selfhost-smoke.yml")["jobs"]["selfhost-e2e-dispatch"]
+    assert smoke["if"] == "github.event_name == 'workflow_dispatch'"
+    assert smoke["uses"] == SELFHOST_E2E_WORKFLOW
+
+
+def test_a_hung_selfhost_e2e_fails_on_its_own_cap_before_the_queue_gives_up() -> None:
+    ci = _workflow("ci.yml")["jobs"]
+    (e2e,) = _workflow("selfhost-e2e.yml")["jobs"].values()
+    waits = sum(ci[job]["timeout-minutes"] for job in ("select-runner", "detect"))
+    assert waits + e2e["timeout-minutes"] < QUEUE_TIMEOUT_MINUTES
+
+
+@pytest.mark.parametrize(
+    ("path", "event", "packages"),
+    [
+        # ts-build-test builds desktop:build on the PR; packaging what web reaches is the queue's.
+        ("apps/web/src/app/page.tsx", "pull_request", False),
+        ("apps/web/src/app/page.tsx", "merge_group", True),
+        ("libs/shared/ts/src/index.ts", "pull_request", False),
+        ("libs/shared/ts/src/index.ts", "merge_group", True),
+        ("apps/desktop/src/main/index.ts", "pull_request", True),
+        ("apps/desktop/package.json", "pull_request", True),
+        (".github/workflows/desktop-pr-build.yml", "pull_request", True),
+        ("apps/api/app/main.py", "merge_group", False),
+    ],
+)
+def test_a_pr_packages_desktop_only_when_the_desktop_app_changed(
+    path: str, event: str, packages: bool
+) -> None:
+    selection = nx_affected.select([f"--files={path}"])
+    assert ("desktop-build" in nx_affected.job_tasks(selection, event, None)) is packages
 
 
 @pytest.mark.parametrize("path", ["README.md", "docs/introduction.mdx", "apps/api/CLAUDE.md"])

@@ -1,8 +1,9 @@
 /**
- * Unified `/stop` command — cancels the active stream and resets the conversation.
+ * Unified `/stop` command — stops everything the conversation is running.
  *
- * Resets the bot session so the next message starts a fresh conversation.
- * Any in-flight stream output is discarded on the bot side.
+ * Cancels the reply in progress and the background work it started (the
+ * executor, its subagents, pending approvals and the browser task). The session
+ * stays: the next message continues the same conversation. `/new` starts fresh.
  *
  * @module
  */
@@ -12,20 +13,20 @@ import { reportCommandFailure } from "../utils/commands";
 /** `/stop` command definition. */
 export const stopCommand: BotCommand = {
   name: "stop",
-  description: "Reset your conversation session",
+  description: "Stop the current reply and any work running in the background",
 
   async execute({ gaia, target, ctx }: CommandExecuteParams): Promise<void> {
     try {
-      await gaia.resetSession(
+      await gaia.stopConversation(
         ctx.platform,
         ctx.platformUserId,
         ctx.channelId,
         ctx.isDm,
       );
-      await target.sendEphemeral("⏹️ Stopped. Starting a new conversation.");
+      await target.sendEphemeral("⏹️ Stopped.");
     } catch (error) {
       await target.sendEphemeral(
-        reportCommandFailure("reset_session", error, ctx),
+        reportCommandFailure("stop_conversation", error, ctx),
       );
     }
   },

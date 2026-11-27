@@ -1,4 +1,4 @@
-import type { ApprovalRequestData } from "@shared/chat";
+import { type ApprovalRequestData, ArtifactCardDataSchema } from "@shared/chat";
 import dynamic from "next/dynamic";
 import type React from "react";
 import type {
@@ -8,6 +8,7 @@ import type {
   ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
+import { ArtifactCard } from "@/features/chat/components/artifacts/ArtifactCard";
 import ConnectOptions from "@/features/chat/components/bubbles/bot/ConnectOptions";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
 import { DeviceApprovalPrompt } from "@/features/chat/components/bubbles/bot/DeviceApprovalPrompt";
@@ -43,6 +44,7 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
 import ApprovalRequestGroup from "../ApprovalRequestGroup";
+import { BriefMessageCard } from "../BriefMessageCard";
 import BrowserTaskSection from "../BrowserTaskSection";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
@@ -193,9 +195,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   calendar_fetch_data: (data) => (
     <CalendarListCard events={Array.isArray(data) ? data : [data]} />
   ),
-  // Restored-history only: old conversations still carry this key, and a
-  // null renderer left them blank. Read-only list, no draft or add flows
-  // (those moved to HIL approvals by design).
   calendar_list_fetch_data: (data) => (
     <CalendarListFetchSection calendars={Array.isArray(data) ? data : [data]} />
   ),
@@ -209,6 +208,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   google_docs_data: (data) => <GoogleDocsSection google_docs_data={data} />,
   code_data: (data) => <CodeExecutionSection code_data={data} />,
   artifact_data: (data) => <FileArtifactSection artifact_data={data} />,
+  artifact_done: (data) => (
+    <ArtifactCard card={ArtifactCardDataSchema.parse(data)} />
+  ),
 
   todo_data: (data) => (
     <TodoSection
@@ -231,6 +233,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   send_notification_data: (data) => (
     <SendNotificationSection send_notification_data={data} />
   ),
+  briefing_data: (data) => <BriefMessageCard data={data} />,
   connect_options: (data) => <ConnectOptions connect_options={data} />,
   integration_connection_required: (data) => {
     // Data can be a single item or an array (when grouped)
@@ -397,26 +400,18 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // HIL approval — grouped so many decisions don't stack a full card each:
   // pending show side by side, settled are removed (reply reflects them).
-  // Each approval_id is one entry, replaced in place via upsertApprovalToolData.
+  // The screen draws exactly one card per approval, from its log entries.
   approval_request: (data) => {
-    const raw = (Array.isArray(data) ? data : [data]) as ApprovalRequestData[];
-    // A resumed stream replays the gate-time PENDING frame after the decision
-    // already settled it — collapse by approval_id, settled wins over pending.
-    // (Sibling identity is owned by the keyed wrapper at the call site.)
-    const byId = new Map<string, ApprovalRequestData>();
-    for (const item of raw) {
-      const prev = byId.get(item.approval_id);
-      if (!prev || prev.status === "pending" || item.status !== "pending") {
-        byId.set(item.approval_id, item);
-      }
-    }
-    return <ApprovalRequestGroup items={[...byId.values()]} />;
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as ApprovalRequestData[];
+    return <ApprovalRequestGroup items={items} />;
   },
 };
 
-/** Whether a tool_data entry has a card registered at all. A missing entry is a
+/** Whether a card's tool has a renderer registered at all. A missing one is a
  *  silent drop (`renderTool` returns null), which the render audit records. */
-export function hasToolRenderer(name: ToolName): boolean {
+export function hasToolRenderer(name: string): boolean {
   return name in TOOL_RENDERERS;
 }
 

@@ -1,7 +1,9 @@
 "use client";
 
 import type React from "react";
+
 import AccountSettings from "@/features/settings/components/AccountSettings";
+import { BriefingsSettings } from "@/features/settings/components/BriefingsSettings";
 import BrowserSettings from "@/features/settings/components/BrowserSettings";
 import { ComposioSetupSettings } from "@/features/settings/components/ComposioSetupSettings";
 import DesktopSettings from "@/features/settings/components/DesktopSettings";
@@ -12,6 +14,7 @@ import LinkedAccountsSettings from "@/features/settings/components/LinkedAccount
 import { MembersSettings } from "@/features/settings/components/MembersSettings";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
+import { PostmarksSettings } from "@/features/settings/components/PostmarksSettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
 import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
 import { ProvidersSettings } from "@/features/settings/components/ProvidersSettings";
@@ -52,6 +55,8 @@ const SECTION_PANELS: Record<
   memory: () => <MemorySettings />,
   skills: () => <SkillsSettings />,
   notifications: () => <NotificationSettings />,
+  briefings: () => <BriefingsSettings />,
+  postmarks: () => <PostmarksSettings />,
   devices: () => <DevicesSettings />,
   browser: () => <BrowserSettings />,
   experimental: () => <ExperimentalFeaturesSettings />,

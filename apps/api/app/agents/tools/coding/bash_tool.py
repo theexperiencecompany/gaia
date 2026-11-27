@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 from collections.abc import Mapping
 import contextlib
 from dataclasses import dataclass
@@ -17,7 +16,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from prometheus_client import Counter
 
-from app.agents.tools.coding._artifacts import publish_artifact
+from app.agents.tools.coding._artifacts import artifact_links_note, publish_artifact
 from app.agents.tools.coding._context import (
     get_session_id,
     get_user_id,
@@ -25,10 +24,8 @@ from app.agents.tools.coding._context import (
     sh_quote,
 )
 from app.agents.workspace.paths import (
-    INLINE_ARTIFACT_MAX_BYTES,
     WORKSPACE_ROOT,
     detect_content_type,
-    is_inlineable_content_type,
     is_under_workspace,
     runs_log_dir,
     session_artifacts,
@@ -36,6 +33,8 @@ from app.agents.workspace.paths import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
+    ARTIFACT_ENUMERATE_TIMEOUT_SECONDS,
+    ARTIFACT_MTIME_SKEW_SECONDS,
     BASH_DEFAULT_TIMEOUT_SECONDS,
     BASH_MAX_COMMAND_LENGTH,
     BASH_MAX_TIMEOUT_SECONDS,
@@ -60,6 +59,7 @@ from app.services.agent_lab.sandbox_setup import (
 )
 from app.services.feature_flags import is_code_mode_enabled
 from app.services.sandbox import (
+    CodingSandbox,
     SandboxAcquisitionError,
     acquire_sandbox,
 )
@@ -68,11 +68,11 @@ from app.services.sandbox.execute_client import (
     sandbox_execute_enabled,
     seed_execute_client,
 )
-from app.services.storage import FsOps, fs_timer
-from app.services.storage.metrics import _register_once
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
 from app.services.triggers.subscription_service import unregister_subscription
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
+from app.utils.prometheus_registry import register_once
 from shared.py.wide_events import log
 
 MAX_TIMEOUT_SECONDS = 600
@@ -82,7 +82,7 @@ MAX_COMMAND_LENGTH = 16_000
 # Bucketed bash exit code counter (fs-metrics-coverage contract). Mirrors
 # shell semantics: 0=success, 1-126=generic failure, 127=not found,
 # 128-254=killed by signal, 255=catch-all, "timeout"=our deadline.
-_BASH_EXIT_CODE_TOTAL = _register_once(
+_BASH_EXIT_CODE_TOTAL = register_once(
     "tool_bash_exit_code_total",
     lambda: Counter(
         name="tool_bash_exit_code_total",
@@ -245,7 +245,7 @@ class _BashInvocation:
     scoped_tools: Mapping[str, BaseTool] | None
 
 
-async def _build_execute_env(run: _BashInvocation, sbx: object) -> dict[str, str] | None:
+async def _build_execute_env(run: _BashInvocation, sbx: CodingSandbox) -> dict[str, str] | None:
     """Seed code mode and mint the per-run execute env, or None when code mode is off."""
     # Two gates: the env secret arms the mechanism globally, the
     # per-user flag rolls it out (default off).
@@ -306,7 +306,9 @@ async def _resolve_lab_todo(*, user_id: str, run_todo_id: str) -> TodoDocument |
     return todo
 
 
-async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tuple[str, str] | str:
+async def _seed_lab_run(
+    *, user_id: str, sandbox_run_id: str, sbx: CodingSandbox
+) -> tuple[str, str] | str:
     """Mint the hooks token, stage the seed, run it; or the loud error. Returns (url, token)."""
     try:
         url = lab_events_url(sbx)
@@ -317,13 +319,13 @@ async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tu
     try:
         # Absolute paths inside, so no cwd; minimal kwargs keep the seed
         # runnable on the same surface the fake-sandbox harness implements.
-        await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+        await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)
     except Exception as e:
         return f"Error: lab seed failed ({e}), ran nothing"
     return url, token
 
 
-async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
+async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: CodingSandbox) -> _LabRun | str:
     """Mint the run token, stage the seed, and subscribe the todo; or return the loud error.
 
     On any failure the caller runs nothing. The error is a plain string (the
@@ -365,7 +367,7 @@ def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
 
 
 async def _lab_run_and_env(
-    *, user_id: str, run_todo_id: str | None, sbx: object, base_env: dict[str, str] | None
+    *, user_id: str, run_todo_id: str | None, sbx: CodingSandbox, base_env: dict[str, str] | None
 ) -> tuple[_LabRun | None, dict[str, str] | None] | str:
     """Set up the lab run for run_todo_id and merge its env over base_env; error as string."""
     if run_todo_id is None:
@@ -378,7 +380,7 @@ async def _lab_run_and_env(
 
 async def _run_sandbox_command(
     *,
-    sbx: object,
+    sbx: CodingSandbox,
     run: _BashInvocation,
     command_env: dict[str, str] | None,
     background: bool,
@@ -451,6 +453,7 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
             if isinstance(lab_result, str):
                 return _emit_bash_error(run.run_id, lab_result, lab_result, run.session_id)
             lab, command_env = lab_result
+            started_at = time.time()
             try:
                 result = await _run_sandbox_command(
                     sbx=sbx,
@@ -467,7 +470,10 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
                 # curl -o, …), not just the write tool. Enumerate the session's
                 # artifacts/ from the sandbox itself (no cross-mount race) in real time.
                 async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    await _publish_artifacts(sbx, run.user_id, run.session_id)
+                    links = await _publish_artifacts(
+                        sbx, run.user_id, run.session_id, changed_since=started_at
+                    )
+                result += artifact_links_note(links)
             # Equivalent under mutation: lab is set exactly when run_todo_id is
             # (_lab_run_and_env); the second test only narrows run_todo_id's type.
             if lab is not None and run_todo_id is not None:  # pragma: no mutate
@@ -512,47 +518,32 @@ async def _run_bash(
     return await _execute_invocation(run=run, run_todo_id=request.run_todo_id)
 
 
-async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
-    """Enumerate the session's ``artifacts/`` in the sandbox and push each
-    file as a real-time artifact event (covers cat/python/mv/curl, etc.).
+async def _publish_artifacts(
+    sbx: CodingSandbox, user_id: str, session_id: str, *, changed_since: float
+) -> dict[str, str]:
+    """Card each file in artifacts/ on the run; return the links of the ones this command wrote.
 
-    Implementation note: this used to be N+1 sandbox round-trips (one ``find``
-    plus one ``base64`` per artifact). For a turn that writes 5 artifacts that
-    was 6 envd round-trips. We now collapse to a *single* ``find`` invocation
-    whose ``-exec`` emits the path, size, and base64 body for every artifact in
-    one stream — parsed back here in Python. One round-trip total, regardless
-    of how many artifacts the turn produced.
+    Covers what the write tool cannot see (cat, python, mv, curl), in one sandbox round-trip.
+    Only a file with mtime at or after changed_since (less ARTIFACT_MTIME_SKEW_SECONDS for
+    host/sandbox clock drift) is linked, so a command never shares every file in the session.
+    Fields and records are NUL-delimited, which no filename can contain: <path>\0<size>\0<mtime>\0.
     """
-    artifacts_root = session_artifacts(session_id)
-    # NUL-delimited fields AND records (desync-proof, filenames can't contain
-    # NUL). Each artifact emits <path>\0<size>\0<mtime>\0<base64>\0. Real
-    # mtime is required so the forwarder's dedup skips unchanged files.
-    max_inline = INLINE_ARTIFACT_MAX_BYTES
     enumerate_cmd = (
-        f"find {sh_quote(artifacts_root)} -type f "
+        f"find {sh_quote(session_artifacts(session_id))} -type f "
         f"! -name '*{WORKSPACE_TMP_SUFFIX}' "
-        f"-printf '%P\\0%s\\0%T@\\0' "
-        f"-exec sh -c '"
-        f'  s=$(stat -c%s "$0"); '
-        f'  if [ "$s" -le {max_inline} ]; then base64 -w0 "$0" 2>/dev/null; fi; '
-        f'  printf "\\0"'
-        f"' {{}} \\; 2>/dev/null"
+        f"-printf '%P\\0%s\\0%T@\\0' 2>/dev/null"
     )
+    links: dict[str, str] = {}
     try:
-        res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+        res = await sbx.commands.run(enumerate_cmd, timeout=ARTIFACT_ENUMERATE_TIMEOUT_SECONDS)
     except Exception:
-        return
+        return links
 
-    stdout = getattr(res, "stdout", "") or ""
-    fields = stdout.split("\0")
-    # Last element after the trailing NUL is the empty tail — discard. Group
-    # the remainder in 4-tuples (path, size, mtime, body); a partial trailing
-    # group means find was interrupted mid-record and we skip it.
-    for i in range(0, len(fields) - (len(fields) % 4), 4):
-        rel = fields[i]
-        size_str = fields[i + 1]
-        mtime_str = fields[i + 2]
-        body_b64 = fields[i + 3]
+    # What follows the last NUL is never a field; a partial trailing record means find was cut short.
+    stdout = getattr(res, "stdout", "") or ""  # pragma: no mutate — NUL-free text holds no field
+    fields = stdout.split("\0")[:-1]
+    for i in range(0, len(fields) - (len(fields) % 3), 3):
+        rel, size_str, mtime_str = fields[i : i + 3]
         if not rel:
             continue
         try:
@@ -563,26 +554,20 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             mtime = float(mtime_str) if mtime_str else time.time()
         except ValueError:
             mtime = time.time()
-        inline_body = _decode_inline(body_b64, size_bytes, detect_content_type(rel))
-        # Same shared publisher write/edit use — one owner of the event shape.
-        await publish_artifact(user_id, session_id, rel, size_bytes, mtime, inline_body)
+        placeholder = await publish_artifact(
+            user_id,
+            session_id,
+            ArtifactInfo(
+                path=rel, size_bytes=size_bytes, mtime=mtime, content_type=detect_content_type(rel)
+            ),
+            written_this_turn=mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS,
+        )
+        if placeholder:
+            links[rel] = placeholder
+    return links
 
 
-def _decode_inline(body_b64: str, size_bytes: int, content_type: str | None) -> str | None:
-    """Decode the inline body if the file is small + textual, else None."""
-    if not body_b64:
-        return None
-    if size_bytes <= 0 or size_bytes > INLINE_ARTIFACT_MAX_BYTES:
-        return None
-    if not is_inlineable_content_type(content_type):
-        return None
-    try:
-        return base64.b64decode(body_b64).decode("utf-8", errors="replace")
-    except ValueError:
-        return None
-
-
-async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -> None:
+async def _persist_run_log(sbx: CodingSandbox, run_id: str, stdout: str, stderr: str) -> None:
     """Write the full foreground output to /workspace/.gaia/runs/{run_id}.log.
 
     The bash docstring promises this; it lets the agent re-read output that
@@ -593,11 +578,11 @@ async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -
     # Native write auto-creates the runs/ parent and takes the body as data —
     # no base64 round-trip, no shell.
     with contextlib.suppress(Exception):
-        await sbx.files.write(log_path, body)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+        await sbx.files.write(log_path, body)
 
 
 async def _run_foreground(
-    sbx: object, run: _BashInvocation, envs: dict[str, str] | None = None
+    sbx: CodingSandbox, run: _BashInvocation, envs: dict[str, str] | None = None
 ) -> str:
     """Run a command synchronously and stream stdout/stderr chunks."""
 
@@ -630,7 +615,7 @@ async def _run_foreground(
     try:
         # `run.timeout` is the e2b server-side deadline; a local asyncio.timeout
         # would only cancel our coroutine, not the remote command.
-        result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b SDK ships no stubs  # NOSONAR python:S7483
+        result = await sbx.commands.run(  # NOSONAR python:S7483
             run.command,
             cwd=run.cwd or WORKSPACE_ROOT,
             envs=envs or {},
@@ -680,7 +665,7 @@ async def _run_foreground(
 
 
 async def _run_background(
-    sbx: object, run: _BashInvocation, envs: dict[str, str] | None = None
+    sbx: CodingSandbox, run: _BashInvocation, envs: dict[str, str] | None = None
 ) -> str:
     """Detach a long-running command and return its pid + log path.
 
@@ -696,7 +681,7 @@ async def _run_background(
         f"{{ nohup bash -c {sh_quote(run.command)} > {sh_quote(log_path)} 2>&1 & }} "
         "&& echo $!"
     )
-    result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+    result = await sbx.commands.run(
         wrapped, cwd=run.cwd or WORKSPACE_ROOT, envs=envs or {}, timeout=10
     )
     pid = (getattr(result, "stdout", "") or "").strip()

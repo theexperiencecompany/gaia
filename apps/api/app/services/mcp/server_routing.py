@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool
 from mcp_use.client.session import MCPSession
 from pydantic import AnyUrl, BaseModel, ConfigDict, JsonValue
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_models import UserIntegrationDocument
@@ -101,7 +102,9 @@ async def _match_active_client_by_server_url(client: MCPSessionHost, target: str
 
 def _connectable_candidate_ids(user_integrations: list[UserIntegrationDocument]) -> list[str]:
     """Filter persisted user integrations down to connected candidate ids."""
-    return [doc.integration_id for doc in user_integrations if doc.status == "connected"]
+    return [
+        doc.integration_id for doc in user_integrations if doc.status == IntegrationStatus.CONNECTED
+    ]
 
 
 async def _find_integration_id_by_server_url(client: MCPSessionHost, server_url: str) -> str | None:

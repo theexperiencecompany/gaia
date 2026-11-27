@@ -17,7 +17,8 @@ export interface OnboardingState {
   /** Answers keyed by `FIELD_NAMES`. Q2 lives in `selectedNeeds`, not here. */
   responses: Record<string, string>;
   questionIndex: number;
-  draftProfession: string | null;
+  /** The single-select pick (Q1, Q3) not yet confirmed with Continue. */
+  draftChoice: string | null;
   selectedNeeds: OnboardingNeed[];
   /** Q2 "Something else", in the user's words. Empty when not used. */
   otherNeed: string;
@@ -26,7 +27,7 @@ export interface OnboardingState {
    * carries words, and the cap is the reducer's to enforce. */
   otherNeedOpen: boolean;
   /**
-   * Whether Q1 + Q2 have reached the server (`PATCH /onboarding/preferences`).
+   * Whether the answers have reached the server (`PATCH /onboarding/preferences`).
    * The link-code mint composes its opener from those two fields server-side,
    * so nothing may mint until this is true.
    */
@@ -49,7 +50,7 @@ export interface OnboardingState {
 }
 
 export type Action =
-  | { type: "draftProfession"; value: string | null }
+  | { type: "draftChoice"; value: string | null }
   | { type: "answer"; field: string; value: string }
   | { type: "toggleNeed"; value: OnboardingNeed }
   | { type: "setOtherNeed"; value: string }
