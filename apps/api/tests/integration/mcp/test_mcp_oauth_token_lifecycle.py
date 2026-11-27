@@ -32,6 +32,9 @@ REDIRECT_URI = f"{API_BASE}/api/v1/mcp/oauth/callback"
 AUTH_SERVER = "https://auth.mcp.test"
 MCP_URL = "https://mcp.test/mcp"
 
+# A refresh holds the grant lock; every test gets its own Redis for it.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
 
 @dataclass
 class _FakeAuthorizationServer:

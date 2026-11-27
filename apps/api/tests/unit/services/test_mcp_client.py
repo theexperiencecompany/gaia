@@ -1567,6 +1567,7 @@ class TestMCPTokenStoreOAuthState:
             assert code_verifier is None
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestMCPTokenStoreDeleteCredentials:
     async def test_deletes_existing(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1793,6 +1794,7 @@ class TestMCPTokenStoreBatchLookup:
             assert await store.are_connected([]) == {}
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestOAuthGrantLock:
     """One refresh or delete of a grant at a time, across replicas; a waiter reuses the winner's token."""
 
