@@ -12,10 +12,15 @@ failing the test.
 
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 from langchain_core.tools import BaseTool
+from mcp.types import CallToolResult, TextContent, Tool
 import pytest
 
+from app.constants import mcp as mcp_constants
 from app.constants.mcp import MCP_TOOL_NAME_MAX_CHARS
+from app.services.mcp import mcp_errors
+from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError
 from app.utils import errors
 from app.utils.mcp_utils import (
@@ -25,6 +30,7 @@ from app.utils.mcp_utils import (
     wrap_tool_with_null_filter,
     wrap_tools_with_null_filter,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -286,6 +292,100 @@ class TestWrapToolWithNullFilter:
         tool = _make_tool()
         returned = wrap_tool_with_null_filter(tool)
         assert returned is tool
+
+
+class TestAFailedToolCallIsLogged:
+    """Every failure names its integration, tool and fault in one warning; the model's text is unchanged."""
+
+    @staticmethod
+    def _server_tool(result: CallToolResult) -> BaseTool:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(return_value=result)
+        server_tool = Tool(
+            name="send-email",
+            description="Send an email.",
+            inputSchema={"type": "object", "properties": {"to": {"type": "string"}}},
+        )
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, connector)
+        assert tool is not None
+        tool.metadata = {**(tool.metadata or {}), "integration_id": "resend"}
+        return wrap_tool_with_null_filter(tool)
+
+    @pytest.mark.regression
+    async def test_a_result_the_server_marked_as_an_error_is_logged_and_still_read_by_the_model(
+        self,
+    ) -> None:
+        """Regression: Resend's send-email answered isError (HTTP 500) and Loki had no line naming it."""
+        failure = "Failed to send email: HTTP 500 Internal Server Error"
+        tool = self._server_tool(
+            CallToolResult(content=[TextContent(type="text", text=failure)], isError=True)
+        )
+
+        async with captured_wide_event() as event:
+            result = await tool.ainvoke({"to": "someone@example.com"})
+
+        assert result == failure
+        (warning,) = event["warnings"]
+        assert warning["msg"].endswith("MCP tool failed")
+        assert (warning["integration_id"], warning["tool_name"]) == ("resend", "send-email")
+        assert warning["error_type"] == "McpToolResultError"
+        assert warning["error"] == failure
+        assert warning["after_reconnect"] is False
+        assert "someone@example.com" not in repr(warning)
+
+    async def test_a_successful_result_logs_no_failure(self) -> None:
+        tool = self._server_tool(CallToolResult(content=[TextContent(type="text", text="sent")]))
+
+        async with captured_wide_event() as event:
+            result = await tool.ainvoke({"to": "someone@example.com"})
+
+        assert result == "sent"
+        assert "warnings" not in event
+
+    async def test_a_raised_http_error_logs_its_status_and_a_bounded_message(self) -> None:
+        response = httpx.Response(503, request=httpx.Request("POST", "https://mcp.test/mcp"))
+        error = httpx.HTTPStatusError("x" * 1000, request=response.request, response=response)
+        tool = _make_tool(name="send-email", arun=AsyncMock(side_effect=error))
+        tool.metadata = {"integration_id": "resend"}
+
+        async with captured_wide_event() as event:
+            result = await wrap_tool_with_null_filter(tool)._arun()
+
+        assert result == f"MCP tool error: {'x' * 1000}"
+        (warning,) = event["warnings"]
+        assert (warning["integration_id"], warning["http_status"]) == ("resend", 503)
+        assert warning["error_type"] == "HTTPStatusError"
+        assert warning["error"] == "x" * mcp_constants.MCP_TOOL_FAILURE_LOG_MAX_CHARS
+        assert warning["after_reconnect"] is False
+
+    async def test_a_retry_that_also_fails_logs_both_attempts(self) -> None:
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
+        tool.metadata = {"integration_id": "readai"}
+        reconnect = AsyncMock(side_effect=Exception("server busy"))
+
+        async with captured_wide_event() as event:
+            result = await wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)._arun()
+
+        assert result == "MCP tool error after reconnect: server busy"
+        failures = [w for w in event["warnings"] if w["msg"].endswith("MCP tool failed")]
+        assert [(w["error"], w["after_reconnect"]) for w in failures] == [
+            ("connection closed", False),
+            ("server busy", True),
+        ]
+
+    async def test_a_retry_the_server_marks_as_an_error_reaches_the_model_unchanged(self) -> None:
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
+        reconnect = AsyncMock(side_effect=mcp_errors.McpToolResultError("quota exceeded"))
+
+        async with captured_wide_event() as event:
+            result = await wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)._arun()
+
+        assert result == "quota exceeded"
+        failures = [w for w in event["warnings"] if w["msg"].endswith("MCP tool failed")]
+        assert [(w["error_type"], w["after_reconnect"]) for w in failures] == [
+            ("Exception", False),
+            ("McpToolResultError", True),
+        ]
 
 
 # ---------------------------------------------------------------------------

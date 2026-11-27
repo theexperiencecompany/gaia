@@ -29,6 +29,7 @@ from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
 from app.db.repositories.conversation_migration_guard import first_refusal
 from scripts import migrate_approval_vocabulary as vocabulary
 from scripts.migrate_conversation_entries import __main__ as entries
+from scripts.migrate_conversation_entries.contract import contract as drop_embedded_arrays
 
 #: The exit status of --check while a catch-up has work to do; deploy.sh migrate reads the same value.
 CATCH_UP_NEEDED_EXIT = 3
@@ -59,6 +60,9 @@ async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
         return 1
     if failed:
         return failed
+    # The release step's drop ran before this catch-up, so it kept any array migrated since;
+    # it reads only the current state, so it also finishes a drop an earlier run left half done.
+    await drop_embedded_arrays(apply=True)
     print("Every conversation is in this build's shape.")
     return 0
 

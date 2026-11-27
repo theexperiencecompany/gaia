@@ -25,6 +25,7 @@ from app.services.workflow.scheduler import workflow_scheduler
 from scripts._cli import apply_requested
 from scripts.backfill_last_active_at import backfill as backfill_last_active_at
 from scripts.clear_email_derived_names import clear_email_derived_names
+from scripts.migrate_conversation_entries.contract import contract as drop_embedded_arrays
 from scripts.migrate_inbox_desk_recurrence import migrate as migrate_inbox_desk_recurrence
 from scripts.migrate_notification_details import migrate as migrate_notification_details
 from scripts.migrate_todo_delivery import migrate as migrate_todo_delivery
@@ -44,6 +45,7 @@ POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
     ("migrate_todo_delivery", migrate_todo_delivery),
     ("clear_email_derived_names", clear_email_derived_names),
     ("migrate_notification_details", migrate_notification_details),
+    ("drop_embedded_arrays", drop_embedded_arrays),
 )
 
 #: How often the runner applying a step refreshes its claim.

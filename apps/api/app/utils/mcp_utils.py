@@ -14,12 +14,17 @@ from langchain_core.tools import BaseTool
 
 from app.constants.log_tags import LogTag
 from app.constants.mcp import (
+    MCP_TOOL_FAILURE_LOG_MAX_CHARS,
     MCP_TOOL_NAME_MAX_CHARS,
     MCP_TOOL_NAME_SEPARATOR,
     MCP_UNNAMED_SOURCE_PREFIX,
 )
 from app.models.mcp_config import McpToolProvenance
-from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError
+from app.services.mcp.mcp_errors import (
+    MCPAuthorizationRequiredError,
+    McpToolResultError,
+    response_status,
+)
 from app.utils.errors import IntegrationNotConnectedError
 from shared.py.wide_events import log
 
@@ -101,6 +106,19 @@ _CONNECTION_ERROR_PATTERNS = (
 )
 
 
+def _log_tool_failure(tool: BaseTool, error: Exception, *, after_reconnect: bool) -> None:
+    """Log one failed MCP tool call: which integration and tool, how it failed, never its arguments."""
+    log.warning(
+        f"{LogTag.MCP} MCP tool failed",
+        integration_id=McpToolProvenance.model_validate(tool.metadata or {}).integration_id,
+        tool_name=tool.name,
+        error_type=type(error).__name__,
+        http_status=response_status(error),
+        error=str(error)[:MCP_TOOL_FAILURE_LOG_MAX_CHARS],
+        after_reconnect=after_reconnect,
+    )
+
+
 def _sign_in_required(tool: BaseTool, cause: Exception) -> Exception:
     """Return the not-connected error for the MCP server a tool belongs to, or the cause when unstamped."""
     provenance = McpToolProvenance.model_validate(tool.metadata or {})
@@ -112,6 +130,28 @@ def _sign_in_required(tool: BaseTool, cause: Exception) -> Exception:
         why=f"The MCP server rejected the stored credentials: {cause}",
         grant_died=True,
     )
+
+
+async def _retry_after_reconnect(
+    tool: BaseTool,
+    reconnect_and_retry: Callable[[str, dict[str, object]], Awaitable[object]],
+    filtered_kwargs: dict[str, object],
+) -> object:
+    """Call the tool once more on a fresh connection; raise only when the user must sign in again."""
+    try:
+        return await reconnect_and_retry(tool.name, filtered_kwargs)
+    except McpToolResultError as retry_err:
+        _log_tool_failure(tool, retry_err, after_reconnect=True)
+        return retry_err.content
+    except Exception as retry_err:
+        _log_tool_failure(tool, retry_err, after_reconnect=True)
+        # A 401 that survives a fresh token, or no token at all: only
+        # the user can fix it, by signing in again.
+        if isinstance(retry_err, MCPAuthorizationRequiredError) or (
+            "401" in str(retry_err) or "unauthorized" in str(retry_err).lower()
+        ):
+            raise _sign_in_required(tool, retry_err) from retry_err
+        return f"MCP tool error after reconnect: {retry_err}"
 
 
 def wrap_tool_with_null_filter(
@@ -146,16 +186,13 @@ def wrap_tool_with_null_filter(
         )
         try:
             return await original_arun(**filtered_kwargs)
+        except McpToolResultError as e:
+            _log_tool_failure(tool, e, after_reconnect=False)
+            return e.content
         except Exception as e:
             error_msg = str(e)
             error_lower = error_msg.lower()
-            log.error(
-                f"{LogTag.MCP} MCP tool failed",
-                name=tool.name,
-                error_msg=error_msg,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+            _log_tool_failure(tool, e, after_reconnect=False)
 
             is_auth_error = "401" in error_msg or "unauthorized" in error_lower
             is_connection_error = any(pat in error_lower for pat in _CONNECTION_ERROR_PATTERNS)
@@ -178,27 +215,13 @@ def wrap_tool_with_null_filter(
                     on_connection_error()
 
                 if reconnect_and_retry:
-                    try:
-                        log.warning(
-                            f"{LogTag.MCP} MCP tool attempting transparent reconnect-and-retry",
-                            name=tool.name,
-                            error=str(e),
-                            error_type=type(e).__name__,
-                        )
-                        return await reconnect_and_retry(tool.name, filtered_kwargs)
-                    except Exception as retry_err:
-                        log.error(
-                            f"{LogTag.MCP} MCP tool reconnect-retry failed",
-                            tool_name=tool.name,
-                            error_type=type(retry_err).__name__,
-                        )
-                        # A 401 that survives a fresh token, or no token at all: only
-                        # the user can fix it, by signing in again.
-                        if isinstance(retry_err, MCPAuthorizationRequiredError) or (
-                            "401" in str(retry_err) or "unauthorized" in str(retry_err).lower()
-                        ):
-                            raise _sign_in_required(tool, retry_err) from retry_err
-                        return f"MCP tool error after reconnect: {retry_err}"
+                    log.warning(
+                        f"{LogTag.MCP} MCP tool attempting transparent reconnect-and-retry",
+                        name=tool.name,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
+                    return await _retry_after_reconnect(tool, reconnect_and_retry, filtered_kwargs)
 
                 if is_auth_error:
                     raise _sign_in_required(tool, e) from e

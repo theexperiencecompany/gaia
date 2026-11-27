@@ -826,6 +826,7 @@ skips = ["B101", "B311", "B404"]
 # interrogate — docstring coverage (strict for public surface).
 # ---------------------------------------------------------------------------
 [tool.interrogate]
+# Run through tools/lints/docstring_coverage.py, which counts @with_doc(...) as a docstring.
 ignore-init-method = true
 # @overload stubs carry no body and must not duplicate the implementation's
 # docstring — only the implementation is documented.
@@ -840,14 +841,8 @@ ignore-nested-functions = true
 ignore-nested-classes = true
 fail-under = 80
 exclude = [
-  # Tool docstrings are applied at import time by @with_doc from
-  # app/templates/docstrings/, so the source has none for interrogate to see.
-  # Basename form on purpose: scripts/ci/changes.sh only honours segment or
-  # basename patterns when it scopes a PR scan.
-  "**/todo_tool.py",
-  "**/webpage_tool.py",
-  "**/integration_tool.py",
-  "**/memory_tools.py",
+  # Segment or basename form only: scripts/ci/changes.sh honours no other
+  # pattern when it scopes a PR scan.
   "**/tests",
   "**/tests/**",
   "**/conftest.py",
@@ -896,6 +891,8 @@ harness = [
   "promql-parser>=0.12.0",
   # Pinned in apps/api's dev group; the one workspace lock gives both the same.
   "pytest-rerunfailures",
+  # tools/lints/test_docstring_coverage.py runs the interrogate the lint group pins.
+  "interrogate==1.7.0",
 ]
 # The Python lint and audit tools CI, the hooks and mise run, at the one version
 # each: run them with `uv run --frozen --no-build --isolated --only-group lint`.
