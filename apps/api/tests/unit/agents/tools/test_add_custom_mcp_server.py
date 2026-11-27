@@ -13,7 +13,7 @@ import pytest
 
 from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.integration_tool import add_custom_mcp_server
-from app.constants.integrations import IntegrationStatus
+from app.constants.integrations import ConnectMode, IntegrationStatus
 from app.schemas.integrations.responses import CustomIntegrationConnectionResult
 from tests.helpers import captured_wide_event
 
@@ -215,7 +215,7 @@ async def test_duplicate_not_connected_shows_connect_card(seams):
     # is_connected is checked for this user + the existing id, and the card is
     # handed the existing integration's own id and name.
     seams.user_repo.is_connected.assert_awaited_once_with("u1", "int-dup")
-    seams.request_card.assert_awaited_once_with("int-dup", "Sentry", "u1")
+    seams.request_card.assert_awaited_once_with("int-dup", "Sentry", "u1", mode=ConnectMode.CONNECT)
     seams.mcp_client.probe_connection.assert_not_awaited()
 
 
