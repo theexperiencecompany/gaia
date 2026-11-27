@@ -483,6 +483,16 @@ async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> No
     assert turn.writing_style == {"summary": "terse"}
 
 
+async def test_the_executors_memory_recall_queries_the_todo_title_not_its_brief() -> None:
+    """Recalling on the 8-20k-char brief cost a median 5.2s per todo run start in prod."""
+    request = replace(REQUEST, task="Canvas (canvas.md):\n" + "notes " * 3000)
+    built = AsyncMock(return_value={"configurable": {"thread_id": "run-conv"}})
+    with patch.object(todo_run, "build_agent_config", built):
+        await _todo_run_configurable(request, "stream-1")
+
+    assert built.await_args.kwargs["turn"].user_request == "Watch the Acme thread"
+
+
 class TestARunThatFinishedHandsItsResultOn:
     """run_todo_on_executor past the wait: the run it spawned, the outcome it reads, what it hands on."""
 
