@@ -3,6 +3,10 @@
 Pure: the same payloads always fold to the same cards. A comms reply, finished work, a
 running work item on the screen and a replayed workflow playbook all fold through it, so a
 card looks the same live, settled and reloaded.
+
+A stored card keeps a bounded share of outputs and thinking (capped_outputs), or none past
+its retention (dropped_outputs). A thinking step left with no text is not kept, and a card
+left with nothing is removed.
 """
 
 from __future__ import annotations
@@ -113,7 +117,19 @@ def capped_outputs(cards: Iterable[ToolDataEntry]) -> tuple[ToolDataEntry, ...]:
     tool_result is its app's data and stays whole.
     """
     entry = _Budget(MAX_ENTRY_TEXT_CHARS)
-    return tuple(_capped_card(card, _Budget(MAX_CARD_TEXT_CHARS, entry)) for card in cards)
+    return _kept_cards(cards, lambda: _Budget(MAX_CARD_TEXT_CHARS, entry))
+
+
+def dropped_outputs(cards: Iterable[ToolDataEntry]) -> tuple[ToolDataEntry, ...]:
+    """Return cards with every tool output and all thinking dropped; a card left with nothing is removed."""
+    return _kept_cards(cards, lambda: _Budget(0))
+
+
+def _kept_cards(
+    cards: Iterable[ToolDataEntry], budget_of: Callable[[], _Budget]
+) -> tuple[ToolDataEntry, ...]:
+    kept = (_capped_card(card, budget_of()) for card in cards)
+    return tuple(card for card in kept if card is not None)
 
 
 @dataclass
@@ -134,16 +150,15 @@ class _Budget:
         return kept
 
 
-def _capped_card(card: ToolDataEntry, budget: _Budget) -> ToolDataEntry:
+def _capped_card(card: ToolDataEntry, budget: _Budget) -> ToolDataEntry | None:
+    """Return the card cut to the budget; None for a calls card the cut left with no step."""
     name, data = card["tool_name"], card["data"]
     if name == TOOL_CALLS_CARD:
-        calls = data if isinstance(data, list) else None
-        capped = (
-            _capped_call(data, budget)
-            if calls is None
-            else [_capped_call(call, budget) for call in calls]
-        )
-        return cast(ToolDataEntry, {**card, "data": capped})
+        if not isinstance(data, list):
+            call = _capped_call(data, budget)
+            return None if _is_empty_thinking(call) else cast(ToolDataEntry, {**card, "data": call})
+        capped = _capped_calls(data, budget)
+        return cast(ToolDataEntry, {**card, "data": capped}) if capped or not data else None
     if name == SUBAGENT_GROUP_TOOL_NAME and isinstance(data, dict):
         return cast(ToolDataEntry, {**card, "data": _capped_group(data, budget)})
     return card
@@ -152,12 +167,26 @@ def _capped_card(card: ToolDataEntry, budget: _Budget) -> ToolDataEntry:
 def _capped_group(group: _Group, budget: _Budget) -> _Group:
     return {
         **group,
-        "tool_calls": [_capped_call(call, budget) for call in _calls(group)],
+        "tool_calls": _capped_calls(_calls(group), budget),
         "nested_subagents": [
             _capped_group(nested, budget) if isinstance(nested, dict) else nested
             for nested in _nested(group)
         ],
     }
+
+
+def _capped_calls(calls: Sequence[object], budget: _Budget) -> list[object]:
+    """Cut each call to the budget, leaving out a thinking step with no thinking left."""
+    capped = (_capped_call(call, budget) for call in calls)
+    return [call for call in capped if not _is_empty_thinking(call)]
+
+
+def _is_empty_thinking(call: object) -> bool:
+    return (
+        isinstance(call, dict)
+        and call.get("tool_name") == REASONING_STEP
+        and call.get("reasoning") == ""
+    )
 
 
 def _capped_call(call: object, budget: _Budget) -> object:
