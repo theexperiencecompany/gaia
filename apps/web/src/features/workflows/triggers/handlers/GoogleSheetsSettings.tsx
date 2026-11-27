@@ -86,7 +86,7 @@ export function GoogleSheetsSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as GoogleSheetsConfig;
   const triggerData = config.trigger_data;
   const integrationId = "googlesheets";
@@ -188,12 +188,7 @@ export function GoogleSheetsSettings({
   };
 
   if (!isConnected) {
-    return integration ? (
-      <TriggerConnectionPrompt
-        integration={integration}
-        onConnect={() => connectIntegration(integration.id)}
-      />
-    ) : null;
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
   return (
     <TriggerSettingsCard>

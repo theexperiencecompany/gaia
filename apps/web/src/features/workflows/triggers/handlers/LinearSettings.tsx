@@ -40,7 +40,7 @@ export function LinearSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as LinearConfig;
   const triggerData = config.trigger_data;
   const integrationId = "linear";
@@ -75,12 +75,7 @@ export function LinearSettings({
   };
 
   if (!isConnected) {
-    return integration ? (
-      <TriggerConnectionPrompt
-        integration={integration}
-        onConnect={() => connectIntegration(integration.id)}
-      />
-    ) : null;
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
 
   return (

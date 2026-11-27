@@ -60,7 +60,7 @@ export function GitHubSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as GitHubConfig;
   const triggerData = config.trigger_data;
   const integrationId = "github";
@@ -122,12 +122,7 @@ export function GitHubSettings({
   };
 
   if (!isConnected) {
-    return integration ? (
-      <TriggerConnectionPrompt
-        integration={integration}
-        onConnect={() => connectIntegration(integration.id)}
-      />
-    ) : null;
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
 
   const currentSelectedKeys = triggerData?.repos || [];

@@ -33,7 +33,7 @@ export function SlackSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as SlackConfig;
   const triggerData = config.trigger_data;
 
@@ -70,12 +70,7 @@ export function SlackSettings({
   const selectedValues = triggerData?.channel_ids || [];
 
   if (!isConnected) {
-    return integration ? (
-      <TriggerConnectionPrompt
-        integration={integration}
-        onConnect={() => connectIntegration(integration.id)}
-      />
-    ) : null;
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
 
   // For channel_created, no config needed - just show a simple confirmation

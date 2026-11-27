@@ -10,8 +10,7 @@ export interface OptionItem {
 }
 
 export interface TriggerConnectionPromptProps {
-  integration: Pick<MyIntegrationItem, "id" | "name" | "iconUrl">;
-  onConnect: () => void;
+  integrationId: MyIntegrationItem["id"];
 }
 
 export interface TriggerTagInputProps {

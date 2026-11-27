@@ -33,7 +33,7 @@ export function AsanaSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as AsanaConfig;
   const triggerData = config.trigger_data;
   const integrationId = "asana";
@@ -55,12 +55,7 @@ export function AsanaSettings({
   };
 
   if (!isConnected) {
-    return integration ? (
-      <TriggerConnectionPrompt
-        integration={integration}
-        onConnect={() => connectIntegration(integration.id)}
-      />
-    ) : null;
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
 
   return (
