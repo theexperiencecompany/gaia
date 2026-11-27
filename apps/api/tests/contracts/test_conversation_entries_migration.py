@@ -1083,8 +1083,19 @@ async def test_the_contract_drops_every_array_the_log_holds_and_keeps_one_it_doe
         head = await _head(raw_collection, ref)
         assert not {"messages", "migrated_fingerprint", "messages_archived"} & head.keys()
     assert len((await _head(raw_collection, written_since))["messages"]) == 3
+    kept_marks = {
+        "conversation_id": written_since.conversation_id,
+        "migration_fields": {"$exists": True},
+    }
+    assert await entries_collection.count_documents(kept_marks) == len(
+        await _entries(entries_collection, written_since)
+    )
     assert await archive.count_documents({}) == 0
-    assert await entries_collection.count_documents({"migration_fields": {"$exists": True}}) == 0
+    dropped_marks = {
+        "conversation_id": {"$ne": written_since.conversation_id},
+        "migration_fields": {"$exists": True},
+    }
+    assert await entries_collection.count_documents(dropped_marks) == 0
     assert await _history(migrated) == shown
     out = capsys.readouterr().out
     assert "1 arrays the log does not match yet are kept" in out

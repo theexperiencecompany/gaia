@@ -49,6 +49,10 @@ DROPPABLE_HEADS: dict[str, object] = {
         {"messages": {"$exists": False}, ARCHIVED_FIELD: {"$exists": True}},
     ]
 }
+_HOLDS_OLD_SHAPE: list[dict[str, object]] = [
+    {"messages": {"$exists": True}},
+    {ARCHIVED_FIELD: {"$exists": True}},
+]
 _DROPPED_HEAD_FIELDS = {"messages": "", MIGRATED_FINGERPRINT_FIELD: "", ARCHIVED_FIELD: ""}
 _MARKED_ENTRIES: dict[str, object] = {MIGRATION_FIELDS_FIELD: {"$exists": True}}
 #: The old build's indexes on the embedded array; nothing queries them once the arrays are gone.
@@ -60,17 +64,20 @@ class EmbeddedArrayContract(ConversationEntriesMigration):
     """Drops what the entries migration left behind once the log holds it."""
 
     async def drop(self, *, apply: bool) -> None:
-        """Drop every array the log holds; a head with a recorded failure keeps its array and archive."""
+        """Drop every array the log holds; a head that keeps its array keeps its archive and its entries' migration_fields."""
         heads = self._raw_collection()
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         archive = self._sibling_collection(CONVERSATION_ARCHIVED_MESSAGES_COLLECTION)
         failed = await self.failed_heads()
         droppable = {**DROPPABLE_HEADS, "_id": {"$nin": [ObjectId(f.head_id) for f in failed]}}
-        marked = {
-            **_MARKED_ENTRIES,
-            "conversation_id": {"$nin": [f.conversation_id for f in failed]},
-        }
+        # A head keeping its array is re-migrated later, and that pass diffs against migration_fields.
+        keeping = {"$or": _HOLDS_OLD_SHAPE, "$nor": [droppable]}
         with store_errors("embedded array contract"):  # pragma: no mutate — error label only
+            kept = await heads.find(keeping, {"_id": 1, "conversation_id": 1}).to_list(None)
+            marked = {
+                **_MARKED_ENTRIES,
+                "conversation_id": {"$nin": [head["conversation_id"] for head in kept]},
+            }
             if not apply:
                 print(
                     f"  would drop the array of {await heads.count_documents(droppable)} "
@@ -79,15 +86,13 @@ class EmbeddedArrayContract(ConversationEntriesMigration):
                 )
                 return
             dropped = await heads.update_many(droppable, {"$unset": _DROPPED_HEAD_FIELDS})
-            still_archived = await heads.distinct("_id", {ARCHIVED_FIELD: {"$exists": True}})
-            kept = [str(head_id) for head_id in still_archived]
-            unarchived = await archive.delete_many({"head_id": {"$nin": kept}})
+            unarchived = await archive.delete_many(
+                {"head_id": {"$nin": [str(head["_id"]) for head in kept]}}
+            )
             unmarked = await entries.update_many(marked, {"$unset": {MIGRATION_FIELDS_FIELD: ""}})
             for name in LEGACY_ARRAY_INDEXES:
                 await self._drop_index(name)
-            left = await heads.count_documents(
-                {"$or": [{"messages": {"$exists": True}}, {ARCHIVED_FIELD: {"$exists": True}}]}
-            )
+            left = len(kept)
         if not (
             dropped.modified_count or unarchived.deleted_count or unmarked.modified_count or left
         ):
