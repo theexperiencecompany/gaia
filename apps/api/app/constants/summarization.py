@@ -22,6 +22,9 @@ COMPACTION_THRESHOLD = 0.40
 # (~4 chars/token, the same estimate this middleware uses for context usage.)
 # Also the most of an output a tool card keeps (conversation/tool_cards.py).
 MAX_OUTPUT_CHARS = 120000
+# What one stored tool card, and one log entry's cards together, keep of outputs and thinking.
+MAX_CARD_TEXT_CHARS = 4 * MAX_OUTPUT_CHARS
+MAX_ENTRY_TEXT_CHARS = 8 * MAX_OUTPUT_CHARS
 
 # Floor for the context-pressure trigger: over the compaction threshold, outputs
 # above this size compact even under MAX_OUTPUT_CHARS; below it, tiny outputs stay inline.
