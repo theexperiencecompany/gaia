@@ -10,18 +10,8 @@ import sys
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Initialize settings and providers
-# Create actual embedding instance and register it (not lazy)
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
-from app.config.settings import settings  # noqa: F401 -- settings init side effects
-
-# Import chromadb module so @lazy_provider decorators register all providers
-from app.db.chroma.chromadb import init_chromadb_constructor
-
-embedding_instance = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-
 from app.core.lazy_loader import providers
+from app.core.provider_registration import boot_process
 from app.services.gaia_knowledge_service import (
     KnowledgeItem,
     gaia_knowledge_service,
@@ -157,17 +147,9 @@ async def populate_knowledge(content_path: str | None = None, clear_first: bool 
     if not content_path:
         content_path = str(Path(__file__).parent.parent.parent.parent / "docs" / "GAIA.md")
 
-    # Eagerly initialize providers needed by the script
     print("⚙️  Initializing providers...")
-
-    # The @lazy_provider decorator returns a function that registers the provider.
-    # We must call it to actually register `chromadb_constructor`.
-    init_chromadb_constructor()
-
-    providers.register(
-        name="google_embeddings",
-        loader_func=lambda: embedding_instance,
-    )
+    boot_process("main_app")
+    # Build Chroma now so a broken connection fails before any content is read.
     await providers.aget("chromadb_constructor")
     print("✅ Providers initialized")
 

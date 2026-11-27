@@ -21,7 +21,7 @@ async def _run(provision: AsyncMock, *, dry_run: bool) -> BackfillResult:
             AsyncMock(return_value=["u1", "u2", "u3"]),
         ),
         patch(f"{MODULE}.provision_inbox_desk", provision),
-        patch(f"{MODULE}.register_lazy_providers", MagicMock()),
+        patch(f"{MODULE}.boot_process", MagicMock()),
     ):
         result = await run_backfill(dry_run=dry_run)
     gmail.assert_awaited_once_with("gmail")
@@ -62,7 +62,7 @@ async def test_each_desk_is_opened_with_the_app_booted_and_an_analytics_context_
         ),
         patch(f"{MODULE}.subscription_repository.active_user_ids", AsyncMock(return_value=["u1"])),
         patch(f"{MODULE}.provision_inbox_desk", provision),
-        patch(f"{MODULE}.register_lazy_providers", register),
+        patch(f"{MODULE}.boot_process", register),
     ):
         result = await run_backfill(dry_run=False)
 

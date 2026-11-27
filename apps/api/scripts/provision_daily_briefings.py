@@ -12,7 +12,7 @@ Run: uv run python -m scripts.provision_daily_briefings [--apply]
 import asyncio
 from collections import Counter
 
-from app.core.provider_registration import register_lazy_providers
+from app.core.provider_registration import boot_process
 from app.db.repositories.users import user_repository
 from app.services.briefing.rollout import provision_existing_user
 from app.services.workflow.scheduler import workflow_scheduler
@@ -31,8 +31,8 @@ async def rollout(apply: bool) -> Counter[str]:
         print("Re-run with --apply to provision them.")
         return paths
 
-    # No app lifespan here: register the providers capture() and provisioning read.
-    register_lazy_providers("main_app")
+    # No app lifespan here: capture this loop and register the providers capture() and provisioning read.
+    boot_process("main_app")
     # Nor a job queue: without one every workflow is stored but its schedule is never armed.
     await workflow_scheduler.initialize()
     try:
