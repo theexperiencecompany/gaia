@@ -25,12 +25,11 @@ from app.models.brief_payload_models import BriefingMood
 from app.models.todo_models import TodoDocument
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
-from app.services.briefing import wind_down
+from app.services.briefing import lookback, wind_down
 from app.services.briefing.lookback import (
     Lookback,
     compute_winback_state,
     format_lookback_block,
-    last_brief_made,
     lookback_since,
 )
 from app.services.briefing.work import read_work
@@ -313,11 +312,11 @@ async def test_the_last_brief_made_is_the_newest_of_any_kind(
     read = AsyncMock(return_value=weekly)
     monkeypatch.setattr(briefing_repository, "get_before_date", read)
 
-    assert await last_brief_made(USER_ID, CLOCK) == weekly.created_at
+    assert await lookback.last_brief_made(USER_ID, CLOCK) == weekly.created_at
     read.assert_awaited_once_with(USER_ID, kind=None, before_date=CLOCK.date_str)
 
 
 async def test_before_any_brief_there_is_no_last_brief(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(briefing_repository, "get_before_date", AsyncMock(return_value=None))
 
-    assert await last_brief_made(USER_ID, CLOCK) is None
+    assert await lookback.last_brief_made(USER_ID, CLOCK) is None
