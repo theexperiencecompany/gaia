@@ -2,24 +2,16 @@
 
 import { Tooltip } from "@heroui/react";
 import { GlobalIcon } from "@icons";
+import type { URLResponse } from "@shared/api/generated";
 import Image from "next/image";
 import { memo, useRef, useState } from "react";
 import tinycolor from "tinycolor2";
 import { toneVariants } from "@/components/shared/tone";
 import { type Tool, toolFaviconUrl } from "@/data/tools";
 
-interface ToolMetadata {
-  title: string | null;
-  description: string | null;
-  favicon: string | null;
-  website_name: string | null;
-  website_image: string | null;
-  url: string;
-}
-
 interface ToolCardProps {
   tool: Tool;
-  metadata?: ToolMetadata;
+  metadata?: URLResponse;
 }
 
 const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {

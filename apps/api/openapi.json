@@ -2233,7 +2233,8 @@
         "required": [
           "authenticated",
           "platform",
-          "platform_user_id"
+          "platform_user_id",
+          "user_id"
         ],
         "title": "BotAuthStatusResponse",
         "type": "object"
@@ -2526,7 +2527,11 @@
           }
         },
         "required": [
-          "authenticated"
+          "authenticated",
+          "user_name",
+          "account_created_at",
+          "profile_image_url",
+          "connected_integrations"
         ],
         "title": "BotSettingsResponse",
         "type": "object"
@@ -11135,6 +11140,7 @@
         },
         "required": [
           "name",
+          "logo_url",
           "status"
         ],
         "title": "IntegrationInfo",
@@ -18743,7 +18749,8 @@
         },
         "required": [
           "linked",
-          "delivered"
+          "delivered",
+          "first_contact"
         ],
         "title": "RedeemLinkCodeResponse",
         "type": "object"
@@ -23559,7 +23566,9 @@
         },
         "required": [
           "status",
-          "message"
+          "message",
+          "todo_id",
+          "workflow"
         ],
         "title": "TodoWorkflowGenerationResponse",
         "type": "object"
@@ -23615,7 +23624,8 @@
           "todo_id",
           "has_workflow",
           "is_generating",
-          "workflow_status"
+          "workflow_status",
+          "workflow"
         ],
         "title": "TodoWorkflowStatusResponse",
         "type": "object"
@@ -25371,6 +25381,12 @@
           "tier": {
             "anyOf": [
               {
+                "enum": [
+                  "bronze",
+                  "silver",
+                  "gold",
+                  "diamond"
+                ],
                 "type": "string"
               },
               {

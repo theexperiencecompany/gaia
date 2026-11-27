@@ -862,7 +862,7 @@ describe("TelegramAdapter - registerCommands command routing", () => {
     );
     const redeemLinkCode = vi
       .fn()
-      .mockResolvedValue({ linked: true, delivered: true, firstContact: [] });
+      .mockResolvedValue({ linked: true, delivered: true, first_contact: [] });
     (adapter as unknown as { gaia: unknown }).gaia = {
       redeemLinkCode,
       getFrontendUrl: () => "https://gaia.test",

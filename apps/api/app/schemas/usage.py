@@ -1,9 +1,9 @@
 """Response schemas for the usage endpoints.
 
-The wire contract these describe is mirrored in TypeScript at
-``libs/shared/ts/src/types/usage.ts`` (``UsageSummary`` and friends) — change
-both together.
+Clients read these through the generated OpenAPI types (``mise api:types``).
 """
+
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -70,6 +70,10 @@ class ActivityDay(ResponseModel):
     reasoning_tokens: int
 
 
+# Activity badge tiers, weakest to strongest.
+BadgeTier = Literal["bronze", "silver", "gold", "diamond"]
+
+
 class UsageActivityResponse(ResponseModel):
     """Year activity grid + the user's standing, from the daily rollups."""
 
@@ -78,7 +82,7 @@ class UsageActivityResponse(ResponseModel):
     total_tokens: int
     streak: int
     percentile: float | None = None
-    tier: str | None = None
+    tier: BadgeTier | None = None
 
 
 class UsageSummary(ResponseModel):

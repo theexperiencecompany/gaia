@@ -12,6 +12,7 @@
  * matching.
  */
 
+import type { RedeemLinkCodeResponse } from "../api/generated";
 import { LINKED_ACCOUNTS_SETTINGS_PATH } from "../constants/routes";
 import type { GaiaClient } from "./api";
 import { GaiaApiError } from "./api";
@@ -20,7 +21,7 @@ import type {
   LinkCodeFailure,
   ParsedLinkCode,
 } from "./link-codes.types";
-import type { MessageTarget, PlatformName, RedeemedLinkCode } from "./types";
+import type { MessageTarget, PlatformName } from "./types";
 import { recordBotFailure } from "./utils/failure-reasons";
 import { hashLogIdentifier } from "./utils/logger";
 import { wideLog, withWideEvent } from "./utils/wide-events";
@@ -181,7 +182,7 @@ export async function redeemLinkCode(
       user_hash: hashLogIdentifier(platformUserId),
     },
     async () => {
-      let redeemed: RedeemedLinkCode;
+      let redeemed: RedeemLinkCodeResponse;
       try {
         redeemed = await gaia.redeemLinkCode(
           platform,
@@ -205,7 +206,7 @@ export async function redeemLinkCode(
       // are sent from here or not at all — and the one message a new user is
       // guaranteed to read is the whole point of the link.
       if (!redeemed.delivered) {
-        await sendFirstContact(target, redeemed.firstContact);
+        await sendFirstContact(target, redeemed.first_contact);
       }
       return true;
     },

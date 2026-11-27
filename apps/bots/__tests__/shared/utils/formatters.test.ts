@@ -1,4 +1,4 @@
-import type { Conversation } from "@gaia/shared";
+import type { ConversationSummary } from "@gaia/shared/api/generated";
 import {
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
@@ -141,29 +141,19 @@ describe("formatTodoList", () => {
 // formatConversation
 // ---------------------------------------------------------------------------
 describe("formatConversation", () => {
-  const base: Conversation = {
-    conversation_id: "c-1",
+  const base: Pick<ConversationSummary, "description" | "url"> = {
     url: "https://app.gaia.com/c/c-1",
-    created_at: "2026-01-01",
-    updated_at: "2026-01-02",
-    title: "Chat about cats",
-    message_count: 5,
+    description: "Chat about cats",
   };
-  it("includes title, URL, and message count", () => {
+  it("includes the description as the title and the URL", () => {
     const result = formatConversation(base);
     expect(result).toContain("**Chat about cats**");
     expect(result).toContain("https://app.gaia.com/c/c-1");
-    expect(result).toContain("(5 messages)");
   });
 
-  it('shows "Untitled Conversation" when title is missing', () => {
-    const result = formatConversation({ ...base, title: undefined });
+  it('shows "Untitled Conversation" when the description is missing', () => {
+    const result = formatConversation({ ...base, description: null });
     expect(result).toContain("Untitled Conversation");
-  });
-
-  it("omits message count parenthetical when missing", () => {
-    const result = formatConversation({ ...base, message_count: undefined });
-    expect(result).not.toContain("messages");
   });
 });
 
@@ -177,21 +167,9 @@ describe("formatConversationList", () => {
   });
 
   it("joins multiple conversations with double newlines", () => {
-    const conversations: Conversation[] = [
-      {
-        conversation_id: "1",
-        url: "https://app.gaia.com/c/1",
-        title: "A",
-        created_at: "2026-01-01",
-        updated_at: "2026-01-01",
-      },
-      {
-        conversation_id: "2",
-        url: "https://app.gaia.com/c/2",
-        title: "B",
-        created_at: "2026-01-01",
-        updated_at: "2026-01-01",
-      },
+    const conversations: Pick<ConversationSummary, "description" | "url">[] = [
+      { url: "https://app.gaia.com/c/1", description: "A" },
+      { url: "https://app.gaia.com/c/2", description: "B" },
     ];
     const result = formatConversationList(conversations);
     expect(result).toContain("**A**");

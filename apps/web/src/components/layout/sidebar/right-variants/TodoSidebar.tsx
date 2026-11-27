@@ -116,12 +116,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           {/* Editable Fields */}
           <div className="py-2">
             <TodoFieldsRow
-              priority={todo.priority}
-              projectId={todo.project_id ?? undefined}
+              todo={todo}
               projects={projects}
-              dueDate={todo.due_date ?? undefined}
-              dueDateTimezone={todo.due_date_timezone ?? undefined}
-              labels={todo.labels}
               onPriorityChange={(priority: Priority) =>
                 handleFieldChange("priority", priority)
               }

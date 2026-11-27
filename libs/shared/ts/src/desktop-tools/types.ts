@@ -7,6 +7,8 @@
  * POSTs the result back to `/api/v1/desktop/tool-result`.
  */
 
+import type { DesktopToolResultRequest } from "../api/generated";
+
 export const DESKTOP_TOOL_NAMES = [
   "screenshot",
   "read_clipboard",
@@ -30,12 +32,7 @@ export interface DesktopToolRequest {
   timeout_ms: number;
 }
 
-export interface DesktopToolResult {
-  request_id: string;
-  ok: boolean;
-  data: Record<string, unknown> | null;
-  error: string | null;
-}
+export type DesktopToolResult = DesktopToolResultRequest;
 
 /** Payload of a successful `screenshot` action. */
 export interface DesktopScreenshotData {

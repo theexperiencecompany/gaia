@@ -26,7 +26,7 @@ const FIRST_MESSAGE =
 const FRONTEND_URL = "https://gaia.test";
 /** The API delivered GAIA's first contact itself, so the bot owes nothing. */
 const okRedeem = () =>
-  vi.fn(async () => ({ linked: true, delivered: true, firstContact: [] }));
+  vi.fn(async () => ({ linked: true, delivered: true, first_contact: [] }));
 /** The bubbles the API hands back when the outbound publish did not take them. */
 const FIRST_CONTACT = [
   "Hey Aryan, I'm with you on Telegram now.",
@@ -133,7 +133,7 @@ describe("redeemLinkCode", () => {
     const redeem = vi.fn(async () => ({
       linked: true,
       delivered: false,
-      firstContact: FIRST_CONTACT,
+      first_contact: FIRST_CONTACT,
     }));
     const target = fakeTarget();
 
@@ -153,7 +153,7 @@ describe("redeemLinkCode", () => {
     const redeem = vi.fn(async () => ({
       linked: true,
       delivered: false,
-      firstContact: FIRST_CONTACT,
+      first_contact: FIRST_CONTACT,
     }));
     const target = fakeTarget();
     const blocked = Object.assign(

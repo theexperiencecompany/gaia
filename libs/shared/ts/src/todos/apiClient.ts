@@ -1,4 +1,8 @@
-import type { TodoConversationResponse } from "../api/generated";
+import type {
+  TodoConversationResponse,
+  TodoWorkflowGenerationResponse,
+  TodoWorkflowStatusResponse,
+} from "../api/generated";
 import type {
   BulkMoveRequest,
   Priority,
@@ -12,24 +16,7 @@ import type {
   TodoFilters,
   TodoLabel,
   TodoUpdate,
-  WorkflowStatus,
 } from "../types/todo";
-import type { Workflow } from "../types/workflow";
-
-export interface WorkflowGenerateResult {
-  status: "generating" | "exists";
-  workflow?: Workflow;
-  todo_id?: string;
-  message: string;
-}
-
-export interface WorkflowStatusResult {
-  todo_id: string;
-  has_workflow: boolean;
-  is_generating: boolean;
-  workflow_status: WorkflowStatus;
-  workflow: Workflow | null;
-}
 
 export interface SemanticSearchOptions {
   limit?: number;
@@ -95,8 +82,8 @@ export interface TodoApiClient {
   deleteProject: (projectId: string) => Promise<void>;
 
   // Workflow
-  generateWorkflow: (todoId: string) => Promise<WorkflowGenerateResult>;
-  getWorkflowStatus: (todoId: string) => Promise<WorkflowStatusResult>;
+  generateWorkflow: (todoId: string) => Promise<TodoWorkflowGenerationResponse>;
+  getWorkflowStatus: (todoId: string) => Promise<TodoWorkflowStatusResponse>;
 
   /** A tracked todo's own chat, where its runs execute — created on first open, never listed. */
   openTodoConversation: (todoId: string) => Promise<TodoConversationResponse>;

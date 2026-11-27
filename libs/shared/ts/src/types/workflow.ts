@@ -1,4 +1,6 @@
 import type {
+  PublicWorkflowCard,
+  WorkflowCreator,
   WorkflowStepOutput,
   WorkflowWithIntegrations,
 } from "../api/generated";
@@ -22,24 +24,10 @@ export interface WorkflowMetadata {
   average_execution_time?: number;
 }
 
-export interface ContentCreator {
-  id: string;
-  name: string;
-  avatar?: string;
-}
+export type ContentCreator = WorkflowCreator;
 
 export type WorkflowStep = WorkflowStepOutput;
 
 export type Workflow = WorkflowWithIntegrations;
 
-export interface CommunityWorkflow {
-  id: string;
-  title: string;
-  description: string;
-  prompt?: string;
-  steps: Omit<WorkflowStep, "id">[];
-  created_at: string;
-  creator: ContentCreator;
-  categories?: string[];
-  total_executions?: number;
-}
+export type CommunityWorkflow = PublicWorkflowCard;

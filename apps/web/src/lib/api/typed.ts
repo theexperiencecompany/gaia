@@ -296,6 +296,13 @@ export type RequestOrigin = Pick<ApiOptions, "background">;
 /** The response type of `METHOD path`, for callers that store or pass one on. */
 export type ApiResponse<M extends Method, P extends PathsWith<M>> = Data<P, M>;
 
+/** The query parameters of `METHOD path`, for an API function that forwards them. */
+export type ApiQuery<M extends Method, P extends PathsWith<M>> = NonNullable<
+  NonNullable<paths[P][M]> extends { parameters: { query?: infer Q } }
+    ? Q
+    : never
+>;
+
 /**
  * The request body type of `METHOD path` — whichever media type the route
  * declares, read straight off the schema rather than through the call init,

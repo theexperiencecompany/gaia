@@ -61,8 +61,8 @@ export const settingsCommand: BotCommand = {
       const frontendUrl = gaia.getFrontendUrl();
 
       let accountAge = "Unknown";
-      if (settings.accountCreatedAt) {
-        const createdDate = new Date(settings.accountCreatedAt);
+      if (settings.account_created_at) {
+        const createdDate = new Date(settings.account_created_at);
         accountAge = createdDate.toLocaleDateString("en-US", {
           year: "numeric",
           month: "long",
@@ -71,8 +71,8 @@ export const settingsCommand: BotCommand = {
       }
 
       let integrationsText = "None connected";
-      if (settings.connectedIntegrations.length > 0) {
-        integrationsText = settings.connectedIntegrations
+      if (settings.connected_integrations.length > 0) {
+        integrationsText = settings.connected_integrations
           .map((i) => {
             const statusDot = i.status === "connected" ? "🟢" : "🟠";
             return `${statusDot} ${i.name}`;
@@ -81,7 +81,7 @@ export const settingsCommand: BotCommand = {
       }
 
       const profileImageUrl = toAbsoluteUrl(
-        settings.profileImageUrl,
+        settings.profile_image_url,
         frontendUrl,
       );
 
@@ -93,7 +93,7 @@ export const settingsCommand: BotCommand = {
           {
             name: "Account",
             value: [
-              `**Name:** ${settings.userName || "Not set"}`,
+              `**Name:** ${settings.user_name || "Not set"}`,
               `**Member since:** ${accountAge}`,
             ].join("\n"),
           },
@@ -106,7 +106,7 @@ export const settingsCommand: BotCommand = {
         timestamp: true,
         thumbnailUrl: profileImageUrl ?? undefined,
         authorName: profileImageUrl
-          ? settings.userName || "GAIA User"
+          ? settings.user_name || "GAIA User"
           : undefined,
         authorIconUrl: profileImageUrl ?? undefined,
       };

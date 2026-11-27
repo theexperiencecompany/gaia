@@ -10,10 +10,11 @@
  */
 import { slackifyMarkdown } from "slackify-markdown";
 import type {
+  ConversationSummary,
   TodoResponse,
   WorkflowWithIntegrations,
 } from "../../api/generated";
-import type { BotConversation, PlatformName } from "../types";
+import type { PlatformName } from "../types";
 import {
   BOT_FAILURE_REASON,
   type BotFailureReason,
@@ -71,21 +72,18 @@ export function formatTodoList(todos: TodoResponse[]): string {
 /**
  * Formats a conversation for display.
  */
-export function formatConversation(conversation: BotConversation): string {
-  const title = conversation.title || "Untitled Conversation";
-  const { url } = conversation;
-  const messageCount = conversation.message_count
-    ? ` (${conversation.message_count} messages)`
-    : "";
-
-  return `💬 **${title}**${messageCount}\n🔗 ${url}`;
+export function formatConversation(
+  conversation: Pick<ConversationSummary, "description" | "url">,
+): string {
+  const title = conversation.description || "Untitled Conversation";
+  return `💬 **${title}**\n🔗 ${conversation.url}`;
 }
 
 /**
  * Formats a list of conversations for display.
  */
 export function formatConversationList(
-  conversations: BotConversation[],
+  conversations: Pick<ConversationSummary, "description" | "url">[],
 ): string {
   if (conversations.length === 0) {
     return "No conversations found.";

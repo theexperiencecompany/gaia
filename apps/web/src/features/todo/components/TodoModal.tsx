@@ -414,12 +414,8 @@ export default function TodoModal({
 
                 {/* Fields Row with Chips */}
                 <TodoFieldsRow
-                  priority={formData.priority ?? Priority.NONE}
-                  projectId={formData.project_id ?? undefined}
+                  todo={formData}
                   projects={projects}
-                  dueDate={formData.due_date ?? undefined}
-                  dueDateTimezone={formData.due_date_timezone ?? undefined}
-                  labels={formData.labels ?? []}
                   onPriorityChange={(priority) =>
                     updateField("priority", priority)
                   }

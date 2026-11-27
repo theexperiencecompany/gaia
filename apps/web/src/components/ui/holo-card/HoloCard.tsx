@@ -86,32 +86,15 @@ function HoloCardFace({
       {back ? (
         <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
           <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
-            <BackCardContent
-              name={data.name}
-              personalityPhrase={data.personality_phrase}
-              userBio={data.user_bio}
-              accountNumber={data.account_number}
-              memberSince={data.member_since}
-              isStatic={staticMode}
-            />
+            <BackCardContent card={data} isStatic={staticMode} />
           </div>
 
-          <BackCardFooter
-            accountNumber={data.account_number}
-            memberSince={data.member_since}
-            isStatic={staticMode}
-          />
+          <BackCardFooter card={data} isStatic={staticMode} />
         </div>
       ) : (
         <div className={CARD_CLASSES.CONTENT_WRAPPER}>
           <LogoHeader variant="front" />
-          <FrontCardContent
-            name={data.name}
-            personalityPhrase={data.personality_phrase}
-            accountNumber={data.account_number}
-            memberSince={data.member_since}
-            isStatic={staticMode}
-          />
+          <FrontCardContent card={data} isStatic={staticMode} />
         </div>
       )}
 
