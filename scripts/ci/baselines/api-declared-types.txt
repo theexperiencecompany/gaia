@@ -54,10 +54,8 @@ apps/mobile/src/features/tools/api/tools-api.ts:ToolsResponse
 apps/mobile/src/features/workflows/api/workflow-api.ts:ListCommunityParams
 apps/mobile/src/features/workflows/api/workflow-api.ts:ListExecutionsParams
 apps/mobile/src/features/workflows/api/workflow-api.ts:ListWorkflowsParams
-apps/web/src/features/integrations/api/integrationsApi.ts:AddIntegrationOutcome
 apps/web/src/features/memory/api/memoryApi.ts:ListMemoriesParams
 apps/web/src/features/notification/api/notificationCache.ts:Page
-apps/web/src/features/skills/api/types.ts:DiscoveredSkill
 apps/web/src/features/workflows/api/workflowApi.ts:TriggerOptionsQuery
 apps/web/src/types/api/aboutApiTypes.ts:AboutData
 apps/web/src/types/api/aboutApiTypes.ts:Author

@@ -1,6 +1,7 @@
 "use client";
 
 import { Skeleton } from "@heroui/react";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -14,7 +15,6 @@ import { IntegrationIcon } from "@/features/integrations/components/IntegrationI
 import { IntegrationInstructionsModal } from "@/features/integrations/components/IntegrationInstructionsModal";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
-import type { Integration } from "@/features/integrations/types";
 import { instructionsPreview } from "@/features/integrations/utils/instructionsPreview";
 import { GlobalInstructionsEditor } from "@/features/settings/components/GlobalInstructionsEditor";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
@@ -22,7 +22,7 @@ import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 
 interface InstructionsModalHostProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -73,13 +73,13 @@ export function IntegrationInstructionsSettings() {
     ),
   });
 
-  const [selected, setSelected] = useState<Integration | null>(null);
+  const [selected, setSelected] = useState<MyIntegrationItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const isLoading =
     integrationsLoading || instructionQueries.some((query) => query.isLoading);
 
-  const openModal = (integration: Integration) => {
+  const openModal = (integration: MyIntegrationItem) => {
     setSelected(integration);
     setIsModalOpen(true);
   };

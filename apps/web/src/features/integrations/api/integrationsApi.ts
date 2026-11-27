@@ -1,20 +1,13 @@
-import type {
-  AddIntegrationResponse,
-  UpdateIntegrationAccountRequest,
-} from "@shared/api/generated";
+import type { UpdateIntegrationAccountRequest } from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 
 import type {
+  AddIntegrationOutcome,
   CommunityIntegration,
   CreateCustomIntegrationRequest,
   IntegrationConnectOptions,
 } from "../types";
-
-/** `addIntegration`'s result: the API's answer plus the two client-side states. */
-export type AddIntegrationOutcome = Omit<AddIntegrationResponse, "status"> & {
-  status: AddIntegrationResponse["status"] | "redirecting" | "bearer_required";
-};
 
 export const integrationsApi = {
   /**

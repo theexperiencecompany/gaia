@@ -1,3 +1,4 @@
+import type { MyIntegrationItem } from "@shared/api/generated";
 import {
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
@@ -9,7 +10,6 @@ import {
   getUniqueCategories,
   sortCategories,
 } from "../constants/categories";
-import type { Integration } from "../types";
 import { useIntegrationSearch } from "./useIntegrationSearch";
 import { useIntegrations } from "./useIntegrations";
 
@@ -75,7 +75,7 @@ export function useIntegrationsList({
   // Group ALL integrations by category, sorted: connected first, then alphabetically
   // When a search query is active, preserve Fuse.js relevance order instead of sorting alphabetically
   const integrationsByCategory = useMemo(() => {
-    const grouped: Record<string, Integration[]> = {};
+    const grouped: Record<string, MyIntegrationItem[]> = {};
 
     for (const category of availableCategories) {
       const items = filteredIntegrations.filter((i) => i.category === category);

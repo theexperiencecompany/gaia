@@ -1,13 +1,13 @@
 "use client";
 
+import type { MyIntegrationItem } from "@shared/api/generated";
 import Fuse from "fuse.js";
 import { useMemo } from "react";
 
 import { ALL_CATEGORIES } from "../constants/categories";
-import type { Integration } from "../types";
 
 export function useIntegrationSearch(
-  integrations: Integration[],
+  integrations: MyIntegrationItem[],
   searchQuery: string,
   selectedCategory: string,
 ) {

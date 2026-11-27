@@ -2,16 +2,16 @@
 
 import { Skeleton } from "@heroui/react";
 import { NoteEditIcon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { useInstructions } from "@/features/instructions";
-import type { Integration } from "@/features/integrations/types";
 import { instructionsPreview } from "@/features/integrations/utils/instructionsPreview";
 
 import { IntegrationInstructionsModal } from "./IntegrationInstructionsModal";
 
 interface IntegrationInstructionsEditorProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   toolNames: string[];
 }
 

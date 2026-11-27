@@ -1,5 +1,6 @@
 import { Chip } from "@heroui/react";
 import { RedoIcon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import {
   CONNECT_ACTION_LABEL,
   formatRelativeTime,
@@ -9,10 +10,9 @@ import type React from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
-import type { Integration } from "../types";
 
 const IntegrationRow: React.FC<{
-  integration: Integration;
+  integration: MyIntegrationItem;
   onConnect: (id: string) => void;
   onClick: (id: string) => void;
 }> = ({ integration, onConnect, onClick }) => {
@@ -95,7 +95,7 @@ const IntegrationRow: React.FC<{
 
 interface IntegrationSectionProps {
   title: string;
-  integrations: Integration[];
+  integrations: MyIntegrationItem[];
   chipColor?: "primary" | "default";
   onConnect: (id: string) => void;
   onIntegrationClick?: (id: string) => void;

@@ -7,7 +7,7 @@ import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
-import type { DiscoveredSkill, SkillTarget } from "../api/types";
+import type { DiscoveredSkillInfo, SkillTarget } from "../api/types";
 import { EXECUTOR_TARGET, GITHUB_REPO_PATTERN } from "../constants";
 import { SkillTargetSelect } from "./SkillTargetSelect";
 
@@ -25,7 +25,9 @@ export function SkillImportForm({
   const [target, setTarget] = useState(EXECUTOR_TARGET);
   const [repoUrl, setRepoUrl] = useState("");
   const [discovering, setDiscovering] = useState(false);
-  const [discovered, setDiscovered] = useState<DiscoveredSkill[] | null>(null);
+  const [discovered, setDiscovered] = useState<DiscoveredSkillInfo[] | null>(
+    null,
+  );
   const [discoverError, setDiscoverError] = useState(false);
   const [installingPath, setInstallingPath] = useState<string | null>(null);
   const [installingAll, setInstallingAll] = useState(false);
@@ -60,7 +62,7 @@ export function SkillImportForm({
     }
   };
 
-  const handleInstall = async (skill: DiscoveredSkill) => {
+  const handleInstall = async (skill: DiscoveredSkillInfo) => {
     if (installBusy) return;
     setInstallingPath(skill.path);
     try {

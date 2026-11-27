@@ -1,4 +1,5 @@
 import { Chip } from "@heroui/react";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -9,14 +10,11 @@ import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKe
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
-import type {
-  Integration,
-  SuggestedIntegration,
-} from "@/features/integrations/types";
+import type { SuggestedIntegration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 
 interface IntegrationRowProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   onConnect: (integrationId: string) => Promise<unknown>;
 }
 
