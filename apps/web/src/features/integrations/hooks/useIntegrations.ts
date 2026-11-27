@@ -11,6 +11,7 @@ import { integrationsApi } from "../api/integrationsApi";
 import { integrationQueries } from "../api/queries";
 import { integrationKeys, invalidateIntegrationCaches } from "../api/queryKeys";
 import type {
+  ConnectIntegrationOutcome,
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   IntegrationConnectOptions,
@@ -54,7 +55,7 @@ export interface UseIntegrationsReturn {
   connectIntegration: (
     integrationId: string,
     options?: IntegrationConnectOptions,
-  ) => Promise<{ status: string; toolsCount?: number }>;
+  ) => Promise<ConnectIntegrationOutcome>;
   disconnectIntegration: (integrationId: string) => Promise<void>;
   createCustomIntegration: (
     request: CreateCustomIntegrationRequest,
@@ -123,7 +124,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     async (
       integrationId: string,
       options?: IntegrationConnectOptions,
-    ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
+    ): Promise<ConnectIntegrationOutcome> => {
       const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );

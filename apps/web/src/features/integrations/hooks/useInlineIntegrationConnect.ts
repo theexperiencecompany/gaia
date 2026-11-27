@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import type { ConnectIntegrationOutcome } from "@/features/integrations/types";
 
 type ConnectPhase = "idle" | "connecting" | "connected" | "failed";
 
@@ -19,7 +20,8 @@ export function useInlineIntegrationConnect(
   const { connectIntegration } = useIntegrations();
   const [phase, setPhase] = useState<ConnectPhase>("idle");
   const [token, setToken] = useState("");
-  const [toolsCount, setToolsCount] = useState<number | undefined>();
+  const [toolsCount, setToolsCount] =
+    useState<ConnectIntegrationOutcome["toolsCount"]>(null);
   const [error, setError] = useState<string | undefined>();
 
   const connect = useCallback(

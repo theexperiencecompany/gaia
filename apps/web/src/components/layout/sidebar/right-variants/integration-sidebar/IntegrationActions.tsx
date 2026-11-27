@@ -12,6 +12,7 @@ import { BearerTokenModal } from "@/features/integrations/components/BearerToken
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
+import type { ConnectIntegrationOutcome } from "@/features/integrations/types";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 import { ConnectedActions } from "./ConnectedActions";
@@ -144,9 +145,7 @@ function getDisconnectIcon(isCustom: boolean) {
 interface IntegrationActionsProps {
   integration: MyIntegrationItem;
   isConnected: boolean;
-  onConnect: (
-    integrationId: string,
-  ) => Promise<{ status: string; toolsCount?: number }>;
+  onConnect: (integrationId: string) => Promise<ConnectIntegrationOutcome>;
   onDisconnect?: (integrationId: string) => void;
   onDelete?: (integrationId: string) => Promise<void>;
   onPublish?: (integrationId: string) => Promise<void>;

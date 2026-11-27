@@ -5,6 +5,7 @@ import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import type {
   AddIntegrationOutcome,
   CommunityIntegration,
+  ConnectIntegrationOutcome,
   CreateCustomIntegrationRequest,
   IntegrationConnectOptions,
 } from "../types";
@@ -45,9 +46,17 @@ export const integrationsApi = {
   connectIntegration: async (
     integrationId: string,
     { bearerToken, accountId }: IntegrationConnectOptions = {},
-  ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
+  ): Promise<ConnectIntegrationOutcome> => {
     if (typeof window === "undefined")
-      return { status: "error", name: "Unknown" };
+      return {
+        status: "error",
+        integrationId,
+        name: "Unknown",
+        message: null,
+        redirectUrl: null,
+        toolsCount: null,
+        error: null,
+      };
 
     const url = new URL(window.location.href);
     url.searchParams.delete("integration");
@@ -73,18 +82,14 @@ export const integrationsApi = {
         throw new Error("Invalid redirect URL received from server");
       }
       window.location.href = safeUrl;
-      return { status: "redirecting", name: response.name };
+      return { ...response, status: "redirecting" };
     }
 
     if (response.status === "error") {
       throw new Error(response.error || "Failed to connect integration");
     }
 
-    return {
-      status: response.status,
-      name: response.name,
-      toolsCount: response.toolsCount ?? undefined,
-    };
+    return response;
   },
 
   /**

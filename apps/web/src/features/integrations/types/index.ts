@@ -7,6 +7,7 @@ import type {
   AddIntegrationResponse,
   CommunityIntegrationItem,
   CommunityListResponse,
+  ConnectIntegrationResponse,
   PublicIntegrationDetailResponse,
 } from "@shared/api/generated";
 
@@ -23,6 +24,14 @@ export type {
 /** `addIntegration`'s result: the API's answer plus the two client-side states. */
 export type AddIntegrationOutcome = Omit<AddIntegrationResponse, "status"> & {
   status: AddIntegrationResponse["status"] | "redirecting" | "bearer_required";
+};
+
+/** `connectIntegration`'s result: the API's answer plus the client-side redirect. */
+export type ConnectIntegrationOutcome = Omit<
+  ConnectIntegrationResponse,
+  "status"
+> & {
+  status: ConnectIntegrationResponse["status"] | "redirecting";
 };
 
 /**
