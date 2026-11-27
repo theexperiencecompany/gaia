@@ -532,7 +532,7 @@ class TestTheConversationGrowsAppendOnly:
         self._assert_append_only(requests)
 
     async def test_a_turn_that_called_a_tool_still_begins_with_its_own_history(self) -> None:
-        """filter_messages_node rebuilds an AI message's tool_calls on every later call (filter_messages.py) — the rebuild must be stable, same message in, same bytes out."""
+        """The provider transcript re-lays each tool call and its result on every later call — the rebuild must be stable, same message in, same bytes out."""
         async with comms_graph(
             [call("call_executor", {"task": "do it"}, call_id="x1"), "done", "second reply"]
         ) as graph:

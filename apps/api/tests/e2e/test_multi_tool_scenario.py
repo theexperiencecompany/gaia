@@ -3,8 +3,7 @@
 Covers real GAIA code: manage_system_prompts_node wired as a real pre-model
 hook via create_agent; in a multi-turn graph only the latest non-memory
 SystemMessage is kept, older ones removed, while memory-marked SystemMessages
-(additional_kwargs={"memory_message": True}) survive regardless of position;
-filter_messages_node runs before it in the hook chain.
+(additional_kwargs={"memory_message": True}) survive regardless of position.
 
 Mocked: the LLM (FakeMessagesListChatModel), store (InMemoryStore, no
 ChromaDB) and checkpointer (MemorySaver, no PostgreSQL).
@@ -41,14 +40,14 @@ class TestMultiToolScenario:
     """E2E tests verifying manage_system_prompts_node is active in the GAIA graph.
 
     These tests invoke the fully compiled create_agent graph and confirm that
-    both pre-model hooks (filter_messages_node, manage_system_prompts_node) are
-    correctly wired.  If either node is removed from the graph, these tests fail.
+    the manage_system_prompts_node pre-model hook is correctly wired. If it is
+    removed from the graph, these tests fail.
     """
 
     async def test_graph_calls_two_tools_in_sequence(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """Uses the real manage_system_prompts_node and filter_messages_node pre-model hooks while calling get_weather then create_note in sequence."""
+        """Uses the real manage_system_prompts_node pre-model hook while calling get_weather then create_note in sequence."""
         fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(

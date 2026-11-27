@@ -484,7 +484,7 @@ class TestExecuteSubagentStream:
         )
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"filter_messages_node": {"messages": [stale]}})
+            yield ("updates", {"manage_system_prompts_node": {"messages": [stale]}})
 
         mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
@@ -530,7 +530,7 @@ class TestExecuteSubagentStream:
 
         async def _fake_astream(*args, **kwargs):
             # Simulate pre-model hook nodes replaying historical messages
-            yield ("updates", {"filter_messages_node": {"messages": []}})
+            yield ("updates", {"adapt_media_node": {"messages": []}})
             yield ("updates", {"manage_system_prompts_node": {"messages": []}})
             # Only the "agent" node should produce tool_data
             yield ("updates", {"agent": {"messages": []}})
@@ -656,20 +656,12 @@ class TestExecuteSubagentStream:
                 "app.agents.core.subagents.subagent_runner.SubagentCancel",
                 return_value=fake_cancel,
             ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.close_open_tool_calls",
-                new_callable=AsyncMock,
-            ) as close_calls,
         ):
             result = await execute_subagent_stream(ctx)
 
         assert "<subagent_cancelled>" in result.text
         assert "should not reach" not in result.text
         fake_cancel.clear.assert_awaited_once()
-        assert close_calls.await_args_list == [
-            call(mock_graph, ctx.config),
-            call(mock_graph, ctx.config),
-        ]
 
     @pytest.mark.regression
     async def test_a_run_whose_stream_the_user_stopped_reports_it_stopped(self):
@@ -709,16 +701,11 @@ class TestExecuteSubagentStream:
                 new_callable=AsyncMock,
                 return_value=False,
             ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.close_open_tool_calls",
-                new_callable=AsyncMock,
-            ) as close_calls,
         ):
             ctx = _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
             result = await execute_subagent_stream(ctx)
 
         assert result.stopped is False
-        close_calls.assert_awaited_once_with(mock_graph, ctx.config)
 
     @pytest.mark.asyncio
     async def test_non_tuple_events_skipped(self):
@@ -804,7 +791,7 @@ class TestProcessUpdatesPayload:
         writer = MagicMock()
         run = _make_run(stream_writer=writer)
         payload = {
-            "filter_messages_node": {"messages": []},
+            "manage_system_prompts_node": {"messages": []},
             "agent": {"messages": [ai]},
         }
 

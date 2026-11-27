@@ -53,6 +53,7 @@ from app.agents.llm.metrics import (
     observe_llm_fallback,
 )
 from app.agents.llm.schema_caps import without_size_caps
+from app.agents.llm.transcript import provider_input
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
 from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
@@ -1286,6 +1287,7 @@ async def ainvoke_llm(
     # through here but is already metered by LLMAccountingMiddleware, so it
     # passes meter_auxiliary=False — otherwise every graph call is booked twice.
     opts = options or LLMInvokeOptions()
+    messages = provider_input(messages)
     fallback = _allowed_fallback(fallback)
     config = _with_call_label(config, label)
     fallback_config = (
@@ -1404,6 +1406,7 @@ def invoke_llm(
     async-only (see :class:LLMInvokeOptions).
     """
     opts = options or LLMInvokeOptions()
+    messages = provider_input(messages)
     fallback = _allowed_fallback(fallback)
     config = _with_call_label(config, label)
     provider = _call_provider(primary, config)
