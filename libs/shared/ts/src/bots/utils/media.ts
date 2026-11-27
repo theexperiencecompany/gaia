@@ -58,20 +58,21 @@ export const OUTBOUND_FILE_LIMITS: Record<PlatformName, number> = {
 };
 
 /**
- * Long side over short side past which an outbound image goes as a document,
- * not a photo. Telegram and WhatsApp recompress photos to roughly 1280-1600px
- * on the long side, so a tall render (a 1620x5000 daily brief) comes out about
- * 400px wide and its text is unreadable; a document keeps the original pixels.
- * At 2:1 the short side still keeps 640px or more after that downscale.
+ * The narrowest an image's short side may end up after a platform's photo
+ * downscale and still read; a narrower photo goes as a document, which keeps
+ * the original pixels. An image already narrower than this is never shrunk.
  */
-const PHOTO_MAX_ASPECT_RATIO = 2;
+const PHOTO_MIN_SHORT_SIDE_PX = 640;
 
-/** Whether an image survives a messaging app's photo recompression legibly. */
-export function isLegibleAsPhoto(data: Uint8Array): boolean {
+/** Whether an image still reads once a platform shrinks its long side to photoMaxSidePx. */
+export function isLegibleAsPhoto(
+  data: Uint8Array,
+  photoMaxSidePx: number,
+): boolean {
   const { width, height } = imageSize(data);
-  return (
-    Math.max(width, height) / Math.min(width, height) <= PHOTO_MAX_ASPECT_RATIO
-  );
+  const shortSide = Math.min(width, height);
+  const scale = Math.min(1, photoMaxSidePx / Math.max(width, height));
+  return shortSide * scale >= Math.min(shortSide, PHOTO_MIN_SHORT_SIDE_PX);
 }
 
 function mediaByteLimit(kind: MediaKind): number {

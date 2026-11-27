@@ -1747,8 +1747,8 @@ describe("TelegramAdapter - sendOutboundFile", () => {
       false,
     );
 
-  it("sends a tall render as a document so Telegram keeps it legible", async () => {
-    await send(pngHeader(1620, 5000));
+  it("sends a render too tall to read once Telegram downscales it as a document", async () => {
+    await send(pngHeader(1080, 6000));
 
     expect(mockBotInstance.api.sendPhoto).not.toHaveBeenCalled();
     expect(mockBotInstance.api.sendDocument).toHaveBeenCalledWith(
@@ -1758,16 +1758,22 @@ describe("TelegramAdapter - sendOutboundFile", () => {
     );
   });
 
-  it("sends an ordinary image as a photo", async () => {
-    await send(pngHeader(1080, 1350));
+  it.each([
+    [1080, 1350],
+    [1080, 2768],
+  ])(
+    "sends a %ix%i image, a daily brief's size included, as a photo",
+    async (width, height) => {
+      await send(pngHeader(width, height));
 
-    expect(mockBotInstance.api.sendDocument).not.toHaveBeenCalled();
-    expect(mockBotInstance.api.sendPhoto).toHaveBeenCalledWith(
-      "4242",
-      expect.objectContaining({ filename: "brief.png" }),
-      { caption: "Morning" },
-    );
-  });
+      expect(mockBotInstance.api.sendDocument).not.toHaveBeenCalled();
+      expect(mockBotInstance.api.sendPhoto).toHaveBeenCalledWith(
+        "4242",
+        expect.objectContaining({ filename: "brief.png" }),
+        { caption: "Morning" },
+      );
+    },
+  );
 });
 
 describe("TelegramAdapter - update runner", () => {

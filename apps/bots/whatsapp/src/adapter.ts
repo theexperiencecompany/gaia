@@ -89,6 +89,8 @@ import type {
 
 /** WhatsApp image-message byte cap; larger images are sent as documents. */
 const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/** The long side WhatsApp is taken to shrink an image message to (not measured on the Cloud API). */
+const WHATSAPP_IMAGE_MAX_SIDE_PX = 1280;
 
 interface WhatsAppConfig {
   kapsoApiKey: string;
@@ -1036,7 +1038,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     const asImage =
       mime.startsWith("image/") &&
       data.length <= WHATSAPP_IMAGE_MAX_BYTES &&
-      isLegibleAsPhoto(data);
+      isLegibleAsPhoto(data, WHATSAPP_IMAGE_MAX_SIDE_PX);
     if (asImage) {
       await this.whatsAppClient.messages.sendImage({
         phoneNumberId,

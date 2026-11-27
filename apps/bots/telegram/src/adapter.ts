@@ -59,6 +59,8 @@ import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
 /** Telegram's sendPhoto byte cap; larger images are sent as documents. */
 const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+/** The long side of the largest copy Telegram keeps of a bot's photo (measured: 1080x2768 kept as 999x2560). */
+const TELEGRAM_PHOTO_MAX_SIDE_PX = 2560;
 // Telegram caps media captions (sendPhoto/sendDocument) at 1024 chars; an
 // over-limit caption rejects the whole upload, so the file would never arrive.
 const TELEGRAM_CAPTION_MAX_CHARS = 1024;
@@ -540,12 +542,12 @@ export class TelegramAdapter extends BaseBotAdapter {
         ? caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
         : undefined,
     };
-    // sendPhoto caps around 10 MB and recompresses to a small long side; deliver
-    // larger or tall images as a document so they arrive full size and legible.
+    // an image too big for sendPhoto, or too tall to read once Telegram
+    // shrinks it to TELEGRAM_PHOTO_MAX_SIDE_PX, goes as a document instead
     if (
       mime.startsWith("image/") &&
       data.length <= TELEGRAM_PHOTO_MAX_BYTES &&
-      isLegibleAsPhoto(data)
+      isLegibleAsPhoto(data, TELEGRAM_PHOTO_MAX_SIDE_PX)
     ) {
       await this.bot.api.sendPhoto(destinationId, file, opts);
     } else {
