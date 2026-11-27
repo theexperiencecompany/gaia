@@ -10,7 +10,7 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowDocument,
 )
-from app.services.workflow.trigger_service import TriggerService
+from app.services.workflow.trigger_service import ResyncOutcome, TriggerService
 
 MODULE = "app.services.workflow.trigger_service"
 
@@ -49,8 +49,11 @@ class TestResyncUserWorkflowTriggers:
             patch.object(TriggerService, "register_triggers", AsyncMock(return_value=["ti_new"])),
             patch.object(TriggerService, "unregister_triggers", AsyncMock()) as unreg,
         ):
-            await TriggerService.resync_user_workflow_triggers("user1", ["gmail_poll_inbox"])
+            outcome = await TriggerService.resync_user_workflow_triggers(
+                "user1", ["gmail_poll_inbox"]
+            )
 
+        assert outcome == ResyncOutcome(moved=["wf1"])
         repo.set_composio_trigger_ids.assert_awaited_once_with("wf1", ["ti_new"])
         unreg.assert_awaited_once_with("user1", "gmail_poll_inbox", ["ti_old"], "wf1")
 
@@ -69,7 +72,10 @@ class TestResyncUserWorkflowTriggers:
             patch.object(TriggerService, "register_triggers", AsyncMock(return_value=[])),
             patch.object(TriggerService, "unregister_triggers", AsyncMock()) as unreg,
         ):
-            await TriggerService.resync_user_workflow_triggers("user1", ["gmail_new_message"])
+            outcome = await TriggerService.resync_user_workflow_triggers(
+                "user1", ["gmail_new_message"]
+            )
+        assert outcome == ResyncOutcome(unchanged=["wf1"])
         repo.set_composio_trigger_ids.assert_not_awaited()
         unreg.assert_not_awaited()
 
@@ -80,7 +86,10 @@ class TestResyncUserWorkflowTriggers:
             patch.object(TriggerService, "register_triggers", AsyncMock(return_value=["ti_same"])),
             patch.object(TriggerService, "unregister_triggers", AsyncMock()) as unreg,
         ):
-            await TriggerService.resync_user_workflow_triggers("user1", ["gmail_poll_inbox"])
+            outcome = await TriggerService.resync_user_workflow_triggers(
+                "user1", ["gmail_poll_inbox"]
+            )
+        assert outcome == ResyncOutcome(unchanged=["wf1"])
         repo.set_composio_trigger_ids.assert_not_awaited()
         unreg.assert_not_awaited()
 
@@ -97,6 +106,9 @@ class TestResyncUserWorkflowTriggers:
             patch.object(TriggerService, "register_triggers", register),
             patch.object(TriggerService, "unregister_triggers", AsyncMock()),
         ):
-            await TriggerService.resync_user_workflow_triggers("user1", ["gmail_poll_inbox"])
+            outcome = await TriggerService.resync_user_workflow_triggers(
+                "user1", ["gmail_poll_inbox"]
+            )
 
+        assert outcome == ResyncOutcome(moved=["wf_good"], failed=["wf_bad"])
         repo.set_composio_trigger_ids.assert_awaited_once_with("wf_good", ["ti_new"])

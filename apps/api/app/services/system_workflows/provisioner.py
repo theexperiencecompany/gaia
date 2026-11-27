@@ -276,7 +276,6 @@ async def _reregister_triggers_for_reset(
             owner_id=workflow_id,
             trigger_name=trigger_config.trigger_name,
             trigger_config=trigger_config,
-            raise_on_failure=False,
         )
     except Exception as e:
         log.error(

@@ -1118,7 +1118,6 @@ class TestReregisterIntegrationTriggers:
             owner_id="wf-1",
             trigger_name="gmail_new_email",
             trigger_config=cfg,
-            raise_on_failure=False,
         )
 
     @pytest.mark.asyncio

@@ -2671,24 +2671,15 @@ class TestTriggerService:
     # of five tests passing vacuously (the unpatched todo call raised, caught, and returned an empty list).
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_no_handler(self, mock_get_handler):
+    async def test_register_triggers_no_handler_raises(self, mock_get_handler):
         mock_get_handler.return_value = None
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
 
-        result = await TriggerService.register_triggers(
-            USER_ID, WORKFLOW_ID, "unknown_trigger", trigger
-        )
-        assert result == []
-
-    @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_no_handler_raise_on_failure(self, mock_get_handler):
-        mock_get_handler.return_value = None
-        trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
-
-        with pytest.raises(TriggerRegistrationError):
-            await TriggerService.register_triggers(
-                USER_ID, WORKFLOW_ID, "unknown", trigger, raise_on_failure=True
-            )
+        with pytest.raises(
+            TriggerRegistrationError, match="No handler found for trigger: unknown"
+        ) as exc_info:
+            await TriggerService.register_triggers(USER_ID, WORKFLOW_ID, "unknown", trigger)
+        assert exc_info.value.trigger_name == "unknown"
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_success(self, mock_get_handler):
@@ -2709,16 +2700,15 @@ class TestTriggerService:
         )
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_empty_result_raise_on_failure(self, mock_get_handler):
+    async def test_register_triggers_empty_result_is_a_success(self, mock_get_handler):
         mock_handler = MagicMock()
         mock_handler.register = AsyncMock(return_value=[])
         mock_get_handler.return_value = mock_handler
 
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
         # Empty result is valid (e.g. account-level Gmail trigger has no per-workflow IDs).
-        # raise_on_failure only applies when the handler raises, not when it returns [].
         result = await TriggerService.register_triggers(
-            USER_ID, WORKFLOW_ID, "calendar_event", trigger, raise_on_failure=True
+            USER_ID, WORKFLOW_ID, "calendar_event", trigger
         )
         assert result == []
 
@@ -2733,34 +2723,20 @@ class TestTriggerService:
             await TriggerService.register_triggers(USER_ID, WORKFLOW_ID, "trigger", trigger)
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_generic_exception_raise_on_failure(self, mock_get_handler):
+    async def test_register_triggers_generic_exception_raises(self, mock_get_handler):
         mock_handler = MagicMock()
         mock_handler.register = AsyncMock(side_effect=RuntimeError("API down"))
         mock_get_handler.return_value = mock_handler
 
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
         with pytest.raises(TriggerRegistrationError) as exc_info:
-            await TriggerService.register_triggers(
-                USER_ID, WORKFLOW_ID, "trigger", trigger, raise_on_failure=True
-            )
+            await TriggerService.register_triggers(USER_ID, WORKFLOW_ID, "trigger", trigger)
 
         # The wrapper is what the caller sees, so it has to carry the original
         # failure forward: which trigger, what went wrong, and the cause chain.
         assert str(exc_info.value) == "Error registering triggers: RuntimeError: API down"
         assert exc_info.value.trigger_name == "trigger"
         assert isinstance(exc_info.value.__cause__, RuntimeError)
-
-    @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_generic_exception_no_raise(self, mock_get_handler):
-        mock_handler = MagicMock()
-        mock_handler.register = AsyncMock(side_effect=RuntimeError("API down"))
-        mock_get_handler.return_value = mock_handler
-
-        trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
-        result = await TriggerService.register_triggers(
-            USER_ID, WORKFLOW_ID, "trigger", trigger, raise_on_failure=False
-        )
-        assert result == []
 
     async def test_unregister_triggers_empty_list(self):
         result = await TriggerService.unregister_triggers(USER_ID, "trigger", [])

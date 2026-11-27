@@ -253,11 +253,10 @@ async def test_a_reopen_whose_watch_fails_leaves_the_todo_completed_and_unwatche
         owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-        raise_on_failure: bool = False,
     ) -> list[str]:
         if trigger_name == GMAIL_EMAIL_SENT_TRIGGER_NAME:
             raise TriggerRegistrationError("composio unavailable", trigger_name)
-        return await register(user_id, owner_id, trigger_name, trigger_config, raise_on_failure)
+        return await register(user_id, owner_id, trigger_name, trigger_config)
 
     with (
         patch.object(TriggerService, "register_triggers", side_effect=sent_mail_unavailable),
@@ -279,11 +278,10 @@ async def test_a_watch_that_fails_leaves_no_todo_holding_the_thread(
         owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-        raise_on_failure: bool = False,
     ) -> list[str]:
         if trigger_name == GMAIL_EMAIL_SENT_TRIGGER_NAME:
             raise TriggerRegistrationError("composio unavailable", trigger_name)
-        return await register(user_id, owner_id, trigger_name, trigger_config, raise_on_failure)
+        return await register(user_id, owner_id, trigger_name, trigger_config)
 
     with (
         patch.object(TriggerService, "register_triggers", side_effect=sent_mail_unavailable),
