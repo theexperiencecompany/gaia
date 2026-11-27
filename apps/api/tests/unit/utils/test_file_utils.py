@@ -8,12 +8,26 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
+from langchain_openrouter import ChatOpenRouter
 from PIL import Image
 import pytest
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
-from app.constants.files import IMAGE_SUMMARY_NO_VISION_PROVIDER, SUMMARY_LLM_MAX_CONCURRENCY
+from app.constants.files import (
+    CSV_MIME,
+    DOC_MIME,
+    DOCX_MIME,
+    EPUB_MIME,
+    IMAGE_SUMMARY_NO_VISION_PROVIDER,
+    ODP_MIME,
+    ODS_MIME,
+    ODT_MIME,
+    PPTX_MIME,
+    RTF_MIME,
+    SUMMARY_LLM_MAX_CONCURRENCY,
+    XLSX_MIME,
+)
 from app.constants.llm import HELPER_MAX_OUTPUT_TOKENS
 from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -112,6 +126,7 @@ class TestDocumentProcessorInit:
         ):
             proc = DocumentProcessor(user_id="u-test")
 
+        assert isinstance(proc.llm, ChatOpenRouter)
         assert proc.llm.max_tokens == HELPER_MAX_OUTPUT_TOKENS
         # Named explicitly so the assertion above cannot pass by coincidence if
         # the two factories' caps ever converge.
@@ -179,16 +194,16 @@ class TestProcessFileRouting:
     @pytest.mark.parametrize(
         ("content_type", "suffix"),
         [
-            (file_utils.DOCX_MIME, ".docx"),
-            (file_utils.DOC_MIME, ".doc"),
-            (file_utils.XLSX_MIME, ".xlsx"),
-            (file_utils.PPTX_MIME, ".pptx"),
-            (file_utils.CSV_MIME, ".csv"),
-            (file_utils.RTF_MIME, ".rtf"),
-            (file_utils.EPUB_MIME, ".epub"),
-            (file_utils.ODT_MIME, ".odt"),
-            (file_utils.ODS_MIME, ".ods"),
-            (file_utils.ODP_MIME, ".odp"),
+            (DOCX_MIME, ".docx"),
+            (DOC_MIME, ".doc"),
+            (XLSX_MIME, ".xlsx"),
+            (PPTX_MIME, ".pptx"),
+            (CSV_MIME, ".csv"),
+            (RTF_MIME, ".rtf"),
+            (EPUB_MIME, ".epub"),
+            (ODT_MIME, ".odt"),
+            (ODS_MIME, ".ods"),
+            (ODP_MIME, ".odp"),
         ],
     )
     async def test_office_and_csv_types_route_to_process_office_document(
