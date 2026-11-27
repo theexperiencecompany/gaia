@@ -6,10 +6,12 @@ not-desktop error), the user context guard, the bridge outcome shapes
 degradation when the workspace write fails, and the window list formatting.
 """
 
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.tools import StructuredTool
+import time_machine
 
 from app.agents.tools.desktop_tools import (
     _MISSING_CONTEXT_ERROR,
@@ -224,6 +226,7 @@ class TestTakeScreenshot:
     def _image(self) -> InlineImage:
         return InlineImage(data=b"png-bytes", base64="cG5n", mime_type="image/png")
 
+    @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
     async def test_happy_path_returns_text_and_image_blocks(self) -> None:
         writer = MagicMock()
         with (
@@ -264,11 +267,16 @@ class TestTakeScreenshot:
         streamed = [
             c.args[0]["tool_data"] for c in writer.call_args_list if "tool_data" in c.args[0]
         ]
-        assert [(e["tool_name"], e["data"]) for e in streamed] == [
-            (
-                "screenshot_data",
-                {"thumbnail": "data:image/jpeg;base64,dGh1bWI=", "width": 800, "height": 600},
-            )
+        assert streamed == [
+            {
+                "tool_name": "screenshot_data",
+                "data": {
+                    "thumbnail": "data:image/jpeg;base64,dGh1bWI=",
+                    "width": 800,
+                    "height": 600,
+                },
+                "timestamp": "2026-10-01T09:00:00+00:00",
+            }
         ]
 
     async def test_a_screenshot_that_could_not_be_saved_says_answer_from_it_now(self) -> None:
