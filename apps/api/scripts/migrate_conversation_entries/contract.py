@@ -20,7 +20,11 @@ from app.constants.chat import (
     CONVERSATION_ARCHIVED_MESSAGES_COLLECTION,
     CONVERSATION_ENTRIES_COLLECTION,
 )
-from app.db.repositories.conversation_entries import MIGRATION_FIELDS_FIELD, store_errors
+from app.db.repositories.conversation_entries import (
+    LOG_HEAD_FIELD,
+    MIGRATION_FIELDS_FIELD,
+    store_errors,
+)
 from app.db.repositories.conversation_migration_guard import (
     EMBEDDED_FINGERPRINT,
     MIGRATED_FINGERPRINT_FIELD,
@@ -32,11 +36,13 @@ from scripts.migrate_conversation_entries.migration import (
 )
 
 #: Heads whose array the log already holds: empty, marked and unchanged since, or moved to the archive.
+#: A dropped array never leaves a head that reads as an empty log (EMPTY_LOG): it has a log_head.
 DROPPABLE_HEADS: dict[str, object] = {
     "$or": [
         {"messages": {"$size": 0}},
         {
             "messages.0": {"$exists": True},
+            LOG_HEAD_FIELD: {"$exists": True},
             MIGRATED_FINGERPRINT_FIELD: {"$exists": True},
             "$expr": {"$eq": [EMBEDDED_FINGERPRINT, f"${MIGRATED_FINGERPRINT_FIELD}"]},
         },
