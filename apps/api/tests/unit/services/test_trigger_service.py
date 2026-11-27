@@ -36,6 +36,9 @@ _stub_injected = "app.services.workflow.trigger_service" not in sys.modules
 if _stub_injected:
     sys.modules["app.services.workflow.trigger_service"] = _trigger_service_stub
 
+from pydantic import ValidationError
+
+from app.config.oauth_config import get_integration_by_id
 from app.models.trigger_configs import (
     CalendarEventCreatedConfig,
     CalendarEventStartingSoonConfig,
@@ -108,6 +111,19 @@ if _stub_injected:
 
 USER_ID = "user_test_trigger_001"
 WORKFLOW_ID = "wf_test_trigger_001"
+
+# GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER config fields per toolkit version, read from Composio's
+# triggers_types API with ?toolkit_versions=<version>. A new pin needs its row checked against the API.
+STARTING_SOON_CONFIG_FIELDS = {
+    "20260107_00": {
+        "calendarId",
+        "countdown_window_minutes",
+        "include_all_day",
+        "interval",
+        "maxResults",
+        "minutes_before_start",
+    },
+}
 TRIGGER_ID = "composio_trigger_abc123"
 
 
@@ -1838,10 +1854,10 @@ class TestCalendarTriggerHandler:
 
     @pytest.mark.regression
     @patch("app.services.triggers.base.get_composio_service")
-    async def test_register_event_starting_soon_sends_the_lead_as_composios_fire_threshold(
+    async def test_register_event_starting_soon_sends_the_pinned_toolkit_versions_field_names(
         self, mock_get_composio
     ):
-        """Regression: the lead went to countdown_window_minutes, a look-ahead, so Composio fired at its 10-minute default."""
+        """Regression: camelCase names belong to Composio's latest schema; the pinned version drops them for defaults."""
         mock_result = MagicMock()
         mock_result.trigger_id = "soon_tid_1"
         mock_composio = MagicMock()
@@ -1860,13 +1876,18 @@ class TestCalendarTriggerHandler:
             USER_ID, WORKFLOW_ID, "calendar_event_starting_soon", config
         )
         assert result == ["soon_tid_1"]
-        call_kwargs = mock_composio.composio.triggers.create.call_args
-        # Composio's EventStartingSoonConfig field names, read from its triggers_types API (2026-11-27)
-        assert call_kwargs.kwargs["trigger_config"] == {
+        sent = mock_composio.composio.triggers.create.call_args.kwargs["trigger_config"]
+        integration = get_integration_by_id("googlecalendar")
+        assert integration is not None
+        assert integration.composio_config is not None
+        pinned = integration.composio_config.toolkit_version
+        assert pinned is not None
+        assert set(sent) <= STARTING_SOON_CONFIG_FIELDS[pinned]
+        assert sent == {
             "calendarId": "primary",
-            "minutesBeforeStart": 60,
-            "countdownWindowMinutes": 60,
-            "includeAllDay": True,
+            "minutes_before_start": 60,
+            "countdown_window_minutes": 60,
+            "include_all_day": True,
         }
 
     @patch("app.services.triggers.base.get_composio_service")
@@ -2026,16 +2047,17 @@ class TestCalendarTriggerHandler:
         assert result == []
 
     @patch("app.services.calendar_service.list_calendars")
-    async def test_fetch_user_calendars_exception_falls_back(self, mock_list_calendars):
-        mock_list_calendars.side_effect = Exception("API error")
+    async def test_a_failed_calendar_fetch_raises_instead_of_registering_primary_only(
+        self, mock_list_calendars
+    ):
+        mock_list_calendars.side_effect = RuntimeError("API error")
 
-        handler = CalendarTriggerHandler()
-        result = await handler._fetch_user_calendars(USER_ID)
-        assert result == ["primary"]
+        with pytest.raises(RuntimeError, match="API error"):
+            await CalendarTriggerHandler()._fetch_user_calendars(USER_ID)
 
     @patch("app.services.calendar_service.proxy_request")
     async def test_fetch_user_calendars_rejects_a_payload_with_an_id_less_entry(self, mock_proxy):
-        """A calendarList entry missing id fails validation loudly and falls back to primary."""
+        """A calendarList entry missing id fails validation loudly instead of registering a partial set."""
         handler = CalendarTriggerHandler()
 
         # Positive control: the same real proxy → validate → project path returns
@@ -2045,7 +2067,8 @@ class TestCalendarTriggerHandler:
         assert await handler._fetch_user_calendars(USER_ID) == ["primary", "work@example.com"]
 
         mock_proxy.return_value = {"items": [{"id": "primary"}, {"name": "no-id-calendar"}]}
-        assert await handler._fetch_user_calendars(USER_ID) == ["primary"]
+        with pytest.raises(ValidationError):
+            await handler._fetch_user_calendars(USER_ID)
 
     def test_singleton_instance_exists(self):
         assert calendar_trigger_handler is not None

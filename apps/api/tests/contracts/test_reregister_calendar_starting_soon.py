@@ -10,9 +10,13 @@ import uuid
 
 import pytest
 
+from app.constants.integrations import IntegrationStatus
+from app.core.lazy_loader import providers
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import GoogleCalendarEventStartingSoonTriggerConfig
+from app.models.integration_models import IntegrationAccount
 from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
@@ -46,17 +50,26 @@ class _FakeComposio:
 
 
 @pytest.fixture
-def composio() -> Iterator[_FakeComposio]:
+def composio(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeComposio]:
+    """Fake only the SDK client: the script's own boot must register and resolve the provider."""
     fake = _FakeComposio()
-
-    async def primary_account(_user_id: str, _slug: str) -> str:
-        return "ca_primary"
-
+    monkeypatch.setattr(providers, "_providers", {})
+    monkeypatch.setattr(providers, "_auto_init_providers", set())
     with (
-        patch("app.services.triggers.base.get_composio_service", return_value=fake),
-        patch("app.services.triggers.base.primary_account_for_trigger", primary_account),
+        patch("app.services.composio.composio_service.ComposioService", return_value=fake),
+        patch("app.services.composio.composio_service._composio_api_key", return_value="test-key"),
     ):
         yield fake
+
+
+async def _connect_calendar(user_id: str) -> None:
+    await user_integration_repository.save_accounts(
+        user_id,
+        "googlecalendar",
+        accounts=[IntegrationAccount(id="acct-1", connected_account_id="ca_primary", label="work")],
+        primary_account_id="acct-1",
+        status=IntegrationStatus.CONNECTED,
+    )
 
 
 def _workflow(user_id: str, lead: int) -> dict[str, object]:
@@ -102,6 +115,7 @@ def _watched_todo(user_id: str, lead: int) -> TodoDocument:
 
 async def _seed(raw_collection) -> tuple[str, str, str]:
     user_id = make_user_id()
+    await _connect_calendar(user_id)
     workflow = _workflow(user_id, lead=60)
     await raw_collection.insert_one(workflow)
     todo = await todo_repository.create(_watched_todo(user_id, lead=30))
@@ -134,13 +148,23 @@ async def test_apply_moves_each_trigger_onto_its_stored_lead_and_releases_the_ol
     raw_collection, composio, capsys
 ) -> None:
     user_id, workflow_id, todo_id = await _seed(raw_collection)
-    await todo_repository.create(_watched_todo(make_user_id(), lead=15))
+    second_owner = make_user_id()
+    await _connect_calendar(second_owner)
+    await todo_repository.create(_watched_todo(second_owner, lead=15))
 
     assert await _run(apply=True) == 0
 
     assert sorted(_fire_threshold(c) for c in composio.created) == [15, 30, 60]
+    assert {frozenset(c) for c in composio.created} == {
+        frozenset(
+            {"calendarId", "minutes_before_start", "countdown_window_minutes", "include_all_day"}
+        )
+    }
     assert sorted(composio.deleted) == ["ti_old_todo", "ti_old_workflow"]
-    assert capsys.readouterr().out.splitlines()[-1] == "re-registered: workflow_users=1 todos=2"
+    assert capsys.readouterr().out.splitlines()[-2:] == [
+        "workflows: moved=1 unchanged=0 failed=0",
+        "todos: moved=2 unchanged=0 failed=0",
+    ]
     workflow = await workflow_repository.get_for_user(workflow_id, user_id)
     assert workflow is not None
     assert workflow.trigger_config.composio_trigger_ids not in ([], ["ti_old_workflow"])
@@ -158,7 +182,7 @@ async def test_a_second_apply_keeps_every_instance(raw_collection, composio) -> 
     assert todo is not None
     deleted_after_first = list(composio.deleted)
 
-    await _run(apply=True)
+    assert await _run(apply=True) == 0
 
     assert composio.deleted == deleted_after_first
     again = await workflow_repository.get_for_user(workflow_id, user_id)
@@ -170,3 +194,20 @@ async def test_a_second_apply_keeps_every_instance(raw_collection, composio) -> 
         todo_again.trigger_subscriptions[0].composio_trigger_ids
         == todo.trigger_subscriptions[0].composio_trigger_ids
     )
+
+
+async def test_an_owner_who_cannot_register_is_reported_and_fails_the_run(
+    raw_collection, composio, capsys
+) -> None:
+    user_id, workflow_id, _todo_id = await _seed(raw_collection)
+    unconnected = _workflow(make_user_id(), lead=60)
+    await raw_collection.insert_one(unconnected)
+
+    assert await _run(apply=True) == 1
+
+    out = capsys.readouterr().out.splitlines()
+    assert "workflows: moved=1 unchanged=0 failed=1" in out
+    assert f"  failed workflows: {unconnected['_id']}" in out
+    moved = await workflow_repository.get_for_user(workflow_id, user_id)
+    assert moved is not None
+    assert moved.trigger_config.composio_trigger_ids != ["ti_old_workflow"]
