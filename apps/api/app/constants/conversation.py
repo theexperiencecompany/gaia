@@ -36,6 +36,11 @@ HINT_KEY_PREFIX = "conv:hint:"
 # A lapsed hint is rebuilt from the head, so it only needs to outlive an active conversation.
 HINT_TTL_SECONDS = ONE_DAY_TTL
 
+#: How long a stored tool card keeps its tool outputs and thinking; the daily sweep drops them after.
+TOOL_OUTPUT_RETENTION = timedelta(days=30)
+#: Entries one page of that sweep reads and rewrites (~80 KB of cards each on average).
+TOOL_OUTPUT_DROP_PAGE = 100
+
 
 class HintField(StrEnum):
     """The fields of a conversation's hint hash."""
