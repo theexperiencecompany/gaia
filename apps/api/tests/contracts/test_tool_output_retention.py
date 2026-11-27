@@ -328,3 +328,22 @@ async def test_a_run_out_of_time_stops_between_pages_and_the_next_carries_on(
     assert (await drop_expired_tool_outputs({})).startswith("entries=2 ")
     rows = [row for doc in old for row in await _stored(entries_collection, doc)]
     assert [row.get(OUTPUTS_DROPPED_FIELD) for row in rows] == [True] * 4
+
+
+async def test_a_run_within_its_budget_sweeps_every_page_whatever_the_clock_reads(
+    entries_collection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(conversation_retention_tasks, "TOOL_OUTPUT_DROP_PAGE", 2)
+    # A monotonic clock reads far from zero; a second per reading never spends the budget.
+    ticks = iter(range(10**6, 10**6 + 100))
+    monkeypatch.setattr(conversation_retention_tasks, "RUN_BUDGET_SECONDS", 900)
+    monkeypatch.setattr(conversation_retention_tasks, "clock", lambda: next(ticks))
+    repo = ConversationRepository()
+    past = TOOL_OUTPUT_RETENTION + timedelta(days=1)
+    old = [await _aged_chat(repo, entries_collection, past) for _ in range(2)]
+
+    async with captured_wide_event() as event:
+        assert (await drop_expired_tool_outputs({})).startswith("entries=4 ")
+    assert event["tool_output_retention"]["out_of_time"] is False
+    rows = [row for doc in old for row in await _stored(entries_collection, doc)]
+    assert [row.get(OUTPUTS_DROPPED_FIELD) for row in rows] == [True] * 4
