@@ -171,13 +171,15 @@ def _signal(integration: ScoutIntegration, source: SignalSource, item: _Item) ->
     token = f"$steps.{source.step_id}"
     amount = item.amount(fields.amount)
     people, you = item.people(fields.people, integration.handles)
+    due_at = item.moment(fields.due_at, "due_at")
     return Signal(
         integration_id=integration.integration_id,
         app=integration.name,
         external_id=item.required(token, fields.external_id, "external_id"),
         kind=source.kind,
         title=item.required(token, fields.title, "title"),
-        due_at=item.moment(fields.due_at, "due_at"),
+        due_at=due_at,
+        due_label=source.due_label if due_at is not None else None,
         people=people,
         people_role=fields.people_role,
         people_you=you,

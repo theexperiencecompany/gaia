@@ -150,15 +150,17 @@ def item_line(
 def _when(item_id: int, item: BriefCandidate, clock: UserClock, voiced: Voiced | None) -> list[str]:
     """Say when an item happens or is due; to the voice, by the slot that writes it."""
     due = due_on(item.due_at, clock) if item.due_at is not None else None
+    meaning = item.signal.due_label if item.signal is not None else None
+    means = f" ({meaning})" if meaning else ""
     if voiced is not None:
         slot = FactSlot(item_id, FactField.TIME)
         said = voiced.fact.time
         if said is None or (item.time is None and item.due_at is None):
             return []
-        return [f"at {slot} ({said})" if item.time is not None else f"due {slot} ({said})"]
+        return [f"at {slot} ({said})" if item.time is not None else f"due {slot} ({said}){means}"]
     return [
         *([f"at {item.time}"] if item.time is not None else []),
-        *([f"due {due}"] if due is not None else []),
+        *([f"due {due}{means}"] if due is not None else []),
     ]
 
 

@@ -109,6 +109,20 @@ class TestASignalsLine:
             " | first seen yesterday, never mentioned, moved from Backlog to Todo | " + _READ_ONLY
         )
 
+    @pytest.mark.regression
+    def test_a_date_says_what_it_means_beside_due(self) -> None:
+        """Regression: "due Tue Nov 24" on a lead was its next follow-up, and read as a reply's age."""
+        signal = _signal("6").model_copy(
+            update={
+                "due_at": datetime(2026, 10, 24, 17, 0, tzinfo=UTC),
+                "due_label": "next follow-up scheduled",
+            }
+        )
+
+        assert "| due Sat Oct 24 (next follow-up scheduled) |" in _line(
+            RememberedSignal(signal=signal)
+        )
+
     def test_every_detail_a_signal_carries_is_on_its_line(self) -> None:
         signal = _signal("5").model_copy(
             update={

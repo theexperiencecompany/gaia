@@ -48,7 +48,7 @@ class Signal(BaseModel):
     integration_id: str
     app: str = Field(description="The integration's display name")
     external_id: str = Field(min_length=1, description="The item's id inside the integration")
-    kind: str = Field(description="What the item is to the user, in a few words of the app's terms")
+    kind: str = Field(description="What the item is to the user, in a few plain words")
     title: str = Field(min_length=1)
     why: str | None = Field(default=None, description="Why it needs attention now")
     importance: SignalImportance = SignalImportance.NORMAL
@@ -65,6 +65,8 @@ class Signal(BaseModel):
     amount: float | None = None
     #: What the amount counts, as the app's values read ("USD", "USD cents", "points").
     amount_unit: str | None = None
+    #: What due_at is to the user when it is no plain deadline ("next follow-up scheduled").
+    due_label: str | None = None
     #: The item's own words (a message, a comment), verbatim; None when it has none.
     text: str | None = None
     #: Who wrote those words, read from the same item; None when the app does not say.
@@ -109,6 +111,10 @@ class SignalSource(BaseModel):
     amount_unit: str | None = Field(
         default=None, description="What each item's amount counts, as its values read"
     )
+    due_label: str | None = Field(
+        default=None,
+        description="What each item's due date is to the user when it is no plain deadline",
+    )
 
 
 class LearnedSignal(BaseModel):
@@ -126,6 +132,7 @@ class LearnedSignal(BaseModel):
     state: str | None = None
     amount: float | None = None
     amount_unit: str | None = None
+    due_label: str | None = None
     text: str | None = None
     author: str | None = None
     created_at: datetime | None = None

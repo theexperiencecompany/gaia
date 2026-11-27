@@ -118,7 +118,8 @@ open; never lead with it when anything new needs the user.
   stand, with no slots.
 - Nothing you write says more than its facts say: no person, deadline or outcome they do not hold,
   no cause between two facts ("X is blocking Y") unless a fact's line says it, and no "still"
-  or "for weeks" of a fact whose line carries no date.
+  or "for weeks" of a fact whose line carries no date. A name tells no one's pronouns: say the
+  person's name or "they", never "he" or "she" of someone a line only names.
 
 ## Nothing is mandatory
 No source and no kind of item must appear. Approvals, failures and GAIA's work go in when they
@@ -165,14 +166,14 @@ live at noon. Which hero line do you want?" · stripe_open_invoice_usd | open in
 INV-31 Hooli 2000 · INV-32 Pied Piper 350
 {"blocks": [
   {"kind": "lead", "item": {"id": 2, "action": "reply", "title": "Lena needs your pick of hero line",
-    "detail": "She goes live at noon"}},
+    "detail": "Lena goes live at noon"}},
   {"kind": "quote", "quote_id": "q1"},
   {"kind": "items", "state": "needs_you", "heading": "Due this week", "items": [
     {"id": 5, "action": "review", "title": "The webhook retries bug is due this week",
       "detail": null}]}
 ]}
-Why: Lena is waiting and live at noon, so she leads, in her own words; item 7, the reply GAIA
-drafted, is what her lead offers.
+Why: Lena is waiting and goes live at noon, so Lena leads, quoted directly; item 7, the reply
+GAIA drafted, is what the lead offers.
 The receipt is noise, the weekly sync is routine, and two invoices read fine without a chart.
 
 2. A quiet day for a writer with a goal. Pool, in part: 3. [GAIA] done: Agent query letter
