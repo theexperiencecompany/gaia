@@ -58,7 +58,7 @@ class BriefingItem(BaseModel):
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
-    #: The item's title: a noun phrase, never a sentence.
+    #: The item's title: one short line that reads on its own.
     text: str = Field(min_length=1, max_length=BRIEF_ITEM_TITLE_MAX_CHARS)
     action: BriefAction | None = None
     outcome: BriefOutcome | None = None

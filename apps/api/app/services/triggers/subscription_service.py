@@ -449,7 +449,7 @@ async def resync_subscriptions_for_trigger_names(
             if not due:
                 continue
             try:
-                trigger_ids = await _reregister(
+                await _reregister(
                     user_id, todo.id, [s for s in todo.trigger_subscriptions if s.id in due]
                 )
             except Exception as e:
@@ -461,9 +461,6 @@ async def resync_subscriptions_for_trigger_names(
                     error_type=type(e).__name__,
                 )
                 continue
-            await todo_repository.resume_trigger_subscriptions(
-                todo.id, user_id=user_id, trigger_ids=trigger_ids
-            )
             await record_todo_activity(
                 todo.id,
                 user_id,
@@ -476,11 +473,32 @@ async def resync_subscriptions_for_trigger_names(
     return resynced
 
 
-async def _reregister(
-    user_id: str, todo_id: str, subscriptions: list[TriggerSubscription]
-) -> dict[str, list[str]]:
-    """Re-register each subscription and map its id to the Composio ids it now fires on."""
+async def reregister_active_subscriptions(user_id: str, trigger_name: str) -> int:
+    """Rebuild a user's active watches on trigger_name from their stored trigger_data.
+
+    For when the Composio config the handler sends has changed, so the instances
+    registered under the old config fire on the wrong terms. Returns the todo count.
+    """
+    reregistered = 0
+    for todo in await todo_repository.find_active_by_user_and_trigger(user_id, trigger_name):
+        active = [
+            s
+            for s in todo.trigger_subscriptions
+            if s.trigger_name == trigger_name and s.status is TriggerSubscriptionStatus.ACTIVE
+        ]
+        await _reregister(user_id, todo.id, active)
+        reregistered += 1
+    return reregistered
+
+
+async def _reregister(user_id: str, todo_id: str, subscriptions: list[TriggerSubscription]) -> None:
+    """Re-register each subscription, store the ids it now fires on as active, then release the stale ones.
+
+    The new ids are stored before any old instance is deleted, so a failed write never
+    leaves a watch pointing at triggers that no longer exist.
+    """
     trigger_ids: dict[str, list[str]] = {}
+    stale: dict[str, list[str]] = {}
     for subscription in subscriptions:
         new_ids = await TriggerService.register_triggers(
             user_id,
@@ -489,11 +507,13 @@ async def _reregister(
             build_trigger_config(subscription.trigger_name, subscription.trigger_data),
             raise_on_failure=True,
         )
-        stale = [i for i in subscription.composio_trigger_ids if i not in new_ids]
         # Account-level triggers return no ids — keep the empty list.
         trigger_ids[subscription.id] = new_ids or subscription.composio_trigger_ids
-        if stale:
-            await TriggerService.unregister_triggers(
-                user_id, subscription.trigger_name, stale, todo_id=todo_id
-            )
-    return trigger_ids
+        released = [i for i in subscription.composio_trigger_ids if i not in new_ids]
+        if released:
+            stale.setdefault(subscription.trigger_name, []).extend(released)
+    await todo_repository.resume_trigger_subscriptions(
+        todo_id, user_id=user_id, trigger_ids=trigger_ids
+    )
+    for trigger_name, ids in stale.items():
+        await TriggerService.unregister_triggers(user_id, trigger_name, ids, todo_id=todo_id)

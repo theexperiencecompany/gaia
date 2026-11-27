@@ -818,23 +818,17 @@ jobs:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: ${{ startsWith(runner.name, 'gaia-home-') && '0' || '1' }}
           persist-credentials: false
-      # post-statuses reads the job's checks from the nx graph.
+      - uses: ./.github/actions/task-files
+      # run-job and post-statuses read the job's checks from the nx graph.
       - uses: ./.github/actions/setup-node-pnpm
-      # Dataflow SAST bandit cannot do. A whole-directory scan, not diff-scoped:
-      # a security check that only looks at touched files stops noticing the
-      # rest. Rules come from the VENDORED pack (tools/semgrep/p-python.yaml),
-      # so what CI enforces only changes with a commit; the digest pins the
-      # engine. The image has no ENTRYPOINT, so the command spells `semgrep`.
-      - name: semgrep — Python security patterns (SSRF, path traversal, injection)
-        id: semgrep
+      # semgrep (dataflow SAST bandit cannot do) is `audit.sh semgrep`: the
+      # pinned image and vendored rules, the one command ci:local runs too.
+      - name: Run this job's checks through nx
         continue-on-error: true
-        if: contains(fromJSON(needs.detect.outputs.job_tasks)['scan'], 'ci:semgrep')
-        uses: docker://semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be # v1.145.0
-        with:
-          args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off --sarif-output=semgrep.sarif
-      - name: semgrep — read its findings into the verdict
-        if: always() && steps.semgrep.outcome == 'failure'
-        run: python3 scripts/ci/verdict.py sarif --lane scan/semgrep semgrep.sarif
+        env:
+          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
+          RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+        run: python3 scripts/ci/runner.py run-job scan
       # The box keeps the vuln DB on local disk, one dir per runner instance
       # (trivy refuses concurrent use of one cache dir), and setup.sh installs
       # the pinned trivy; elsewhere the action installs trivy and round-trips
@@ -882,7 +876,7 @@ jobs:
         env:
           JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job scan --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step semgrep=${{ steps.semgrep.outcome }} --step trivy=${{ steps.trivy.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job scan --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step trivy=${{ steps.trivy.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict

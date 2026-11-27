@@ -280,6 +280,13 @@ AUX_SESSION_SUFFIX = "-aux"
 # budget: pass a tighter value on a user-blocking path, or timeout=None to opt out entirely.
 LLM_INVOKE_TIMEOUT_SECONDS = 300
 
+# Longest a streaming model call may go before its first chunk. Healthy TTFT is p50 ~2 s,
+# p90 ~5 s; no Workers AI call in 3 days took over 60 s, 11 of 12,575 took 30-60 s.
+LLM_FIRST_CHUNK_DEADLINE_SECONDS = 45
+# Longest silence between two chunks of one streaming reply; a healthy high-effort
+# reply's longest measured gap was 24 s (see DEV_LLM_READ_TIMEOUT_SECONDS).
+LLM_CHUNK_IDLE_DEADLINE_SECONDS = 60
+
 # Near-deterministic default for every LLM call; creative tasks opt into more
 # variation via resolve_model(temperature=...).
 DEFAULT_LLM_TEMPERATURE = 0.1

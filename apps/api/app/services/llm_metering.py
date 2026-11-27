@@ -41,6 +41,7 @@ from openrouter.errors import (
     UnprocessableEntityResponseError,
 )
 
+from app.agents.llm.exceptions import LLMStreamStallError
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import (
     OPENROUTER_PROVIDER,
@@ -77,6 +78,7 @@ _TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (
     # asyncio.TimeoutError IS TimeoutError on 3.11+, so the invoke seam's own
     # wall-clock ceiling lands here too.
     TimeoutError,
+    LLMStreamStallError,
 )
 _UNAVAILABLE_ERRORS: tuple[type[BaseException], ...] = (
     InternalServerResponseError,

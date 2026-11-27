@@ -131,8 +131,6 @@ def _make_llm() -> MagicMock:
     bound.invoke.return_value = AIMessage(content="hello")
     bound.ainvoke = AsyncMock(return_value=AIMessage(content="hello"))
     # ainvoke_llm/invoke_llm wrap the bound model in with_llm_retry first.
-    bound.with_retry.return_value = bound
-    configured.with_retry.return_value = configured
     configured.bind_tools.return_value = bound
     llm.with_config.return_value = configured
     return llm
@@ -162,7 +160,6 @@ def _make_openrouter_wire_llm() -> MagicMock:
     bound.openrouter_api_base = None
     bound.invoke.return_value = AIMessage(content="hello")
     bound.ainvoke = AsyncMock(return_value=AIMessage(content="hello"))
-    bound.with_retry.return_value = bound
     # Binding the session id returns a NEW runnable, and that is the one the call
     # is actually made on — so it stays the same configured double.
     bound.bind.return_value = bound
@@ -544,7 +541,6 @@ class TestCallModel:
         configured = MagicMock()
         bound = MagicMock()
         bound.invoke.return_value = empty_response
-        bound.with_retry.return_value = bound
         configured.bind_tools.return_value = bound
         llm.with_config.return_value = configured
 
@@ -657,11 +653,13 @@ class TestAcallModel:
             agent_config=AgentConfig(agent_name="executor_agent"),
         )
 
-        await _agent_runnable(builder).afunc(_make_state(), _make_config(), store=MagicMock())
+        await _agent_runnable(builder).afunc(
+            _make_state(), _make_config(thread_id="t-1"), store=MagicMock()
+        )
 
         bound = llm.with_config.return_value.bind_tools.return_value
         sent = bound.ainvoke.await_args.kwargs["config"]
-        assert sent["recursion_limit"] == _RECURSION_LIMIT
+        assert sent["configurable"]["thread_id"] == "t-1"
         assert sent["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
 
     @pytest.mark.asyncio
@@ -670,7 +668,6 @@ class TestAcallModel:
         llm = _make_llm()
         configured = llm.with_config.return_value
         configured.ainvoke = AsyncMock(return_value=AIMessage(content="bare"))
-        configured.with_retry.return_value = configured
         builder = create_agent(
             llm,
             _make_tool_registry(),
@@ -730,7 +727,6 @@ class TestAcallModel:
         configured = MagicMock()
         bound = MagicMock()
         bound.ainvoke = AsyncMock(return_value=empty_response)
-        bound.with_retry.return_value = bound
         configured.bind_tools.return_value = bound
         llm.with_config.return_value = configured
 

@@ -65,6 +65,9 @@ class CandidateSources:
     due_before: datetime
     #: Every open todo of the user's own, from the run's one read of the todos store.
     open_own: list[TodoDocument]
+    #: When the last stored brief, daily or weekly, was made; None before the first. App rows it
+    #: weighed and left out are not offered again until they change.
+    last_brief_at: datetime | None = field(kw_only=True)
     #: The results held for the daily brief; the weekly carries none.
     held: list[PendingBriefItemDocument] = field(default_factory=list)
     user_done: list[TodoDocument] = field(default_factory=list)
@@ -189,7 +192,7 @@ async def gather_candidates(
         *await reminder_candidates(user_id, day_start, day_end),
         *own_todo_candidates(sources.open_own, day_end, work),
         *await failed_run_candidates(user_id, since),
-        *app_signal_candidates(sources.scouts.remembered, clock),
+        *app_signal_candidates(sources.scouts.remembered, clock, sources.last_brief_at),
         *await held_candidates(user_id, sources.held),
         *user_done_candidates(sources.user_done),
         *gaia_work_candidates(work),

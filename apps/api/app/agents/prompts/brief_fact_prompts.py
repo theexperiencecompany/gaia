@@ -45,6 +45,8 @@ DONE_BY: Mapping[TodoCompleter | None, str] = MappingProxyType(
         None: "done, who finished it is not recorded",
     }
 )
+#: A row an app's scout read: the app's own state is on its line, and its criteria say if it needs the user.
+SCOUT_STATE = "found by its scout"
 #: What each item state means, said beside the pool's items so every reader reads them alike.
 ITEM_STATES_LEGEND = (
     "done by GAIA / done by the user / closed: finished since {done_since}, by whoever its "
@@ -53,6 +55,8 @@ ITEM_STATES_LEGEND = (
     f"{ItemState.YOU.label.lower()}: needs the user; "
     f"{ItemState.FAILED.label.lower()}: broke and needs the user; "
     f"{ItemState.NOTE.label.lower()}: news that needs nothing; "
+    f"{SCOUT_STATE}: a row from one of the user's apps, its line says how the app shows it, and "
+    "that app's criteria decide whether it needs the user; "
     f"{BACKLOG_STATE}: an undated todo of their own, never news and never the lead. "
     f"An item marked {REPEAT_MARK} was already shown, unchanged: not news, so it never leads"
 )

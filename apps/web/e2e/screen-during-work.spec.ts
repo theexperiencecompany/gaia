@@ -94,7 +94,9 @@ test.describe("screen during work", () => {
   test("a stop while a subagent is working leaves the chat able to run new work", async ({
     page,
   }) => {
-    const subagentTask = `look into it [[wait:${3 * HOLD_MS}]] [[say:Sub done.]]`;
+    // Under the API's 45 s first-chunk deadline: a silent hold that long is a
+    // stalled stream, and the sim's fallback is the same stub holding again.
+    const subagentTask = `look into it [[wait:${2 * HOLD_MS}]] [[say:Sub done.]]`;
     await openNewChat(page);
     await sendAndOpen(
       page,

@@ -48,13 +48,23 @@ INVOCATION_MODULE = "agents/tools/invocation.py"
 #: Every invoking call in app/ that is not a tool, as (file, receiver source): why.
 NOT_A_TOOL: dict[tuple[str, str], str] = {
     ("agents/middleware/compaction.py", "summary_llm"): "an LLM summarising history",
-    ("agents/middleware/summarization.py", "self.model"): "an LLM summarising history",
+    (
+        "agents/middleware/summarization.py",
+        "with_llm_retry(self.model, max_attempts=1)",
+    ): "an LLM summarising history",
     ("agents/tools/flowchart_tool.py", "FLOWCHART_PROMPT_TEMPLATE"): "a prompt template",
     (
         "agents/llm/client.py",
         "with_llm_retry(primary, max_attempts=opts.max_attempts, "
         "retry_rate_limits=_retries_rate_limits(provider, fallback))",
     ): "the LLM client with retries",
+    (
+        "agents/llm/client.py",
+        "with_llm_retry(primary, max_attempts=opts.max_attempts, "
+        "retry_rate_limits=_retries_rate_limits(provider, fallback), "
+        "retry_stalls=fallback is None)",
+    ): "the async LLM client with retries",
+    ("agents/llm/client.py", "self.bound"): "one model attempt under the stream stall deadlines",
     ("agents/llm/client.py", "fallback_runnable"): "the LLM client's fallback model",
     ("agents/memory/profile_crawler.py", "crawler"): "a web crawler",
     ("utils/crawl4ai_utils.py", "crawler"): "a web crawler",
