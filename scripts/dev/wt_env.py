@@ -19,10 +19,11 @@ import sys
 import zlib
 
 ENV_FILE = ".env.worktree"
+TEST_SERVICES = Path(__file__).resolve().parents[2] / "scripts" / "ci" / "test-services.sh"
 SLOT_COUNT = 199
 PORT_STEP = 10
 # Ports a linked worktree must never take: the main checkout's own, the shared docker
-# infra's, and the macOS AirPlay receiver's.
+# infra's, and the macOS AirPlay receiver's. reserved_test_lane_ports() adds the test lanes'.
 MAIN_CHECKOUT_PORTS = (3000, 3200, 3201, 3202, 3203, 3204, 8000, 9100, 9797)
 SHARED_INFRA_PORTS = (5432, 5672, 6379, 8080, 8765, 8888, 15672, 15692, 27017)
 AIRPLAY_PORTS = (5000, 7000)
@@ -58,9 +59,9 @@ class Allocation:
             ports["WT_REDIS_PORT"] = 6383 + o
         return ports
 
-    def is_clear_of_reserved(self) -> bool:
-        """Return whether none of this slot's ports is one the main checkout or the infra holds."""
-        return self.slot == 0 or RESERVED_PORTS.isdisjoint(self.ports().values())
+    def is_clear_of(self, reserved: frozenset[int]) -> bool:
+        """Return whether none of this slot's ports is reserved; the main checkout's slot always is."""
+        return self.slot == 0 or reserved.isdisjoint(self.ports().values())
 
     def env_lines(self) -> list[str]:
         """Return the .env.worktree body for this slot."""
@@ -108,16 +109,27 @@ def preferred_slot(root: Path) -> int:
     return zlib.crc32(str(root).encode()) % SLOT_COUNT + 1
 
 
-def allocate(root: Path, other_roots: Iterable[Path]) -> int:
-    """Return a slot for root that no other worktree holds: its current one, else the next free."""
+def reserved_test_lane_ports() -> frozenset[int]:
+    """Return every host port a test-services lane can bind, as test-services.sh itself reports."""
+    listed = subprocess.run(
+        ["bash", str(TEST_SERVICES), "ports"], check=True, capture_output=True, text=True
+    ).stdout
+    return frozenset(int(port) for port in listed.split())
+
+
+def allocate(root: Path, other_roots: Iterable[Path], reserved: frozenset[int]) -> int:
+    """Return a slot for root that no other worktree holds and that binds no reserved port.
+
+    Its current slot is kept when it still qualifies, else the next free one from its hash.
+    """
     taken = {slot for other in other_roots if (slot := slot_in(other / ENV_FILE))}
     current = slot_in(root / ENV_FILE)
-    if current and current not in taken and Allocation(current).is_clear_of_reserved():
+    if current and current not in taken and Allocation(current).is_clear_of(reserved):
         return current
     start = preferred_slot(root)
     for step in range(SLOT_COUNT):
         slot = (start - 1 + step) % SLOT_COUNT + 1
-        if slot not in taken and Allocation(slot).is_clear_of_reserved():
+        if slot not in taken and Allocation(slot).is_clear_of(reserved):
             return slot
     raise SystemExit(
         f"wt:env: all {SLOT_COUNT} worktree slots are taken. "
@@ -157,7 +169,7 @@ def main(argv: list[str] | None = None) -> None:
             slot = 0
         else:
             others = [p.resolve() for p in _worktree_roots() if p.resolve() != root]
-            slot = allocate(root, others)
+            slot = allocate(root, others, RESERVED_PORTS | reserved_test_lane_ports())
         allocation = Allocation(slot)
         (root / ENV_FILE).write_text("\n".join(allocation.env_lines()) + "\n")
     ports = allocation.ports()
