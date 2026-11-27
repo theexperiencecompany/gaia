@@ -25,8 +25,6 @@ export type {
 export { NOTIFICATION_ENDPOINTS } from "./notificationsApi";
 export { buildQueryString } from "./queryBuilder";
 export { normalizeListResponse } from "./responseNormalizer";
-export type { SearchApi, SearchScope } from "./searchApi";
-export { buildSearchQuery, SearchApiEndpoints } from "./searchApi";
 export type {
   SubtaskCreateParams,
   SubtaskUpdateParams,

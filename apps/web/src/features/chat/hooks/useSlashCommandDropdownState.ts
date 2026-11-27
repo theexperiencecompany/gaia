@@ -159,7 +159,7 @@ export function handleSlashCommandKey(
       const unlockedMatches = filterMatchesByCategory(
         ctx.selectedCategory,
         ctx.matches,
-      ).filter((match) => !match.enhancedTool?.isLocked);
+      ).filter((match) => !match.tool.locked);
       const selectedMatch = unlockedMatches[ctx.selectedIndex];
       if (selectedMatch) ctx.onSelect(selectedMatch);
       return true;
@@ -338,7 +338,7 @@ export function useSlashCommandDropdownState({
         prev.matches,
       );
       const unlockedCount = filteredMatches.filter(
-        (match) => !match.enhancedTool?.isLocked,
+        (match) => !match.tool.locked,
       ).length;
 
       return {
@@ -355,7 +355,7 @@ export function useSlashCommandDropdownState({
         prev.matches,
       );
       const unlockedCount = filteredMatches.filter(
-        (match) => !match.enhancedTool?.isLocked,
+        (match) => !match.tool.locked,
       ).length;
 
       return {

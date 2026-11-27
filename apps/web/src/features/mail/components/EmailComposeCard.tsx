@@ -39,7 +39,10 @@ import {
 } from "@/features/mail/hooks/useRecipientSelection";
 import { sanitizeEmailHtml } from "@/features/mail/utils/sanitizeEmailHtml";
 import { toast } from "@/lib/toast";
-import type { EmailAttachmentMeta } from "@/types/features/mailTypes";
+import type {
+  EmailAttachmentMeta,
+  EmailComposeData,
+} from "@/types/features/mailTypes";
 
 // Email validation schema
 const emailComposeSchema = z.object({
@@ -76,19 +79,8 @@ function HtmlEmailBody({ html }: { html: string }) {
   return <div ref={hostRef} />;
 }
 
-interface EmailData {
-  to: string[];
-  subject: string;
-  body: string;
-  draft_id?: string;
-  thread_id?: string;
-  bcc?: string[];
-  cc?: string[];
-  attachments?: EmailAttachmentMeta[];
-}
-
 interface EmailComposeCardProps {
-  emailData: EmailData;
+  emailData: EmailComposeData;
   onSent?: () => void;
 }
 
@@ -309,7 +301,7 @@ function EditEmailModal({
   isOpen: boolean;
   onClose: () => void;
   onSave: (draft: { subject: string; body: string }) => void;
-  initialData: EmailData;
+  initialData: EmailComposeData;
   errors: Record<string, string>;
 }) {
   // Seeded from the current data at mount; the parent remounts this modal
@@ -554,7 +546,7 @@ export default function EmailComposeCard({
   } | null>(null);
 
   // Subject/body follow the agent-resolved data until the user saves an edit.
-  const editData: EmailData = savedEdits
+  const editData: EmailComposeData = savedEdits
     ? { ...emailData, ...savedEdits }
     : emailData;
 

@@ -42,7 +42,7 @@ export function useSlashCommandItems({
   const lockedCountByCategory = useMemo(() => {
     const counts: Record<string, number> = {};
     matches.forEach((match) => {
-      if (match.enhancedTool?.isLocked) {
+      if (match.tool.locked) {
         counts[match.tool.category] = (counts[match.tool.category] ?? 0) + 1;
       }
     });
@@ -100,8 +100,7 @@ export function useSlashCommandItems({
     const lockedByCategory: Record<string, SlashCommandMatch[]> = {};
 
     filteredMatches.forEach((match) => {
-      const isLocked = match.enhancedTool?.isLocked || false;
-      if (isLocked) {
+      if (match.tool.locked) {
         if (!lockedByCategory[match.tool.category]) {
           lockedByCategory[match.tool.category] = [];
         }

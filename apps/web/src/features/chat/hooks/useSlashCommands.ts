@@ -2,27 +2,12 @@ import Fuse from "fuse.js";
 import { useCallback, useMemo } from "react";
 
 import type { ToolInfo } from "@/features/chat/api/toolsApi";
-
-import type { EnhancedToolInfo } from "../types/enhancedTools";
 import { useToolsQuery } from "./useToolsQuery";
 
 export interface SlashCommandMatch {
   tool: ToolInfo;
-  enhancedTool?: EnhancedToolInfo;
   matchedText: string;
 }
-
-/**
- * Build an EnhancedToolInfo directly from a ToolInfo. `locked` comes straight
- * from the workspace-scoped /tools response — no integration join needed.
- */
-const toEnhancedTool = (tool: ToolInfo): EnhancedToolInfo => ({
-  name: tool.name,
-  category: tool.category,
-  displayName: tool.display_name,
-  iconUrl: tool.icon_url ?? undefined,
-  isLocked: tool.locked,
-});
 
 export interface UseSlashCommandsReturn {
   tools: ToolInfo[];
@@ -48,10 +33,9 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
 
   // Create Fuse instance with optimized config for fuzzy search
   const fuse = useMemo(() => {
-    const toolsWithEnhanced = tools.map((tool) => {
+    const searchableTools = tools.map((tool) => {
       return {
         tool,
-        enhancedTool: toEnhancedTool(tool),
         // Create searchable strings
         nameSpaced: tool.name.replace(/_/g, " "),
         category: tool.category,
@@ -62,7 +46,7 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
       };
     });
 
-    return new Fuse(toolsWithEnhanced, {
+    return new Fuse(searchableTools, {
       keys: [
         {
           name: "nameSpaced",
@@ -99,15 +83,12 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
         return tools
           .map((tool) => ({
             tool,
-            enhancedTool: toEnhancedTool(tool),
             matchedText: tool.name,
           }))
           .sort((a, b) => {
             // Unlocked tools first
-            const aLocked = a.enhancedTool?.isLocked || false;
-            const bLocked = b.enhancedTool?.isLocked || false;
-            if (aLocked !== bLocked) {
-              return aLocked ? 1 : -1;
+            if (a.tool.locked !== b.tool.locked) {
+              return a.tool.locked ? 1 : -1;
             }
 
             // Then sort by category, then by name
@@ -124,7 +105,6 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
       // Convert Fuse results to SlashCommandMatch[]
       return results.map((result) => ({
         tool: result.item.tool,
-        enhancedTool: result.item.enhancedTool,
         matchedText: result.item.tool.name,
       }));
     },

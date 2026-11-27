@@ -61,15 +61,6 @@ export type {
   ReminderStatus,
   ReminderUpdate,
 } from "./reminders";
-export type {
-  SearchConversationResult,
-  SearchMessageResult,
-  SearchNoteResult,
-  SearchParams,
-  SearchResponse,
-  SearchResult,
-  SearchScope,
-} from "./search";
 export type { SubscriptionRequiredDetail } from "./subscription";
 export {
   getSubscriptionRequiredDetail,

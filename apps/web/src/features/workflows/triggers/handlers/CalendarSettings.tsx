@@ -134,7 +134,7 @@ export function CalendarSettings({
     { id: "all", name: "Select All" },
     ...calendars.map((cal) => ({
       id: cal.id,
-      name: `${cal.summary} ${cal.primary ? "(Primary)" : ""}`,
+      name: `${cal.summary ?? ""} ${cal.primary ? "(Primary)" : ""}`,
     })),
   ];
 

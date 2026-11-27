@@ -60,7 +60,6 @@ apps/web/src/features/workflows/api/workflowApi.ts:TriggerOptionsQuery
 apps/web/src/types/api/aboutApiTypes.ts:AboutData
 apps/web/src/types/api/aboutApiTypes.ts:Author
 apps/web/src/types/api/calendarApiTypes.ts:CalendarEventsResult
-apps/web/src/types/api/calendarApiTypes.ts:CalendarItem
 libs/shared/ts/src/bots/api/index.ts:TokenEntry
 libs/shared/ts/src/bots/api/media.ts:Headers
 libs/shared/ts/src/chat/approvals.types.ts:ApprovalDecision
@@ -71,7 +70,6 @@ libs/shared/ts/src/chat/types.ts:ApiFileData
 libs/shared/ts/src/chat/types.ts:ArtifactData
 libs/shared/ts/src/chat/types.ts:CalendarDeleteOptions
 libs/shared/ts/src/chat/types.ts:CalendarEditOptions
-libs/shared/ts/src/chat/types.ts:CalendarEventDateTime
 libs/shared/ts/src/chat/types.ts:CalendarFetchData
 libs/shared/ts/src/chat/types.ts:CalendarListFetchData
 libs/shared/ts/src/chat/types.ts:CodeChartData
@@ -102,7 +100,6 @@ libs/shared/ts/src/chat/types.ts:RedditData
 libs/shared/ts/src/chat/types.ts:RedditPostCreatedData
 libs/shared/ts/src/chat/types.ts:RedditPostData
 libs/shared/ts/src/chat/types.ts:RedditSearchData
-libs/shared/ts/src/chat/types.ts:SameDayEvent
 libs/shared/ts/src/chat/types.ts:SearchResults
 libs/shared/ts/src/chat/types.ts:SharedMemoryData
 libs/shared/ts/src/chat/types.ts:SubagentGroupData
@@ -160,13 +157,6 @@ libs/shared/ts/src/types/reminders.ts:Reminder
 libs/shared/ts/src/types/reminders.ts:ReminderCreate
 libs/shared/ts/src/types/reminders.ts:ReminderStatus
 libs/shared/ts/src/types/reminders.ts:ReminderUpdate
-libs/shared/ts/src/types/search.ts:SearchConversationResult
-libs/shared/ts/src/types/search.ts:SearchMessageResult
-libs/shared/ts/src/types/search.ts:SearchNoteResult
-libs/shared/ts/src/types/search.ts:SearchParams
-libs/shared/ts/src/types/search.ts:SearchResponse
-libs/shared/ts/src/types/search.ts:SearchResult
-libs/shared/ts/src/types/search.ts:SearchScope
 libs/shared/ts/src/types/subscription.ts:SubscriptionRequiredDetail
 libs/shared/ts/src/types/todo.ts:Project
 libs/shared/ts/src/types/todo.ts:TodoFilters
