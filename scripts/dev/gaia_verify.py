@@ -32,7 +32,7 @@ from lib import nx_affected
 SCHEMA_VERSION = 2
 LOG_ROOT = "verify-logs"
 # A PR's checks run by default; --with-heavy adds the builds, tests and audits.
-HEAVY_JOBS = frozenset({"python-audit", "ts-build-test"})
+HEAVY_JOBS = frozenset({"python-audit", "scan", "ts-build-test"})
 # What a change meets before master: its PR, then the merge queue.
 LOCAL_EVENTS = ("pull_request", "merge_group")
 
