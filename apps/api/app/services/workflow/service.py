@@ -176,7 +176,6 @@ class WorkflowService:
             owner_id=workflow_id,
             trigger_name=trigger_name,
             trigger_config=trigger_config,
-            raise_on_failure=True,
         )
 
         return trigger_ids
