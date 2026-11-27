@@ -32,6 +32,7 @@ from app.services.triggers.subscription_service import (
     build_trigger_config,
     pause_subscriptions_for_trigger_names,
     register_subscription,
+    reregister_active_subscriptions,
     resync_subscriptions_for_trigger_names,
     teardown_subscriptions,
     unregister_subscription,
@@ -912,6 +913,7 @@ class _ResyncHarness:
         self.todos = todos
         self.register_result = register
         self.find_paused = AsyncMock(return_value=todos)
+        self.find_active = AsyncMock(return_value=todos)
         self.register = AsyncMock()
         self.unregister = AsyncMock(return_value=True)
         self.resume = AsyncMock(return_value=None)
@@ -924,6 +926,7 @@ class _ResyncHarness:
         self._repo = patch(
             "app.services.triggers.subscription_service.todo_repository",
             find_paused_by_user_and_trigger=self.find_paused,
+            find_active_by_user_and_trigger=self.find_active,
             resume_trigger_subscriptions=self.resume,
         )
         self._svc = patch(
@@ -1248,3 +1251,41 @@ class TestResyncSubscriptions:
         assert resynced == 0
         h.register.assert_not_awaited()
         h.resume.assert_not_awaited()
+
+
+class TestReregisterActiveSubscriptions:
+    async def test_only_the_active_watches_on_the_trigger_are_rebuilt_and_repointed(self) -> None:
+        active = _subscription(id="s-active", composio_trigger_ids=["ti_old"])
+        paused = _paused_sub(id="s-paused", composio_trigger_ids=["ti_paused"])
+        other = _subscription(id="s-other", trigger_name="github_pr_opened")
+        todo = _todo(id="todo-a", trigger_subscriptions=[active, paused, other])
+        second = _todo(id="todo-b", trigger_subscriptions=[_subscription(id="s-b")])
+        with _ResyncHarness([todo, second], ["ti_new"]) as h:
+            count = await reregister_active_subscriptions(USER_ID, INSTANCE_TRIGGER)
+
+        assert count == 2
+        assert h.find_active.await_args.args == (USER_ID, INSTANCE_TRIGGER)
+        assert h.register.await_count == 2
+        assert h.register.await_args_list[0].args[:3] == (USER_ID, "todo-a", INSTANCE_TRIGGER)
+        assert h.resume.await_args_list[0].args == ("todo-a",)
+        assert h.resume.await_args_list[0].kwargs == {
+            "user_id": USER_ID,
+            "trigger_ids": {"s-active": ["ti_new"]},
+        }
+        assert h.unregister.await_args_list[0].args[:3] == (USER_ID, INSTANCE_TRIGGER, ["ti_old"])
+
+    async def test_the_old_instance_is_released_only_after_the_new_ids_are_stored(self) -> None:
+        todo = _todo(trigger_subscriptions=[_subscription(composio_trigger_ids=["ti_old"])])
+        with _ResyncHarness([todo], ["ti_new"]) as h:
+            h.resume.side_effect = RuntimeError("mongo down")
+            with pytest.raises(RuntimeError):
+                await reregister_active_subscriptions(USER_ID, INSTANCE_TRIGGER)
+
+        h.unregister.assert_not_awaited()
+
+    async def test_an_unchanged_instance_is_kept(self) -> None:
+        todo = _todo(trigger_subscriptions=[_subscription(composio_trigger_ids=["ti_same"])])
+        with _ResyncHarness([todo], ["ti_same"]) as h:
+            await reregister_active_subscriptions(USER_ID, INSTANCE_TRIGGER)
+
+        h.unregister.assert_not_awaited()

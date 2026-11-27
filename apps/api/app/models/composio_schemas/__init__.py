@@ -22,6 +22,7 @@ from .gmail import GmailEmailSentPayload, GmailNewMessageEvent, GmailNewMessageP
 from .google_calendar import (
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
+    GoogleCalendarEventStartingSoonTriggerConfig,
 )
 from .google_docs import (
     GoogleDocsDocumentDeletedPayload,
@@ -83,6 +84,7 @@ __all__ = [
     # Google Calendar
     "GoogleCalendarEventCreatedPayload",
     "GoogleCalendarEventStartingSoonPayload",
+    "GoogleCalendarEventStartingSoonTriggerConfig",
     # Google Docs
     "GoogleDocsPageAddedPayload",
     "GoogleDocsDocumentDeletedPayload",
