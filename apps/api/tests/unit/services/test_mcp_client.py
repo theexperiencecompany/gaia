@@ -18,6 +18,7 @@ from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, call, create_autospec, patch
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 from langchain_core.tools import BaseTool
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from mcp.types import (
@@ -85,6 +86,7 @@ from app.services.mcp.mcp_oauth import (
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.oauth_client import OAuthClient, resolve_client_credentials
 from app.services.mcp.oauth_discovery import discover_oauth_config, probe_mcp_connection
+from app.services.mcp.oauth_session_auth import StoredOAuthTokenAuth
 from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
 from app.services.mcp.server_routing import (
     _connectable_candidate_ids,
@@ -372,21 +374,26 @@ class TestMCPClientBuildConfig:
         assert srv["auth"] == "actual_token"
         assert srv["headers"]["Authorization"] == "Bearer actual_token"
 
-    async def test_build_config_oauth_token_when_auth_required(self):
+    async def test_build_config_oauth_session_reads_the_stored_token_per_request(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config(requires_auth=True)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value="oauth_tok")
         config = await client._build_config(INTEGRATION_ID, mcp_config)
-        assert config["mcpServers"][INTEGRATION_ID]["auth"] == "oauth_tok"
+        auth = config["mcpServers"][INTEGRATION_ID]["auth"]
+        assert isinstance(auth, StoredOAuthTokenAuth)
+
+        client.token_store.get_oauth_token = AsyncMock(return_value="later_tok")
+        request = httpx.Request("POST", "https://mcp.example.com/mcp")
+        await anext(auth.async_auth_flow(request))
+        assert request.headers["Authorization"] == "Bearer later_tok"
 
     async def test_build_config_raises_when_auth_required_no_token(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config(requires_auth=True)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value=None)
+        client.token_store.get_refresh_token = AsyncMock(return_value=None)
         with pytest.raises(ValueError, match="No valid token"):
             await client._build_config(INTEGRATION_ID, mcp_config)
 
@@ -423,16 +430,39 @@ class TestMCPClientBuildConfig:
         config = await client._build_config(INTEGRATION_ID, mcp_config)
         assert config["mcpServers"][INTEGRATION_ID]["transport"] == "sse"
 
-    async def test_build_config_refreshes_expiring_token(self):
+    async def test_build_config_refreshes_an_expired_token(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config(requires_auth=True)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=True)
-        client.token_store.get_oauth_token = AsyncMock(return_value="refreshed_tok")
+        client.token_store.get_oauth_token = AsyncMock(side_effect=[None, "refreshed_tok"])
+        client.token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         client._try_refresh_token = AsyncMock(return_value=True)
         config = await client._build_config(INTEGRATION_ID, mcp_config)
-        client._try_refresh_token.assert_awaited_once()
-        assert config["mcpServers"][INTEGRATION_ID]["auth"] == "refreshed_tok"
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        assert isinstance(config["mcpServers"][INTEGRATION_ID]["auth"], StoredOAuthTokenAuth)
+
+    async def test_a_rejected_token_already_replaced_is_not_refreshed_again(self):
+        """Two requests 401 on one token; the second must reuse the first's refresh, not spend the rotated refresh token."""
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_oauth_token = AsyncMock(return_value="new_tok")
+        client._try_refresh_token = AsyncMock(return_value=True)
+
+        token = await client.oauth_access_token(INTEGRATION_ID, _make_mcp_config(), "old_tok")
+
+        assert token == "new_tok"
+        client._try_refresh_token.assert_not_awaited()
+
+    async def test_a_rejected_token_still_stored_is_refreshed(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        client.token_store.get_oauth_token = AsyncMock(side_effect=["old_tok", "new_tok"])
+        client.token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        client._try_refresh_token = AsyncMock(return_value=True)
+
+        token = await client.oauth_access_token(INTEGRATION_ID, mcp_config, "old_tok")
+
+        assert token == "new_tok"
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
 
 
 class TestMCPClientConnect:
@@ -589,7 +619,6 @@ class TestMCPClientDoConnect:
 
         client = MCPClient(user_id=USER_ID)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value="tok")
 
         with pytest.raises(StepUpAuthRequiredError) as exc_info:
@@ -674,7 +703,6 @@ class TestMCPClientDoConnect:
 
         client = MCPClient(user_id=USER_ID)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value="tok")
         client.token_store.store_unauthenticated = AsyncMock()
         client._try_refresh_token = AsyncMock(return_value=True)
@@ -1355,48 +1383,6 @@ class TestMCPTokenStoreGetOAuthToken:
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.get_oauth_token(INTEGRATION_ID)
         assert result is None
-
-
-class TestMCPTokenStoreIsTokenExpiringSoon:
-    async def test_true_when_expiring_soon(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        soon = datetime.now(UTC) + timedelta(seconds=60)
-        cred = _make_credential(token_expires_at=soon)
-        store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID, threshold_seconds=300)
-        assert result is True
-
-    async def test_false_when_not_expiring_soon(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        far_future = datetime.now(UTC) + timedelta(hours=2)
-        cred = _make_credential(token_expires_at=far_future)
-        store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID)
-        assert result is False
-
-    async def test_false_when_no_credential(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        store.get_credential = AsyncMock(return_value=None)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID)
-        assert result is False
-
-    async def test_stale_token_without_expiry(self):
-        """Token issued >1 hour ago with no expires_at should be treated as expiring."""
-        store = MCPTokenStore(user_id=USER_ID)
-        old = datetime.now(UTC) - timedelta(hours=2)
-        cred = _make_credential(token_expires_at=None, connected_at=old)
-        store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID)
-        assert result is True
-
-    async def test_fresh_token_without_expiry(self):
-        """Token issued <1 hour ago with no expires_at should NOT be treated as expiring."""
-        store = MCPTokenStore(user_id=USER_ID)
-        recent = datetime.now(UTC) - timedelta(minutes=5)
-        cred = _make_credential(token_expires_at=None, connected_at=recent)
-        store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID)
-        assert result is False
 
 
 class TestMCPTokenStoreStoreOAuthTokens:
@@ -5033,9 +5019,6 @@ class TestHandleConnectFailureExact:
     ) -> None:
         client = MCPClient(user_id=USER_ID)
         monkeypatch.setattr(client.token_store, "get_bearer_token", AsyncMock(return_value=None))
-        monkeypatch.setattr(
-            client.token_store, "is_token_expiring_soon", AsyncMock(return_value=False)
-        )
         monkeypatch.setattr(client.token_store, "get_oauth_token", AsyncMock(return_value=None))
         monkeypatch.setattr(client.token_store, "get_refresh_token", AsyncMock(return_value=None))
         mcp_config = _make_mcp_config(requires_auth=True)

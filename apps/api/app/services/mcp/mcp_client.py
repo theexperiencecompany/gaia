@@ -1,7 +1,9 @@
 """Per-user MCP client: connects integrations, holds their sessions and live tools, and tears them down."""
 
 import asyncio
+from collections import defaultdict
 from collections.abc import Awaitable, Callable, Collection, Iterable
+import functools
 import re
 import time
 from typing import NamedTuple, TypedDict
@@ -63,6 +65,7 @@ from app.services.mcp.mcp_tools_service import (
     store_mcp_tools,
 )
 from app.services.mcp.oauth_discovery import discover_oauth_config, probe_mcp_connection
+from app.services.mcp.oauth_session_auth import StoredOAuthTokenAuth
 from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
 from app.services.mcp.token_management import (
     revoke_integration_tokens,
@@ -155,6 +158,7 @@ class MCPClient:
         # stack. _handle_connect_failure recurses through _do_connect, and this
         # is what stops the two refreshing each other forever.
         self._refresh_attempts: set[str] = set()
+        self._token_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     def _sanitize_config(self, config: MCPUseConfig) -> _SanitizedMcpConfig:
         """Sanitize config for logging by removing sensitive data."""
@@ -223,63 +227,7 @@ class MCPClient:
         else:
             server_config["transport"] = "streamable-http"
 
-        # Check for stored tokens: bearer first (user-provided), then OAuth
-        # Bearer tokens can be stored even when requires_auth=False
-        stored_token = await self.token_store.get_bearer_token(integration_id)
-        token_source = "bearer"  # nosec B105
-
-        # If no bearer token, try OAuth token (only if auth is required)
-        if not stored_token and mcp_config.requires_auth:
-            # Check if OAuth token is expiring soon and try to refresh
-            if await self.token_store.is_token_expiring_soon(integration_id):
-                log.info(
-                    f"{LogTag.MCP} Token expiring soon, attempting refresh",
-                    integration_id=integration_id,
-                )
-                await self._try_refresh_token(integration_id, mcp_config)
-
-            stored_token = await self.token_store.get_oauth_token(integration_id)
-            token_source = "oauth"  # nosec B105
-
-        if stored_token:
-            log.set_ns(
-                "mcp",
-                operation="connect",
-                server_id=integration_id,
-                transport=server_config.get("transport"),
-            )
-            log.info(
-                f"{LogTag.MCP} Retrieved stored token",
-                integration_id=integration_id,
-                token_source=token_source,
-                token_length=len(stored_token),
-            )
-            # Strip Bearer prefix if present - mcp-use adds it automatically
-            raw_token = stored_token
-            if stored_token.lower().startswith("bearer "):
-                raw_token = stored_token[7:]
-
-            # Primary: Pass token via auth config
-            server_config["auth"] = raw_token
-
-            # Fallback: Also pass via headers for servers where mcp-use OAuth
-            # discovery fails (e.g., Smithery servers that don't expose
-            # .well-known/oauth-authorization-server endpoints)
-            server_config["headers"] = {"Authorization": f"Bearer {raw_token}"}
-        elif mcp_config.requires_auth:
-            log.warning(
-                f"{LogTag.MCP} _build_config: no stored token, but requires_auth=True for user — raising 'OAuth authorization required'",
-                integration_id=integration_id,
-                user_id=self.user_id,
-            )
-            raise MCPAuthorizationRequiredError(integration_id)
-        else:
-            # No auth required and no bearer token - set auth to None
-            log.info(
-                f"{LogTag.MCP} _build_config: no auth required, connecting unauthenticated",
-                integration_id=integration_id,
-            )
-            server_config["auth"] = None
+        await self._apply_auth(server_config, integration_id, mcp_config)
 
         # Composio gateway auth is a platform x-api-key header, not per-user
         # OAuth; requires_auth stays False because there is no user credential.
@@ -294,6 +242,52 @@ class MCPClient:
                 server_config.setdefault("headers", {})["x-api-key"] = composio_api_key
 
         return {"mcpServers": {integration_id: server_config}}
+
+    async def _apply_auth(
+        self, server_config: MCPUseServerConfig, integration_id: str, mcp_config: MCPConfig
+    ) -> None:
+        """Set the session's auth: a user's bearer token, else OAuth read per request, else none."""
+        bearer_token = await self.token_store.get_bearer_token(integration_id)
+        if bearer_token:
+            # Strip Bearer prefix if present - mcp-use adds it automatically
+            raw_token = (
+                bearer_token[7:] if bearer_token.lower().startswith("bearer ") else bearer_token
+            )
+            server_config["auth"] = raw_token
+            # Also sent as a header for servers where mcp-use's OAuth discovery
+            # fails (e.g. Smithery servers with no .well-known endpoints).
+            server_config["headers"] = {"Authorization": f"Bearer {raw_token}"}
+        elif not mcp_config.requires_auth:
+            log.info(
+                f"{LogTag.MCP} _build_config: no auth required, connecting unauthenticated",
+                integration_id=integration_id,
+            )
+            server_config["auth"] = None
+            return
+        elif await self.oauth_access_token(integration_id, mcp_config):
+            # The session outlives its access token, so it reads the current one per request.
+            server_config["auth"] = StoredOAuthTokenAuth(
+                functools.partial(self.oauth_access_token, integration_id, mcp_config)
+            )
+        else:
+            log.warning(
+                f"{LogTag.MCP} _build_config: no stored token, but requires_auth=True for user — raising 'OAuth authorization required'",
+                integration_id=integration_id,
+                user_id=self.user_id,
+            )
+            raise MCPAuthorizationRequiredError(integration_id)
+
+        log.set_ns(
+            "mcp",
+            operation="connect",
+            server_id=integration_id,
+            transport=server_config.get("transport"),
+        )
+        log.info(
+            f"{LogTag.MCP} Retrieved stored token",
+            integration_id=integration_id,
+            token_source="bearer" if bearer_token else "oauth",
+        )
 
     async def connect(self, integration_id: str) -> list[BaseTool]:
         """Connect to an MCP server and return LangChain tools, deduplicating concurrent connects.
@@ -1140,6 +1134,28 @@ class MCPClient:
         """Attempt to refresh OAuth token using stored refresh_token."""
         oauth_config = await discover_oauth_config(self.token_store, integration_id, mcp_config)
         return await try_refresh_token(self.token_store, integration_id, mcp_config, oauth_config)
+
+    async def oauth_access_token(
+        self, integration_id: str, mcp_config: MCPConfig, rejected: str | None = None
+    ) -> str | None:
+        """Return the integration's usable OAuth access token, refreshing it once it expired or was rejected.
+
+        rejected is a token the server just answered 401 to. A stored token that differs
+        from it was already refreshed by a concurrent caller, so a rotating refresh token is spent once.
+        """
+        async with self._token_locks[integration_id]:
+            current = await self.token_store.get_oauth_token(integration_id)
+            if current is not None and current != rejected:
+                return current
+            if await self.token_store.get_refresh_token(integration_id) is None:
+                return None
+            log.info(
+                f"{LogTag.MCP} Access token expired or rejected, refreshing",
+                integration_id=integration_id,
+                rejected=rejected is not None,
+            )
+            await self._try_refresh_token(integration_id, mcp_config)
+            return await self.token_store.get_oauth_token(integration_id)
 
     async def drop_local(self, integration_id: str) -> None:
         """Close this process's session for an integration and rename the peers it forced a prefix on.

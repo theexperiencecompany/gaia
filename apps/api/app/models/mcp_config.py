@@ -2,6 +2,7 @@
 
 from typing import Any, Literal, TypedDict
 
+import httpx
 from mcp.shared.auth import OAuthMetadata, OAuthToken, ProtectedResourceMetadata
 from pydantic import BaseModel, ConfigDict
 
@@ -94,14 +95,15 @@ class OAuthStateOwner(BaseModel):
 class MCPUseServerConfig(TypedDict, total=False):
     """One entry under ``mcpServers`` in the config handed to ``mcp_use``.
 
-    ``total=False`` mirrors how the config is assembled key by key: ``auth`` is
-    ``None`` for unauthenticated servers, and ``headers`` only appears when a
-    bearer token or the Composio platform key has to be injected.
+    ``total=False`` mirrors how the config is assembled key by key: ``auth`` is a
+    bearer token string, an httpx.Auth for OAuth (read per request), or ``None``
+    for unauthenticated servers; ``headers`` only appears when a bearer token or
+    the Composio platform key has to be injected.
     """
 
     url: str
     transport: str
-    auth: str | None
+    auth: str | httpx.Auth | None
     headers: dict[str, str]
 
 

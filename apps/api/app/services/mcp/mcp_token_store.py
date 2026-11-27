@@ -218,37 +218,6 @@ class MCPTokenStore:
             return self._decrypt(cred.refresh_token)
         return None
 
-    async def is_token_expiring_soon(
-        self, integration_id: str, threshold_seconds: int = 300
-    ) -> bool:
-        """Check if token expires within threshold (default 5 minutes).
-
-        Also returns True when token_expires_at is not set but the token
-        was issued more than max_age_seconds ago — servers can revoke
-        tokens at any time, so proactively refreshing stale tokens avoids
-        connection failures from expired-but-unknown-expiry tokens.
-        """
-        cred = await self.get_credential(integration_id)
-        if not cred:
-            return False
-
-        if cred.token_expires_at:
-            # Deferred import: stdlib import kept local to this expiry branch
-            from datetime import timedelta  # noqa: PLC0415 -- stdlib import kept local
-
-            return cred.token_expires_at < datetime.now(UTC) + timedelta(seconds=threshold_seconds)
-
-        # No expires_at stored — treat tokens older than 1 hour as stale
-        # so we proactively refresh them rather than discovering they're
-        # expired only when mcp-use fails to connect.
-        max_age_seconds = 3600
-        if cred.connected_at:
-            from datetime import timedelta  # noqa: PLC0415 -- stdlib import kept local
-
-            return cred.connected_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds)
-
-        return False
-
     async def store_bearer_token(self, integration_id: str, token: str) -> None:
         """Store encrypted bearer token."""
         encrypted = self._encrypt(token)

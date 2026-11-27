@@ -76,7 +76,6 @@ class TestUnderscoredArguments:
         client = MCPClient(user_id="test-user")
         client.token_store = MagicMock(
             get_bearer_token=AsyncMock(return_value=None),
-            is_token_expiring_soon=AsyncMock(return_value=False),
             store_unauthenticated=AsyncMock(),
         )
         with (

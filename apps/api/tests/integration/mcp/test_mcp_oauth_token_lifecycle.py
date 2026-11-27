@@ -1,8 +1,9 @@
-"""Authorize, code exchange and refresh present one OAuth client to an authorization server.
+"""An MCP OAuth grant across its life: authorize, code exchange, refresh, and a live session past expiry.
 
 The fake authorization server binds each code and refresh token to the client_id it
-was issued to, as real ones do, so a phase that resolves a different client (or
-none) fails the way production did for Client ID Metadata Document integrations.
+was issued to and its MCP endpoint accepts only live access tokens, as real ones do,
+so a phase that resolves another client, or a session that keeps a dead token, fails
+the way production did for Client ID Metadata Document integrations.
 """
 
 from collections.abc import Iterator
@@ -14,10 +15,12 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 from mcp.shared.auth import OAuthMetadata
+from mcp_use.client.connectors.http import HttpConnector
 import pytest
 
 from app.config.settings import settings
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_oauth import build_oauth_auth_url, handle_oauth_callback
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.token_management import try_refresh_token
@@ -27,32 +30,41 @@ API_BASE = "https://api.gaia.test"
 METADATA_DOCUMENT_URL = f"{API_BASE}/api/v1/oauth/client-metadata.json"
 REDIRECT_URI = f"{API_BASE}/api/v1/mcp/oauth/callback"
 AUTH_SERVER = "https://auth.mcp.test"
+MCP_URL = "https://mcp.test/mcp"
 
 
 @dataclass
 class _FakeAuthorizationServer:
-    """Token endpoint that honours a grant only for the client_id it was issued to."""
+    """Token endpoint that honours a grant only for its client_id, and an MCP endpoint for live tokens."""
 
     grant_owner: dict[str, str] = field(default_factory=dict)
     token_requests: list[dict[str, str]] = field(default_factory=list)
+    live_access_tokens: set[str] = field(default_factory=set)
 
     def issue_code(self, client_id: str) -> str:
         code = secrets.token_urlsafe(8)
         self.grant_owner[code] = client_id
         return code
 
+    def expire_access_tokens(self) -> None:
+        self.live_access_tokens.clear()
+
     def handle(self, request: httpx.Request) -> httpx.Response:
+        if str(request.url) == MCP_URL:
+            bearer = request.headers.get("Authorization", "").removeprefix("Bearer ")
+            return httpx.Response(200 if bearer in self.live_access_tokens else 401)
         form = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
         self.token_requests.append(form)
         grant = form.get("code") or form.get("refresh_token", "")
         if self.grant_owner.pop(grant, None) != form.get("client_id"):
             return httpx.Response(401, json={"error": "invalid_client"})
-        refresh_token = secrets.token_urlsafe(8)
+        refresh_token, access_token = secrets.token_urlsafe(8), secrets.token_urlsafe(8)
         self.grant_owner[refresh_token] = form["client_id"]
+        self.live_access_tokens.add(access_token)
         return httpx.Response(
             200,
             json={
-                "access_token": secrets.token_urlsafe(8),
+                "access_token": access_token,
                 "token_type": "Bearer",
                 "expires_in": 60,
                 "refresh_token": refresh_token,
@@ -83,6 +95,7 @@ class _InMemoryTokenStore(MCPTokenStore):
     def __init__(self) -> None:
         super().__init__("user-1")
         self._code_verifier = ""
+        self._access_token: str | None = None
         self._refresh_token: str | None = None
 
     async def get_dcr_client(self, integration_id: str) -> None:
@@ -105,7 +118,17 @@ class _InMemoryTokenStore(MCPTokenStore):
         refresh_token: str | None = None,
         expires_at: datetime | None = None,
     ) -> None:
+        self._access_token = access_token
         self._refresh_token = refresh_token
+
+    async def get_credential(self, integration_id: str) -> None:
+        return None
+
+    async def get_bearer_token(self, integration_id: str) -> str | None:
+        return None
+
+    async def get_oauth_token(self, integration_id: str) -> str | None:
+        return self._access_token
 
     async def get_refresh_token(self, integration_id: str) -> str | None:
         return self._refresh_token
@@ -123,7 +146,7 @@ def auth_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeAuthorizationS
         return httpx.AsyncClient(transport=httpx.MockTransport(server.handle))
 
     resolved = AsyncMock()
-    resolved.mcp_config = MCPConfig(server_url="https://mcp.test/mcp", requires_auth=True)
+    resolved.mcp_config = MCPConfig(server_url=MCP_URL, requires_auth=True)
     with (
         patch("app.services.mcp.mcp_oauth.mcp_http_client", http_client),
         patch("app.services.mcp.token_management.mcp_http_client", http_client),
@@ -133,6 +156,10 @@ def auth_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeAuthorizationS
         ),
         patch(
             "app.services.mcp.mcp_oauth.discover_oauth_config",
+            AsyncMock(return_value=_cimd_discovery()),
+        ),
+        patch(
+            "app.services.mcp.mcp_client.discover_oauth_config",
             AsyncMock(return_value=_cimd_discovery()),
         ),
         patch("app.services.mcp.mcp_oauth.update_user_integration_status", AsyncMock()),
@@ -163,7 +190,7 @@ async def test_a_metadata_document_client_refreshes_as_the_client_it_connected_a
     await _connect(store, auth_server)
 
     refreshed = await try_refresh_token(
-        store, INTEGRATION_ID, MCPConfig(server_url="https://mcp.test/mcp"), _cimd_discovery()
+        store, INTEGRATION_ID, MCPConfig(server_url=MCP_URL), _cimd_discovery()
     )
 
     assert refreshed is True
@@ -184,9 +211,42 @@ async def test_a_refresh_no_client_can_present_drops_the_refresh_token(
     monkeypatch.setattr(settings, "HOST", "http://localhost:8000")
 
     refreshed = await try_refresh_token(
-        store, INTEGRATION_ID, MCPConfig(server_url="https://mcp.test/mcp"), _cimd_discovery()
+        store, INTEGRATION_ID, MCPConfig(server_url=MCP_URL), _cimd_discovery()
     )
 
     assert refreshed is False
     assert await store.get_refresh_token(INTEGRATION_ID) is None
     assert [r["grant_type"] for r in auth_server.token_requests] == ["authorization_code"]
+
+
+@pytest.mark.integration
+@pytest.mark.regression
+async def test_a_live_session_refreshes_a_token_the_server_expired_and_retries(
+    auth_server: _FakeAuthorizationServer,
+) -> None:
+    store = _InMemoryTokenStore()
+    await _connect(store, auth_server)
+    client = MCPClient("user-1")
+    client.token_store = store
+    config = await client._build_config(
+        INTEGRATION_ID, MCPConfig(server_url=MCP_URL, requires_auth=True)
+    )
+    server = config["mcpServers"][INTEGRATION_ID]
+    # The connector mcp_use builds from this config; its session sends with these headers and auth.
+    connector = HttpConnector(
+        base_url=MCP_URL, headers=server.get("headers"), auth=server.get("auth")
+    )
+    auth_server.expire_access_tokens()
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(auth_server.handle),
+        headers=connector.headers,
+        auth=connector._auth,
+    ) as session_http:
+        response = await session_http.post(MCP_URL)
+
+    assert response.status_code == 200
+    assert [r["grant_type"] for r in auth_server.token_requests] == [
+        "authorization_code",
+        "refresh_token",
+    ]
