@@ -162,6 +162,7 @@ html {
   --gaia-soft-tint-light: 15%;
   --gaia-separator-raised: color-mix(in oklab, var(--color-zinc-700) 50%, transparent);
   --gaia-button-weight: 400;
+  --gaia-chip-weight: 400;
   --gaia-button-sm-height: 2rem;
   --gaia-button-sm-min-width: 4rem;
   --gaia-button-sm-padding: 0.75rem;
