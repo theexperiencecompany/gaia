@@ -209,7 +209,7 @@ def test_survivors_prints_the_change_and_the_full_diff(tmp_path: Path) -> None:
     # The whole diff, not just the summary: that is the edit to make.
     assert '-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True' in result.stdout
     assert '+            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", None, nx=True' in result.stdout
-    assert "replay: python3 scripts/ci/mutation.py replay" in result.stdout
+    assert "replay: mise mutation:replay" in result.stdout
     assert "tests/unit/api/test_bot_endpoint.py" in result.stdout
 
 
