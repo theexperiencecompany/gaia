@@ -1139,13 +1139,14 @@ class MCPClient:
         token, so its token is reused instead of refreshing again.
         """
         failed = rejected or await self.token_store.get_oauth_token(integration_id)
+        # Discovery runs before the lease so the critical section is the 30s token POST alone.
+        oauth_config = await discover_oauth_config(self.token_store, integration_id, mcp_config)
         async with self.token_store.grant_lock(integration_id).hold() as held:
             if not held:
                 raise OAuthGrantLockUnavailableError(integration_id)
             current = await self.token_store.get_oauth_token(integration_id)
             if current is not None and current != failed:
                 return True
-            oauth_config = await discover_oauth_config(self.token_store, integration_id, mcp_config)
             return await try_refresh_token(
                 self.token_store, integration_id, mcp_config, oauth_config
             )

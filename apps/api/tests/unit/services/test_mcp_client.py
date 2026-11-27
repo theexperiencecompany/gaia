@@ -1802,7 +1802,13 @@ class TestOAuthGrantLock:
     async def test_a_waiter_reuses_the_token_another_holder_refreshed(self):
         client = MCPClient(user_id=USER_ID)
         client.token_store.get_oauth_token = AsyncMock(return_value="fresh_tok")
-        with patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh:
+        with (
+            patch(
+                "app.services.mcp.mcp_client.discover_oauth_config",
+                AsyncMock(return_value=_make_oauth_discovery()),
+            ),
+            patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh,
+        ):
             refreshed = await client._try_refresh_token(
                 INTEGRATION_ID, _make_mcp_config(), "old_tok"
             )
@@ -1847,6 +1853,10 @@ class TestOAuthGrantLock:
         grant_lock = MagicMock(return_value=lock)
         monkeypatch.setattr(client.token_store, "grant_lock", grant_lock)
         with (
+            patch(
+                "app.services.mcp.mcp_client.discover_oauth_config",
+                AsyncMock(return_value=_make_oauth_discovery()),
+            ),
             patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh,
             pytest.raises(OAuthGrantLockUnavailableError) as raised,
         ):
