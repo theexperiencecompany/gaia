@@ -14,7 +14,6 @@
  * logic is unit-testable without any platform SDK. Adapters supply only a
  * platform-specific {@link IncomingMedia} descriptor and a download thunk.
  */
-import { imageSize } from "image-size";
 import type { GaiaClient } from "../api";
 import type { BotUserContext, PlatformName } from "../types";
 import { getHttpStatus } from "./logger";
@@ -56,24 +55,6 @@ export const OUTBOUND_FILE_LIMITS: Record<PlatformName, number> = {
   whatsapp: 100 * MB, // WhatsApp document limit
   imessage: 50 * MB, // Photon caps are undocumented; conservative floor
 };
-
-/**
- * The narrowest an image's short side may end up after a platform's photo
- * downscale and still read; a narrower photo goes as a document, which keeps
- * the original pixels. An image already narrower than this is never shrunk.
- */
-const PHOTO_MIN_SHORT_SIDE_PX = 640;
-
-/** Whether an image still reads once a platform shrinks its long side to photoMaxSidePx. */
-export function isLegibleAsPhoto(
-  data: Uint8Array,
-  photoMaxSidePx: number,
-): boolean {
-  const { width, height } = imageSize(data);
-  const shortSide = Math.min(width, height);
-  const scale = Math.min(1, photoMaxSidePx / Math.max(width, height));
-  return shortSide * scale >= Math.min(shortSide, PHOTO_MIN_SHORT_SIDE_PX);
-}
 
 function mediaByteLimit(kind: MediaKind): number {
   return kind === "audio" ? BOT_MEDIA_LIMITS.audio : BOT_MEDIA_LIMITS.file;

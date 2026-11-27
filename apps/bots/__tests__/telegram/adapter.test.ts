@@ -154,7 +154,6 @@ vi.mock("@gaia/shared/bots", async () => {
       // materialises more than the cap it was handed.
       fetchBytesCapped: vi.fn(real.fetchBytesCapped),
       // Real: the photo-or-document decision reads the image's real dimensions.
-      isLegibleAsPhoto: vi.fn(real.isLegibleAsPhoto),
       friendlyMediaError: vi.fn(
         (kind: string) => `Could not process your ${kind}.`,
       ),
@@ -1747,27 +1746,34 @@ describe("TelegramAdapter - sendOutboundFile", () => {
       false,
     );
 
-  it("sends a render too tall to read once Telegram downscales it as a document", async () => {
-    await send(pngHeader(1080, 6000));
-
-    expect(mockBotInstance.api.sendPhoto).not.toHaveBeenCalled();
-    expect(mockBotInstance.api.sendDocument).toHaveBeenCalledWith(
-      "4242",
-      expect.objectContaining({ filename: "brief.png" }),
-      { caption: "Morning" },
-    );
-  });
-
   it.each([
     [1080, 1350],
     [1080, 2768],
+    [1080, 6000],
   ])(
-    "sends a %ix%i image, a daily brief's size included, as a photo",
+    "sends a %ix%i image as a photo, as a person would",
     async (width, height) => {
       await send(pngHeader(width, height));
 
       expect(mockBotInstance.api.sendDocument).not.toHaveBeenCalled();
       expect(mockBotInstance.api.sendPhoto).toHaveBeenCalledWith(
+        "4242",
+        expect.objectContaining({ filename: "brief.png" }),
+        { caption: "Morning" },
+      );
+    },
+  );
+
+  it.each([
+    [2000, 8001],
+    [300, 6001],
+  ])(
+    "sends a %ix%i image sendPhoto would reject as a document",
+    async (width, height) => {
+      await send(pngHeader(width, height));
+
+      expect(mockBotInstance.api.sendPhoto).not.toHaveBeenCalled();
+      expect(mockBotInstance.api.sendDocument).toHaveBeenCalledWith(
         "4242",
         expect.objectContaining({ filename: "brief.png" }),
         { caption: "Morning" },

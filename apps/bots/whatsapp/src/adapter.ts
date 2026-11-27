@@ -31,7 +31,6 @@ import {
   friendlyMediaError,
   hashLogIdentifier,
   type IncomingMedia,
-  isLegibleAsPhoto,
   MEDIA_READ_TIMEOUT_MS,
   neverReopened,
   type OutboundFile,
@@ -89,8 +88,6 @@ import type {
 
 /** WhatsApp image-message byte cap; larger images are sent as documents. */
 const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-/** The long side WhatsApp is taken to shrink an image message to (not measured on the Cloud API). */
-const WHATSAPP_IMAGE_MAX_SIDE_PX = 1280;
 
 interface WhatsAppConfig {
   kapsoApiKey: string;
@@ -1033,12 +1030,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     if (!uploaded.id) throw new Error("Kapso media upload returned no id");
 
     const to = `+${destinationId}`;
-    // WhatsApp image messages cap around 5 MB and are downscaled; deliver larger
-    // or tall images as a document so they arrive full size and legible.
     const asImage =
-      mime.startsWith("image/") &&
-      data.length <= WHATSAPP_IMAGE_MAX_BYTES &&
-      isLegibleAsPhoto(data, WHATSAPP_IMAGE_MAX_SIDE_PX);
+      mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES;
     if (asImage) {
       await this.whatsAppClient.messages.sendImage({
         phoneNumberId,

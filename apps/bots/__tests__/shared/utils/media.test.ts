@@ -13,12 +13,10 @@ import {
   friendlyMediaError,
   GaiaApiError,
   type IncomingMedia,
-  isLegibleAsPhoto,
   processBotMedia,
   unsupportedMediaMessage,
 } from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
-import { pngHeader } from "../helpers/png";
 
 // A fake GaiaClient exposing only the two methods processBotMedia uses. We
 // type it through the real parameter type so a signature change breaks here.
@@ -348,36 +346,5 @@ describe("extensionForMime", () => {
 
   it("returns the fallback for unknown mime types", () => {
     expect(extensionForMime("application/x-weird", ".bin")).toBe(".bin");
-  });
-});
-
-describe("isLegibleAsPhoto", () => {
-  it.each([
-    [1080, 2768, 2560],
-    [1080, 4320, 2560],
-    [1080, 1350, 1280],
-    [1620, 3240, 1280],
-    [400, 1000, 1280],
-  ])(
-    "keeps a %ix%i image as a photo under a %ipx photo cap",
-    (width, height, cap) => {
-      expect(isLegibleAsPhoto(pngHeader(width, height), cap)).toBe(true);
-    },
-  );
-
-  it.each([
-    [1080, 4321, 2560],
-    [1080, 6000, 2560],
-    [1080, 2768, 1280],
-    [5000, 1620, 1280],
-  ])(
-    "sends a %ix%i image as a document under a %ipx photo cap",
-    (width, height, cap) => {
-      expect(isLegibleAsPhoto(pngHeader(width, height), cap)).toBe(false);
-    },
-  );
-
-  it("throws on bytes that are not an image", () => {
-    expect(() => isLegibleAsPhoto(Buffer.from("not an image"), 2560)).toThrow();
   });
 });
