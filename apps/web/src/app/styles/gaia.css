@@ -736,6 +736,11 @@
     border-radius: var(--gaia-radius-pill);
     font-weight: var(--gaia-chip-weight);
   }
+  /* v3 refines the lg chip to 500; restate v2's weight so the gaia rule above
+     does not leave that modifier dead. */
+  .chip--lg {
+    font-weight: var(--gaia-chip-weight);
+  }
 
   .slider.gaia-slider-sm .slider__marks {
     margin-top: var(--gaia-slider-sm-marks-gap);
