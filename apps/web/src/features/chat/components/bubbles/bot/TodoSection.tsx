@@ -149,7 +149,7 @@ export default function TodoSection({
       <TodoSectionList
         todos={todos}
         projects={projects}
-        timezone={user?.timezone}
+        timezone={user?.timezone ?? undefined}
         onUpdateTodo={(todoId, updates) => updateTodo(todoId, updates)}
         onOpenTodo={(t) => router.push(`/todos?todoId=${t.id}`)}
       />

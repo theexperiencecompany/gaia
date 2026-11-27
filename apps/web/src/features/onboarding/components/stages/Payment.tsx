@@ -33,10 +33,10 @@ export function Payment() {
   const { isUnknown } = useIsPaid();
   const { returned, isLate, failed, timedOut, retry } = useCheckoutReturn();
   const gaiaDone = usePaceDone(PAYMENT_REVEAL_KEY);
-  const { name, email } = useCurrentUser();
+  const user = useCurrentUser();
   const introLines = useMemo(
-    () => paymentIntroLines(firstNameOf(name, email)),
-    [name, email],
+    () => paymentIntroLines(firstNameOf(user)),
+    [user],
   );
 
   return (

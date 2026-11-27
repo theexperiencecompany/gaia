@@ -51,7 +51,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
     handleFieldChange,
     handleWorkflowLinked,
   } = useTodoSidebar({ todo, onUpdate, onDelete });
-  const userTimezone = user?.timezone;
+  const userTimezone = user?.timezone ?? undefined;
 
   if (!todo) return null;
 

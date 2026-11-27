@@ -66,7 +66,7 @@ export function OnboardingShell({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const progressStep = getProgress(state, stage);
-  const { email } = useCurrentUser();
+  const email = useCurrentUser()?.email;
   const { logout } = useLogout();
   const fingerprint = useMemo(
     () => getContentFingerprint(state, stage),

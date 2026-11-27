@@ -25,7 +25,7 @@ export function useIntegrationsList({
   onIntegrationClick,
 }: UseIntegrationsListParams) {
   const { integrations, isPending, connectIntegration } = useIntegrations();
-  const currentUserId = useCurrentUser().userId;
+  const currentUserId = useCurrentUser()?.user_id;
 
   const { filteredIntegrations } = useIntegrationSearch(
     integrations,
@@ -54,7 +54,7 @@ export function useIntegrationsList({
     const sorted = sortCategories(uniqueCategories);
     // Add "created_by_you" at the start if user has custom integrations they created
     const hasCreatedByYou = integrations.some(
-      (i) => i.createdBy === currentUserId,
+      (i) => currentUserId !== undefined && i.createdBy === currentUserId,
     );
     if (hasCreatedByYou) {
       return ["created_by_you", ...sorted];
@@ -64,7 +64,9 @@ export function useIntegrationsList({
 
   // Integrations created by the current user
   const createdByYouIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => i.createdBy === currentUserId);
+    return filteredIntegrations.filter(
+      (i) => currentUserId !== undefined && i.createdBy === currentUserId,
+    );
   }, [filteredIntegrations, currentUserId]);
 
   // Separate featured integrations

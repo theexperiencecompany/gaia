@@ -9,7 +9,7 @@ import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
  * - forked: a custom integration created by someone else (added from the marketplace)
  */
 export function useIntegrationOwnership(integration: MyIntegrationItem) {
-  const currentUserId = useCurrentUser().userId;
+  const currentUserId = useCurrentUser()?.user_id;
 
   const isOwnIntegration = useMemo(
     () =>

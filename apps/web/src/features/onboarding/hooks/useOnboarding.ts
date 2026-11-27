@@ -59,7 +59,9 @@ interface UseOnboardingReturn {
 
 export function useOnboarding(): UseOnboardingReturn {
   const queryClient = useQueryClient();
-  const { userId, onboarding } = useCurrentUser();
+  const user = useCurrentUser();
+  const userId = user?.user_id ?? "";
+  const onboarding = user?.onboarding;
   // The persisted user cache paints first and may predate a server-side
   // reset; the draft is only reconciled against an answer from this session.
   const userIsFresh = useCurrentUserIsFresh();

@@ -355,7 +355,7 @@ export default function TodoModal({
   const { projects, createTodo, updateTodo } = useTodoData({ autoLoad: false });
 
   // Get user's preferred timezone or fallback to browser timezone
-  const userTimezone = user?.timezone;
+  const userTimezone = user?.timezone ?? undefined;
 
   const {
     formData,

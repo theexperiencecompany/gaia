@@ -63,7 +63,7 @@ export function useNavbar() {
   }, [repoData?.stargazers_count]);
 
   const user = useCurrentUser();
-  const isAuthenticated = !!user.email;
+  const isAuthenticated = !!user?.email;
 
   // Handle scroll to change navbar appearance
   useEffect(() => {

@@ -211,7 +211,7 @@ const INSTANCE_ADMIN_SETTINGS_KEYS = new Set([
 /** Whether an account with this instance role may open a settings section. */
 export function isSettingsSectionAllowed(
   key: string,
-  role: InstanceRole | undefined,
+  role: InstanceRole | null | undefined,
 ): boolean {
   return !INSTANCE_ADMIN_SETTINGS_KEYS.has(key) || role === "admin";
 }

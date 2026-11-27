@@ -37,7 +37,7 @@ export function IntegrationsBanner({
   onAddMcpServer,
 }: IntegrationsBannerProps) {
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
-  const { role } = useCurrentUser();
+  const role = useCurrentUser()?.role;
   const { data: status } = useSetupStatus();
   const canAddInstanceApps =
     useDeployment().instance_toolkits && role === "admin";

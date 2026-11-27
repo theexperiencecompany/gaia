@@ -7,10 +7,10 @@ import { SiteLink } from "@/components/seo/SiteLink";
 import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import type { SelectedWorkflowData } from "@/stores/composerStore.types";
 import type {
   CommunityWorkflow,
   IntegrationRef,
-  PublicWorkflowStep,
   UseCase,
   Workflow,
 } from "@/types/features/workflowTypes";
@@ -38,14 +38,12 @@ type WorkflowCardAction =
   | "none";
 
 interface UnifiedWorkflowCardProps {
-  // Core data: one of a user workflow, a community workflow or a use case
+  // Core data: one of a user workflow, a community workflow, a use case or a
+  // workflow attached to the composer
   workflow?: Workflow;
   communityWorkflow?: CommunityWorkflow;
   useCase?: UseCase;
-  // Display-only fields for a selected workflow that has none of the above
-  title?: string;
-  description?: string;
-  steps?: PublicWorkflowStep[];
+  selectedWorkflow?: SelectedWorkflowData;
 
   // Display configuration
   variant?: WorkflowVariant;
@@ -80,7 +78,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
     workflow,
     communityWorkflow,
     useCase,
-    description: propDescription,
+    selectedWorkflow,
     variant = "explore",
     showExecutions = true,
     useBlurEffect = false,
@@ -127,7 +125,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       communityWorkflow,
       title,
       displayDescription,
-      description: propDescription ?? useCase?.description,
+      description: selectedWorkflow?.description ?? useCase?.description,
       steps,
       slug: useCase?.slug,
       prompt: useCase?.prompt,
@@ -293,15 +291,13 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 }
 
 // Resolve the card's display data and settings from the various supported prop
-// shapes (full Workflow, CommunityWorkflow, or simplified direct props).
+// shapes (full Workflow, CommunityWorkflow, UseCase or a composer-attached workflow).
 function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
   const {
     workflow,
     communityWorkflow,
     useCase,
-    title: propTitle,
-    description: propDescription,
-    steps: propSteps,
+    selectedWorkflow,
     variant = "explore",
     showTrigger,
     showActivationStatus = false,
@@ -313,19 +309,19 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
   } = props;
 
   const title =
-    propTitle ||
+    selectedWorkflow?.title ||
     useCase?.title ||
     workflow?.title ||
     communityWorkflow?.title ||
     "";
   const displayDescription =
-    propDescription ||
+    selectedWorkflow?.description ||
     useCase?.description ||
     workflow?.description ||
     communityWorkflow?.description ||
     "";
   const steps =
-    propSteps ||
+    selectedWorkflow?.steps ||
     useCase?.steps ||
     workflow?.steps ||
     communityWorkflow?.steps ||

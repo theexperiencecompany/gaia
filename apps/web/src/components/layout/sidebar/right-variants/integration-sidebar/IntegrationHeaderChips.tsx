@@ -32,8 +32,7 @@ export function IntegrationHeaderChips({
   isOwnIntegration,
   isForkedIntegration,
 }: IntegrationHeaderChipsProps) {
-  const { name: currentUserName, profilePicture: currentUserPicture } =
-    useCurrentUser();
+  const currentUser = useCurrentUser();
 
   return (
     <div className="flex items-center gap-2 flex-row mb-2">
@@ -94,8 +93,10 @@ export function IntegrationHeaderChips({
               })}
             >
               <Avatar size="sm" className="h-4 w-4">
-                <Avatar.Image src={currentUserPicture || undefined} />
-                <Avatar.Fallback>{initialsOf(currentUserName)}</Avatar.Fallback>
+                <Avatar.Image src={currentUser?.picture || undefined} />
+                <Avatar.Fallback>
+                  {initialsOf(currentUser?.name)}
+                </Avatar.Fallback>
               </Avatar>
               <Chip.Label>Created by You</Chip.Label>
             </Chip>

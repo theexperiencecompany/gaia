@@ -37,9 +37,7 @@ export default function SelectedWorkflowIndicator({
       className="relative m-3 w-80 rounded-3xl border-2 border-zinc-700"
     >
       <UnifiedWorkflowCard
-        title={workflow.title}
-        description={workflow.description}
-        steps={workflow.steps}
+        selectedWorkflow={workflow}
         variant="user"
         primaryAction="none"
         onCardClick={handleWorkflowClick}

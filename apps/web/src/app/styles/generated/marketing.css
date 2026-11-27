@@ -177,14 +177,10 @@
 @source "../../../../../../libs/shared/ts/src/api/apiError.ts";
 @source "../../../../../../libs/shared/ts/src/api/conversationsApi.ts";
 @source "../../../../../../libs/shared/ts/src/api/index.ts";
-@source "../../../../../../libs/shared/ts/src/api/integrationsApi.ts";
-@source "../../../../../../libs/shared/ts/src/api/notificationsApi.ts";
 @source "../../../../../../libs/shared/ts/src/api/queryBuilder.ts";
 @source "../../../../../../libs/shared/ts/src/api/responseNormalizer.ts";
-@source "../../../../../../libs/shared/ts/src/api/searchApi.ts";
 @source "../../../../../../libs/shared/ts/src/api/timezone.ts";
 @source "../../../../../../libs/shared/ts/src/api/todosApi.ts";
-@source "../../../../../../libs/shared/ts/src/api/workflowsApi.ts";
 @source "../../../../../../libs/shared/ts/src/artifacts/schema.ts";
 @source "../../../../../../libs/shared/ts/src/chat/approvals.ts";
 @source "../../../../../../libs/shared/ts/src/chat/fixtures.ts";
@@ -218,7 +214,6 @@
 @source "../../../../../../libs/shared/ts/src/tool-utils/date-formatting.ts";
 @source "../../../../../../libs/shared/ts/src/tool-utils/index.ts";
 @source "../../../../../../libs/shared/ts/src/types/index.ts";
-@source "../../../../../../libs/shared/ts/src/types/models.ts";
 @source "../../../../../../libs/shared/ts/src/types/notification.ts";
 @source "../../../../../../libs/shared/ts/src/types/subscription.ts";
 @source "../../../../../../libs/shared/ts/src/types/todo.ts";
@@ -279,7 +274,6 @@
 @source "../../../features/auth/utils/sessionHint.ts";
 @source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/signupMode.ts";
-@source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/blog/components/AuthorTooltip.tsx";
 @source "../../../features/bots/components/BotsGuide.tsx";
 @source "../../../features/bots/components/BotsPage.tsx";
