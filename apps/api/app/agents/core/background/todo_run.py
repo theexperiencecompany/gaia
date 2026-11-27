@@ -281,6 +281,9 @@ async def _todo_run_configurable(request: TodoRunRequest, stream_id: str) -> Age
             user_messages=background_authorization(
                 [], execution_mode="background", todo_title=request.todo_run.title
             ),
+            # Memory recall's query: the generated brief runs 8-20k chars, and recalling on it
+            # cost a median 5.2s in prod (an 8K-context reranker) against ~0.6s on a title.
+            user_request=request.todo_run.title,
             user_preferences=user_preferences,
             writing_style=writing_style,
         ),

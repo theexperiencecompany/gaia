@@ -54,8 +54,8 @@ class SectionContext:
     onboarding: OnboardingSubdocument | None = None
     #: What this turn is about — the retrieval query for every volatile section.
     query: str | None = None
-    #: The user's own words for this turn, when comms already recalled memories
-    #: on them. Memory recall reuses that result before querying with query.
+    #: The user's own words for this turn (a tracked todo run's title). Memory
+    #: recall queries it first and falls back to query only on no confident match.
     request_query: str | None = None
     subagent_id: str | None = None
     vfs_session_id: str | None = None

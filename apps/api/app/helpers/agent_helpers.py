@@ -260,9 +260,10 @@ class AgentTurn:
     must be the user's words — not a restatement."""
 
     user_request: str | None = None
-    """The live turn's request exactly as typed, unclipped. Same inheritance rule as
-    ``user_messages``; ``call_executor`` folds it into the executor brief so the
-    worker tier is never left with only the comms agent's paraphrase."""
+    """The live turn's request exactly as typed, unclipped; a tracked todo run's is the
+    todo's title. Same inheritance rule as ``user_messages``; ``call_executor`` folds it
+    into the executor brief so the worker tier is never left with only the comms agent's
+    paraphrase, and the executor's memory recall queries it before its brief."""
 
     user_preferences: dict[str, Any] | None = None
     """Onboarding data, same inheritance rule as ``user_messages`` — pass it at
