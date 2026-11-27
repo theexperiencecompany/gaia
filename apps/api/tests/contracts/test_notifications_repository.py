@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 import pytest
 
 from app.constants.briefing import BriefingKind, EditionFamily
-from app.constants.notifications import NotificationKind
+from app.constants.notifications import NOTIFICATION_RETENTION, NotificationKind
+from app.db.mongodb import indexes
 from app.db.repositories.notifications import NotificationRepository
 from app.models.brief_document_models import BriefingModel, EditionRender
 from app.models.brief_view_models import BriefEditionNotification, BriefNoteNotification
@@ -239,3 +240,17 @@ class TestBriefNotificationsRoundTrip:
         fetched = await repo.get_for_user("brief-note", "u1")
 
         assert fetched is not None and fetched.original_request.details == details
+
+
+async def test_a_notification_expires_90_days_after_it_was_created(
+    raw_collection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(indexes, "get_async_collection", lambda name: raw_collection)
+
+    await indexes.create_notification_indexes()
+
+    ttl = {
+        tuple(index["key"]): index.get("expireAfterSeconds")
+        async for index in raw_collection.list_indexes()
+    }
+    assert ttl[("created_at",)] == NOTIFICATION_RETENTION.total_seconds() == 90 * 24 * 60 * 60
