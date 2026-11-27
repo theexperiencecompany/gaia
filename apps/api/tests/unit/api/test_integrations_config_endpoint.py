@@ -791,10 +791,13 @@ class TestConnectLinkPreview:
         url = await build_connect_link_url(_VALID_UID, "gmail")
         assert url is not None
         code = url.rsplit("/", 1)[1]
-        with patch(
-            "app.services.connect_link_service.user_repository.get",
-            new_callable=AsyncMock,
-            return_value=UserDocument(email="aryan@heygaia.io", name="Aryan"),
+        with (
+            patch(
+                "app.services.connect_link_service.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="aryan@heygaia.io", name="Aryan"),
+            ),
+            patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await unauthed_client.post(f"{API}/connect-link/preview", data={"code": code})
 
@@ -804,8 +807,13 @@ class TestConnectLinkPreview:
         assert body["name"] == "Gmail"
         assert body["account_email"] == "ar***@heygaia.io"
         assert await resolve_and_consume_connect_code(code) is not None
+        mock_log.set.assert_called_with(outcome="success", integration={"id": "gmail"})
 
     @pytest.mark.usefixtures("fake_redis")
     async def test_a_dead_link_is_not_found(self, unauthed_client: AsyncClient) -> None:
-        resp = await unauthed_client.post(f"{API}/connect-link/preview", data={"code": "nope"})
+        with patch(f"{_MODULE}.log") as mock_log:
+            resp = await unauthed_client.post(f"{API}/connect-link/preview", data={"code": "nope"})
+
         assert resp.status_code == 404
+        assert resp.json()["message"] == "invalid_or_expired_link"
+        mock_log.set.assert_called_with(outcome="rejected")

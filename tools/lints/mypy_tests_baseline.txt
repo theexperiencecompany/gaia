@@ -226,7 +226,6 @@ apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
 apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
-apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined
 apps/api/tests/unit/services/test_device_manifest_cache.py	operator
 apps/api/tests/unit/services/test_device_self_pair_service.py	attr-defined

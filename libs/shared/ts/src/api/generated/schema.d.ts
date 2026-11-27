@@ -6484,7 +6484,10 @@ export interface components {
              */
             integration_id: string;
         };
-        /** AddUserIntegrationResponse */
+        /**
+         * AddUserIntegrationResponse
+         * @description An integration added to the user's workspace, and its connection state.
+         */
         AddUserIntegrationResponse: {
             connectionStatus: components["schemas"]["IntegrationStatus"];
             /** Integrationid */
@@ -8783,7 +8786,10 @@ export interface components {
              */
             redirect_path?: string;
         };
-        /** ConnectIntegrationResponse */
+        /**
+         * ConnectIntegrationResponse
+         * @description The outcome of starting an integration's connect flow.
+         */
         ConnectIntegrationResponse: {
             /** Error */
             error: string | null;
@@ -9127,7 +9133,10 @@ export interface components {
              */
             server_url: string;
         };
-        /** CreateCustomIntegrationResponse */
+        /**
+         * CreateCustomIntegrationResponse
+         * @description A created custom integration and its first connection attempt.
+         */
         CreateCustomIntegrationResponse: {
             connection: components["schemas"]["CustomIntegrationConnectionResult"];
             /** Integrationid */
@@ -9432,7 +9441,10 @@ export interface components {
              */
             valid: boolean;
         };
-        /** CustomIntegrationConnectionResult */
+        /**
+         * CustomIntegrationConnectionResult
+         * @description How connecting a newly created custom integration went.
+         */
         CustomIntegrationConnectionResult: {
             /** Error */
             error?: string | null;
@@ -11275,7 +11287,10 @@ export interface components {
             /** Maxaccounts */
             maxAccounts: number;
         };
-        /** IntegrationConfigItem */
+        /**
+         * IntegrationConfigItem
+         * @description One integration in the platform's integration catalog.
+         */
         IntegrationConfigItem: {
             /** Authtype */
             authType?: ("none" | "oauth" | "bearer") | null;
@@ -11471,7 +11486,10 @@ export interface components {
             /** Tools */
             tools?: components["schemas"]["StoredIntegrationTool"][];
         };
-        /** IntegrationsConfigResponse */
+        /**
+         * IntegrationsConfigResponse
+         * @description The platform's integration catalog.
+         */
         IntegrationsConfigResponse: {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
@@ -11482,7 +11500,10 @@ export interface components {
          * @enum {string}
          */
         IntegrationStatus: "created" | "connected" | "expired";
-        /** IntegrationSuccessResponse */
+        /**
+         * IntegrationSuccessResponse
+         * @description A successful action on one integration.
+         */
         IntegrationSuccessResponse: {
             /** Integrationid */
             integrationId: string;
@@ -11495,7 +11516,10 @@ export interface components {
              */
             status?: "success";
         };
-        /** IntegrationTool */
+        /**
+         * IntegrationTool
+         * @description One tool an integration exposes.
+         */
         IntegrationTool: {
             /** Description */
             description?: string | null;
@@ -11507,7 +11531,10 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** IntegrationToolApproval */
+        /**
+         * IntegrationToolApproval
+         * @description A tool with the key its per-tool approval override is stored under.
+         */
         IntegrationToolApproval: {
             /**
              * Approval Key
@@ -14650,7 +14677,10 @@ export interface components {
             /** Text */
             text: string | null;
         };
-        /** PublishIntegrationResponse */
+        /**
+         * PublishIntegrationResponse
+         * @description A custom integration published to the marketplace.
+         */
         PublishIntegrationResponse: {
             /** Integrationid */
             integrationId: string;
@@ -17698,7 +17728,10 @@ export interface components {
              */
             success: boolean;
         };
-        /** UnpublishIntegrationResponse */
+        /**
+         * UnpublishIntegrationResponse
+         * @description A custom integration removed from the marketplace.
+         */
         UnpublishIntegrationResponse: {
             /** Integrationid */
             integrationId: string;

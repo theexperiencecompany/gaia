@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let cookieValue: string | undefined;
 vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
   cookies: async () => ({
     get: (name: string) =>
       name === "gaia_connect_code" && cookieValue !== undefined
@@ -18,10 +19,26 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
+import type { ConnectLinkPreviewResponse } from "@shared/api/generated";
+
 import { GET } from "@/app/connect/[code]/route";
 import ConnectLinkPage from "@/app/connect/page";
 
 const API_BASE = "https://api.example.test/api/v1/";
+const PREVIEW: ConnectLinkPreviewResponse = {
+  integration_id: "gmail",
+  name: "Gmail",
+  icon_url: null,
+  account_email: "ar***@heygaia.io",
+};
+
+function answerPreview(status: number, body: unknown = PREVIEW) {
+  const fetchMock = vi.fn(
+    async () => new Response(JSON.stringify(body), { status }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
 
 describe("GET /connect/<code>", () => {
   it("moves the code into an HttpOnly cookie and drops it from the URL", async () => {
@@ -45,14 +62,36 @@ describe("ConnectLinkPage", () => {
   });
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     cookieValue = undefined;
+  });
+
+  it("names the integration and the masked account before Continue spends the code", async () => {
+    cookieValue = "c0de";
+    const fetchMock = answerPreview(200);
+    render(await ConnectLinkPage());
+
+    expect(screen.getByRole("heading").textContent).toBe(
+      "Connect Gmail to GAIA",
+    );
+    expect(screen.getByText("ar***@heygaia.io")).toBeTruthy();
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe(
+      "https://api.example.test/api/v1/integrations/connect-link/preview",
+    );
+    expect(init.method).toBe("POST");
+    expect(String(init.body)).toBe("code=c0de");
   });
 
   it("posts the cookie's code to the API's connect-link endpoint from Continue", async () => {
     cookieValue = "c0de";
+    answerPreview(200);
     render(await ConnectLinkPage());
 
-    const button = screen.getByRole("button", { name: "Continue" });
+    const button = screen.getByRole("button", { name: "Continue to Gmail" });
     const form = button.closest("form");
     expect(form?.getAttribute("method")).toBe("post");
     expect(form?.getAttribute("action")).toBe(
@@ -63,10 +102,28 @@ describe("ConnectLinkPage", () => {
   });
 
   it("says the link expired, with no form, when no code arrived", async () => {
+    const fetchMock = answerPreview(200);
     render(await ConnectLinkPage());
 
-    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText(/expired or was already used/)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("says the link expired, with no form, when the API no longer knows the code", async () => {
+    cookieValue = "spent";
+    answerPreview(404, { message: "invalid_or_expired_link" });
+    render(await ConnectLinkPage());
+
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText(/expired or was already used/)).toBeTruthy();
+  });
+
+  it("fails loud when the preview fails for any other reason", async () => {
+    cookieValue = "c0de";
+    answerPreview(500, { message: "boom" });
+
+    await expect(ConnectLinkPage()).rejects.toThrow("failed with 500");
   });
 
   it("fails loud when the API base URL is missing", async () => {

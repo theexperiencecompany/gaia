@@ -292,6 +292,7 @@
         "type": "object"
       },
       "AddUserIntegrationResponse": {
+        "description": "An integration added to the user's workspace, and its connection state.",
         "properties": {
           "connectionStatus": {
             "$ref": "#/components/schemas/IntegrationStatus"
@@ -5564,6 +5565,7 @@
         "type": "object"
       },
       "ConnectIntegrationResponse": {
+        "description": "The outcome of starting an integration's connect flow.",
         "properties": {
           "error": {
             "anyOf": [
@@ -6543,6 +6545,7 @@
         "type": "object"
       },
       "CreateCustomIntegrationResponse": {
+        "description": "A created custom integration and its first connection attempt.",
         "properties": {
           "connection": {
             "$ref": "#/components/schemas/CustomIntegrationConnectionResult"
@@ -7166,6 +7169,7 @@
         "type": "object"
       },
       "CustomIntegrationConnectionResult": {
+        "description": "How connecting a newly created custom integration went.",
         "properties": {
           "error": {
             "anyOf": [
@@ -10884,6 +10888,7 @@
         "type": "object"
       },
       "IntegrationConfigItem": {
+        "description": "One integration in the platform's integration catalog.",
         "properties": {
           "authType": {
             "anyOf": [
@@ -11332,6 +11337,7 @@
         "type": "string"
       },
       "IntegrationSuccessResponse": {
+        "description": "A successful action on one integration.",
         "properties": {
           "integrationId": {
             "title": "Integrationid",
@@ -11356,6 +11362,7 @@
         "type": "object"
       },
       "IntegrationTool": {
+        "description": "One tool an integration exposes.",
         "properties": {
           "description": {
             "anyOf": [
@@ -11385,6 +11392,7 @@
         "type": "object"
       },
       "IntegrationToolApproval": {
+        "description": "A tool with the key its per-tool approval override is stored under.",
         "properties": {
           "approval_key": {
             "description": "Key the user's per-tool approval override is stored under; send it back unchanged.",
@@ -11449,6 +11457,7 @@
         "type": "object"
       },
       "IntegrationsConfigResponse": {
+        "description": "The platform's integration catalog.",
         "properties": {
           "integrations": {
             "items": {
@@ -18136,6 +18145,7 @@
         "type": "object"
       },
       "PublishIntegrationResponse": {
+        "description": "A custom integration published to the marketplace.",
         "properties": {
           "integrationId": {
             "title": "Integrationid",
@@ -24645,6 +24655,7 @@
         "type": "object"
       },
       "UnpublishIntegrationResponse": {
+        "description": "A custom integration removed from the marketplace.",
         "properties": {
           "integrationId": {
             "title": "Integrationid",

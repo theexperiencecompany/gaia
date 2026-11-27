@@ -31,5 +31,5 @@ def is_email_target(value: str) -> bool:
 
 def mask_email(address: str) -> str:
     """Show enough of an address to recognise it: ar***@gmail.com."""
-    local, _, domain = address.partition("@")
+    local, _, domain = address.rpartition("@")
     return f"{local[:2]}***@{domain}"

@@ -596,6 +596,7 @@
 @source "../../../features/integrations/api/queryKeys.ts";
 @source "../../../features/integrations/components/BearerTokenModal.tsx";
 @source "../../../features/integrations/components/CategoryFilter.tsx";
+@source "../../../features/integrations/components/ConnectLinkLogos.tsx";
 @source "../../../features/integrations/components/GlobalIntegrationModal.tsx";
 @source "../../../features/integrations/components/InstanceSetupNotice.tsx";
 @source "../../../features/integrations/components/IntegrationIcon.tsx";
@@ -637,6 +638,7 @@
 @source "../../../features/integrations/lib/marketplaceDirectoryPages.ts";
 @source "../../../features/integrations/lib/marketplaceSlug.ts";
 @source "../../../features/integrations/utils/catalog.ts";
+@source "../../../features/integrations/utils/connectLinkServerApi.ts";
 @source "../../../features/integrations/utils/instructionsPreview.ts";
 @source "../../../features/integrations/utils/mentionDoc.ts";
 @source "../../../features/integrations/utils/permissionCopy.ts";
