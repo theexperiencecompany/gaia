@@ -51,6 +51,7 @@ async def _connect(mode: ConnectMode) -> str:
     )
 
 
+@pytest.mark.regression
 async def test_reconnect_on_an_added_custom_server_gets_a_fresh_link_without_re_adding_it(
     seams: Seams,
 ) -> None:
@@ -64,6 +65,7 @@ async def test_reconnect_on_an_added_custom_server_gets_a_fresh_link_without_re_
     seams.repo.get_custom.assert_awaited_once_with(DODO_ID)
 
 
+@pytest.mark.regression
 async def test_a_custom_server_does_not_stop_the_ids_after_it(seams: Seams) -> None:
     seams.user_repo.exists.side_effect = lambda _user, iid: iid == DODO_ID
 
@@ -76,6 +78,7 @@ async def test_a_custom_server_does_not_stop_the_ids_after_it(seams: Seams) -> N
     assert result.splitlines()[1].startswith("❌ 'nope' not found.")
 
 
+@pytest.mark.regression
 async def test_connect_on_a_connected_custom_server_reports_it_and_shows_no_card(
     seams: Seams,
 ) -> None:
@@ -85,6 +88,7 @@ async def test_connect_on_a_connected_custom_server_reports_it_and_shows_no_card
     seams.request_card.assert_not_awaited()
 
 
+@pytest.mark.regression
 async def test_connect_on_a_signed_out_custom_server_shows_the_card(seams: Seams) -> None:
     seams.user_repo.is_connected.return_value = False
 
@@ -96,6 +100,7 @@ async def test_connect_on_a_signed_out_custom_server_shows_the_card(seams: Seams
     )
 
 
+@pytest.mark.regression
 async def test_add_account_on_a_custom_server_says_it_holds_one_account(seams: Seams) -> None:
     result = await _connect(ConnectMode.ADD_ACCOUNT)
 
