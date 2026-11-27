@@ -90,6 +90,7 @@ async def try_refresh_token(
     try:
         token_endpoint = str(oauth_config.as_metadata.token_endpoint)
 
+        configured_client_id, _ = resolve_client_credentials(mcp_config)
         client_id, client_secret = await _client_credentials(
             token_store, integration_id, mcp_config
         )
@@ -136,6 +137,12 @@ async def try_refresh_token(
                     # The grant itself is dead (revoked/rotated server-side):
                     # no later retry can succeed, so drop the token now rather
                     # than letting liveness checks keep reporting recoverable.
+                    await token_store.clear_refresh_token(integration_id)
+                elif error_info["error"] == "invalid_client" and not configured_client_id:
+                    # The server forgot our registered client (Dodo does): every
+                    # authorize URL built from it fails, so drop it and the
+                    # grant bound to it; the next connect re-registers.
+                    await token_store.delete_dcr_client(integration_id)
                     await token_store.clear_refresh_token(integration_id)
                 return False
 

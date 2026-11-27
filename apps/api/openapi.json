@@ -2077,6 +2077,19 @@
         "title": "Body_integrations_connect_link_endpoint",
         "type": "object"
       },
+      "Body_integrations_connect_link_preview_endpoint": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "Body_integrations_connect_link_preview_endpoint",
+        "type": "object"
+      },
       "Body_notification_unregister_device_token": {
         "properties": {
           "token": {
@@ -5624,6 +5637,51 @@
           "error"
         ],
         "title": "ConnectIntegrationResponse",
+        "type": "object"
+      },
+      "ConnectLinkPreviewResponse": {
+        "description": "What a connect link will connect, shown before the user spends it.",
+        "properties": {
+          "account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The GAIA account's email, masked",
+            "title": "Account Email"
+          },
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "The integration's display name",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration_id",
+          "name",
+          "icon_url",
+          "account_email"
+        ],
+        "title": "ConnectLinkPreviewResponse",
         "type": "object"
       },
       "ContentTokenResponse": {
@@ -34595,6 +34653,68 @@
           }
         },
         "summary": "Connect Link Endpoint",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
+    "/api/v1/integrations/connect-link/preview": {
+      "post": {
+        "description": "Show what a connect link connects, and for which account, without spending the code.\n\nSame credential and rate limit as /connect-link; answers only the integration\nand a masked email, so a guessed code learns nothing it could not use anyway.",
+        "operationId": "integrations_connect_link_preview_endpoint",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_integrations_connect_link_preview_endpoint"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectLinkPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Connect Link Preview Endpoint",
         "tags": [
           "Integrations"
         ]

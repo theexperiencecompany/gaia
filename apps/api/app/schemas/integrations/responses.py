@@ -300,3 +300,12 @@ class SearchIntegrationsResponse(BaseModel):
 
     integrations: list[SearchIntegrationItem] = []
     query: str
+
+
+class ConnectLinkPreviewResponse(ResponseModel):
+    """What a connect link will connect, shown before the user spends it."""
+
+    integration_id: str
+    name: str = Field(description="The integration's display name")
+    icon_url: str | None = None
+    account_email: str | None = Field(description="The GAIA account's email, masked")

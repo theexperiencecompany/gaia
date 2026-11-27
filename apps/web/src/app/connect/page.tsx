@@ -1,12 +1,13 @@
-import { ConnectIcon } from "@icons";
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import { RaisedButton } from "@/components/ui/raised-button";
+import { ConnectLinkLogos } from "@/features/integrations/components/ConnectLinkLogos";
 import {
   CONNECT_LINK_COOKIE,
   CONNECT_LINK_ERROR_MESSAGES,
 } from "@/features/integrations/constants/connect";
+import { fetchConnectLinkPreview } from "@/features/integrations/utils/connectLinkServerApi";
 import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
@@ -19,7 +20,8 @@ export const metadata: Metadata = generatePageMetadata({
 
 /**
  * The Continue step for a bot connect link. The code arrives in a cookie set by
- * /connect/<code>, and is spent only when the user presses Continue.
+ * /connect/<code>, is previewed (what it connects, for which account) without
+ * being spent, and is spent only when the user presses Continue.
  */
 export default async function ConnectLinkPage() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -27,21 +29,34 @@ export default async function ConnectLinkPage() {
     throw new Error("NEXT_PUBLIC_API_BASE_URL is not set");
   }
   const code = (await cookies()).get(CONNECT_LINK_COOKIE)?.value;
+  const preview = code
+    ? await fetchConnectLinkPreview(code, await headers())
+    : null;
   const action = `${apiBaseUrl.replace(/\/+$/, "")}/integrations/connect-link`;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-black p-4">
       <div className="w-full max-w-md rounded-3xl bg-zinc-900 p-8 text-center">
-        <ConnectIcon className="mx-auto mb-5 h-12 w-12 text-accent" />
-        <h1 className="mb-2 text-xl font-semibold text-white">
-          Connect your integration
-        </h1>
-        {code ? (
+        {code && preview ? (
           <form method="post" action={action}>
             <input type="hidden" name="code" value={code} />
-            <p className="mb-6 text-sm text-zinc-400">
-              GAIA sent you this link to connect an account. It works once and
-              expires an hour after it was sent.
+            <ConnectLinkLogos
+              integrationId={preview.integration_id}
+              iconUrl={preview.icon_url}
+            />
+            <h1 className="mb-2 text-xl font-semibold text-white">
+              Connect {preview.name} to GAIA
+            </h1>
+            {preview.account_email && (
+              <p className="mb-4 text-sm text-zinc-300">
+                For your GAIA account{" "}
+                <span className="font-medium text-white">
+                  {preview.account_email}
+                </span>
+              </p>
+            )}
+            <p className="mb-6 text-sm text-zinc-500">
+              This link works once and expires an hour after it was sent.
             </p>
             <RaisedButton
               type="submit"
@@ -49,13 +64,18 @@ export default async function ConnectLinkPage() {
               color="#00bbff"
               className="w-full font-medium"
             >
-              Continue
+              Continue to {preview.name}
             </RaisedButton>
           </form>
         ) : (
-          <p className="text-sm text-zinc-400">
-            {CONNECT_LINK_ERROR_MESSAGES.invalid_or_expired_link}
-          </p>
+          <>
+            <h1 className="mb-2 text-xl font-semibold text-white">
+              Connect your integration
+            </h1>
+            <p className="text-sm text-zinc-400">
+              {CONNECT_LINK_ERROR_MESSAGES.invalid_or_expired_link}
+            </p>
+          </>
         )}
       </div>
     </div>

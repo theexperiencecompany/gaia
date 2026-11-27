@@ -2061,6 +2061,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/connect-link/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Link Preview Endpoint
+         * @description Show what a connect link connects, and for which account, without spending the code.
+         *
+         *     Same credential and rate limit as /connect-link; answers only the integration
+         *     and a masked email, so a guessed code learns nothing it could not use anyway.
+         */
+        post: operations["integrations_connect_link_preview_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/connect/{integration_id}": {
         parameters: {
             query?: never;
@@ -7155,6 +7178,11 @@ export interface components {
             /** Code */
             code: string;
         };
+        /** Body_integrations_connect_link_preview_endpoint */
+        Body_integrations_connect_link_preview_endpoint: {
+            /** Code */
+            code: string;
+        };
         /** Body_notification_unregister_device_token */
         Body_notification_unregister_device_token: {
             /** Token */
@@ -8774,6 +8802,26 @@ export interface components {
             status: "connected" | "redirect" | "error";
             /** Toolscount */
             toolsCount: number | null;
+        };
+        /**
+         * ConnectLinkPreviewResponse
+         * @description What a connect link will connect, shown before the user spends it.
+         */
+        ConnectLinkPreviewResponse: {
+            /**
+             * Account Email
+             * @description The GAIA account's email, masked
+             */
+            account_email: string | null;
+            /** Icon Url */
+            icon_url: string | null;
+            /** Integration Id */
+            integration_id: string;
+            /**
+             * Name
+             * @description The integration's display name
+             */
+            name: string;
         };
         /**
          * ContentTokenResponse
@@ -19146,6 +19194,7 @@ export type Body_bot_transcribe_bot_audio = components['schemas']['Body_bot_tran
 export type Body_file_upload_file_endpoint = components['schemas']['Body_file_upload_file_endpoint'];
 export type Body_image_image_to_text = components['schemas']['Body_image_image_to_text'];
 export type Body_integrations_connect_link_endpoint = components['schemas']['Body_integrations_connect_link_endpoint'];
+export type Body_integrations_connect_link_preview_endpoint = components['schemas']['Body_integrations_connect_link_preview_endpoint'];
 export type Body_notification_unregister_device_token = components['schemas']['Body_notification_unregister_device_token'];
 export type Body_support_submit_support_request_with_attachments = components['schemas']['Body_support_submit_support_request_with_attachments'];
 export type Body_user_update_holo_card_colors = components['schemas']['Body_user_update_holo_card_colors'];
@@ -19243,6 +19292,7 @@ export type ConditionOperator = components['schemas']['ConditionOperator'];
 export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
+export type ConnectLinkPreviewResponse = components['schemas']['ConnectLinkPreviewResponse'];
 export type ContentTokenResponse = components['schemas']['ContentTokenResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
@@ -25460,6 +25510,57 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_connect_link_preview_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_integrations_connect_link_preview_endpoint"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectLinkPreviewResponse"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

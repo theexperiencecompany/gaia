@@ -2117,6 +2117,55 @@ class TestTryRefreshToken:
             endpoint_host="https://auth.example.com",
         )
 
+    @staticmethod
+    async def _refresh_rejected_as_invalid_client(
+        token_store: AsyncMock, mcp_config: MCPConfig
+    ) -> bool:
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.json.return_value = {
+            "error": "invalid_client",
+            "error_description": "client authentication failed",
+        }
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+            return await try_refresh_token(
+                token_store, INTEGRATION_ID, mcp_config, _make_oauth_discovery()
+            )
+
+    @pytest.mark.regression
+    async def test_forgotten_dcr_client_is_dropped_so_the_next_connect_reregisters(self):
+        """Regression: Dodo forgot GAIA's registered client and every connect link hit invalid_client."""
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_dcr_client = AsyncMock(return_value={"client_id": "forgotten"})
+
+        result = await self._refresh_rejected_as_invalid_client(
+            token_store, _make_mcp_config(client_id=None)
+        )
+
+        assert result is False
+        token_store.delete_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_invalid_client_keeps_a_configured_client(self):
+        """A pre-configured client is the operator's to fix; GAIA never re-registers over it."""
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+
+        result = await self._refresh_rejected_as_invalid_client(
+            token_store, _make_mcp_config(client_id="configured")
+        )
+
+        assert result is False
+        token_store.delete_dcr_client.assert_not_awaited()
+        token_store.clear_refresh_token.assert_not_awaited()
+
     async def test_transient_refresh_error_keeps_the_refresh_token(self):
         token_store = AsyncMock(spec=MCPTokenStore)
         token_store.user_id = USER_ID
