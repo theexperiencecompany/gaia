@@ -1,6 +1,10 @@
 import type {
+  ActionConfig,
   ChannelPreferences,
+  GetPlatformLinksResponse,
   NotificationActionView,
+  NotificationContentView,
+  PlatformLinkEntry,
 } from "../api/generated";
 
 export type {
@@ -28,35 +32,14 @@ export enum NotificationActionStyle {
   DANGER = "danger",
 }
 
-export interface NotificationActionConfig {
-  redirect?: {
-    url: string;
-    open_in_new_tab?: boolean;
-    close_notification?: boolean;
-  };
-  api_call?: {
-    endpoint: string;
-    method?: "GET" | "POST" | "PUT" | "DELETE";
-    payload?: Record<string, unknown>;
-  };
-  workflow?: {
-    workflow_id: string;
-    parameters?: Record<string, unknown>;
-  };
-  modal?: {
-    component: string;
-    props?: Record<string, unknown>;
-  };
-}
+export type NotificationActionConfig = ActionConfig;
 
 export type NotificationAction = NotificationActionView;
 
-export interface InAppNotificationContent {
-  title: string;
-  body: string;
-  actions?: NotificationAction[];
-}
+export type InAppNotificationContent = NotificationContentView;
 
+// Only mobile reads this: its notification normaliser fills the fields the
+// API's NotificationView types as enums with free strings.
 export interface InAppNotification {
   id: string;
   status: NotificationStatus;
@@ -67,17 +50,9 @@ export interface InAppNotification {
   content: InAppNotificationContent;
 }
 
-export interface PlatformLink {
-  platform: string;
-  platformUserId: string;
-  username?: string;
-  displayName?: string;
-  connectedAt?: string;
-}
+export type PlatformLink = PlatformLinkEntry;
 
-export interface PlatformLinksResponse {
-  platform_links: Record<string, PlatformLink>;
-}
+export type PlatformLinksResponse = GetPlatformLinksResponse;
 
 /**
  * Every channel the user can switch on or off: the API's ChannelPreferences

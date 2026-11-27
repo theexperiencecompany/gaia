@@ -384,7 +384,7 @@ export default function UseCaseDetailClient({
         breadcrumbs={breadcrumbs}
         title={title}
         icon={heroIcon}
-        id={currentSlug}
+        slug={currentSlug}
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
         metaInfo={

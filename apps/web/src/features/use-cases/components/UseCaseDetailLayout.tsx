@@ -18,7 +18,7 @@ interface UseCaseDetailLayoutProps {
   /** Optional workflow icon rendered beside the title */
   icon?: ReactNode;
   description?: string;
-  id: string;
+  slug: string;
   isCreating: boolean;
   onCreateWorkflow: () => void;
   metaInfo: ReactNode;
@@ -32,7 +32,7 @@ export default function UseCaseDetailLayout({
   title,
   icon,
   description,
-  id,
+  slug,
   isCreating,
   onCreateWorkflow,
   metaInfo,
@@ -61,13 +61,13 @@ export default function UseCaseDetailLayout({
           </div>
 
           <div className="flex items-center gap-3">
-            <ShareButton id={id} />
+            <ShareButton id={slug} />
             <RaisedButton
               color="#00bbff"
               className="shrink-0"
               onClick={() => {
                 track("use_cases:clicked", {
-                  use_case_id: id,
+                  use_case_id: slug,
                 });
                 onCreateWorkflow();
               }}

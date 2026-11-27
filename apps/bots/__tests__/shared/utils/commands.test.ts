@@ -323,8 +323,7 @@ describe("handleConversationList", () => {
         {
           conversation_id: "c-1",
           url: "https://heygaia.io/c/c-1",
-          title: "Work chat",
-          message_count: 12,
+          description: "Work chat",
         },
       ],
     } as never);

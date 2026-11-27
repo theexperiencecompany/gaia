@@ -9,7 +9,7 @@ const BEFORE_CONNECT: HoloCardDisplayData = {
   name: "Dev User",
   personality_phrase: "",
   user_bio: "Connect your Gmail for a more personalized bio",
-  account_number: "#1",
+  account_number: 1,
   member_since: "2026",
   overlay_color: "rgba(0,0,0,0)",
   overlay_opacity: 40,

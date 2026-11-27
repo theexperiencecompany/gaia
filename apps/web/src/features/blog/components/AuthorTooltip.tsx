@@ -1,7 +1,7 @@
 import { Avatar, Tooltip } from "@heroui/react";
 
 import { Github, LinkedinIcon, TwitterIcon } from "@/components/shared/icons";
-import type { Author } from "@/types/api/aboutApiTypes";
+import type { Author } from "@/lib/blog.types";
 
 interface AuthorTooltipProps {
   author: Author;

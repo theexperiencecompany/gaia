@@ -396,19 +396,8 @@ function UseCasesGrid({
         >
           <UnifiedWorkflowCard
             showDescriptionAsTooltip={showDescriptionAsTooltip}
-            title={useCase.title || ""}
-            description={useCase.description || ""}
-            actionType={useCase.action_type || "prompt"}
-            prompt={useCase.prompt}
-            slug={useCase.slug}
+            useCase={useCase}
             href={useCase.slug ? `/use-cases/${useCase.slug}` : undefined}
-            steps={useCase.steps}
-            icon={useCase.icon}
-            iconColor={useCase.icon_color}
-            systemWorkflowKey={useCase.system_workflow_key}
-            triggerConfig={useCase.trigger_config}
-            creator={useCase.creator}
-            totalExecutions={useCase.total_executions || 0}
             showExecutions={true}
             useBlurEffect={useBlurEffect}
             imageLoading={opensInView && index < columns ? "eager" : "lazy"}

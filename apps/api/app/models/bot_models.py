@@ -65,7 +65,7 @@ class BotChatRequest(BaseModel):
         return v
 
 
-class BotAuthStatusResponse(BaseModel):
+class BotAuthStatusResponse(ResponseModel):
     """Response model for bot authentication status check."""
 
     authenticated: bool = Field(..., description="Whether user is linked to GAIA")
@@ -139,7 +139,7 @@ class RedeemLinkCodeRequest(BaseModel):
         return v
 
 
-class RedeemLinkCodeResponse(BaseModel):
+class RedeemLinkCodeResponse(ResponseModel):
     """Response model for a redeemed one-tap link code."""
 
     linked: bool = Field(..., description="Whether the platform account is now linked")
@@ -234,7 +234,7 @@ class TranscribeAudioResponse(BaseModel):
     text: str = Field(..., description="Transcript of the audio clip")
 
 
-class IntegrationInfo(BaseModel):
+class IntegrationInfo(ResponseModel):
     """Integration information for bot settings."""
 
     name: str = Field(..., description="Integration name")
@@ -242,7 +242,7 @@ class IntegrationInfo(BaseModel):
     status: IntegrationStatus = Field(..., description="Integration connection status")
 
 
-class BotSettingsResponse(BaseModel):
+class BotSettingsResponse(ResponseModel):
     """Response model for user settings. When authenticated=False only that field is relevant."""
 
     authenticated: bool = Field(..., description="Whether user is linked")

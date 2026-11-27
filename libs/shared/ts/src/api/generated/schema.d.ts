@@ -7262,7 +7262,7 @@ export interface components {
              * User Id
              * @description Stable GAIA user id when linked, else null. Bots key PostHog on this so their events land on the same profile as web and API events.
              */
-            user_id?: string | null;
+            user_id: string | null;
         };
         /**
          * BotChatRequest
@@ -7391,7 +7391,7 @@ export interface components {
              * Account Created At
              * @description Account creation date ISO string (null if not available)
              */
-            account_created_at?: string | null;
+            account_created_at: string | null;
             /**
              * Authenticated
              * @description Whether user is linked
@@ -7401,17 +7401,17 @@ export interface components {
              * Connected Integrations
              * @description List of connected integrations (empty if none)
              */
-            connected_integrations?: components["schemas"]["IntegrationInfo"][];
+            connected_integrations: components["schemas"]["IntegrationInfo"][];
             /**
              * Profile Image Url
              * @description User's profile image URL (null if not set)
              */
-            profile_image_url?: string | null;
+            profile_image_url: string | null;
             /**
              * User Name
              * @description User's display name (null if not set)
              */
-            user_name?: string | null;
+            user_name: string | null;
         };
         /**
          * BriefAction
@@ -11411,7 +11411,7 @@ export interface components {
              * Logo Url
              * @description Integration logo URL
              */
-            logo_url?: string | null;
+            logo_url: string | null;
             /**
              * Name
              * @description Integration name
@@ -14968,7 +14968,7 @@ export interface components {
              * First Contact
              * @description Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true, because sending them then would say everything twice.
              */
-            first_contact?: string[];
+            first_contact: string[];
             /**
              * Linked
              * @description Whether the platform account is now linked
@@ -17313,9 +17313,9 @@ export interface components {
              * Todo Id
              * @description Set when generation was queued
              */
-            todo_id?: string | null;
+            todo_id: string | null;
             /** @description Set when a generated workflow already existed */
-            workflow?: components["schemas"]["WorkflowWithIntegrations"] | null;
+            workflow: components["schemas"]["WorkflowWithIntegrations"] | null;
         };
         /**
          * TodoWorkflowGenerationStatus
@@ -17338,7 +17338,7 @@ export interface components {
             is_generating: boolean;
             /** Todo Id */
             todo_id: string;
-            workflow?: components["schemas"]["WorkflowWithIntegrations"] | null;
+            workflow: components["schemas"]["WorkflowWithIntegrations"] | null;
             workflow_status: components["schemas"]["TodoWorkflowStatus"];
         };
         /**
@@ -18034,7 +18034,7 @@ export interface components {
             /** Streak */
             streak: number;
             /** Tier */
-            tier: string | null;
+            tier: ("bronze" | "silver" | "gold" | "diamond") | null;
             /** Total */
             total: number;
             /** Total Tokens */

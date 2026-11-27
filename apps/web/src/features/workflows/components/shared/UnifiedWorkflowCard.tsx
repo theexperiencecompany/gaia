@@ -11,10 +11,9 @@ import type {
   CommunityWorkflow,
   IntegrationRef,
   PublicWorkflowStep,
-  TriggerConfigDraft,
+  UseCase,
   Workflow,
 } from "@/types/features/workflowTypes";
-import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
 import { WORKFLOW_CARD_ICON_SIZE } from "../../constants/workflowIconStyle";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
@@ -39,27 +38,14 @@ type WorkflowCardAction =
   | "none";
 
 interface UnifiedWorkflowCardProps {
-  // Core data - accepts either full Workflow or simplified data
+  // Core data: one of a user workflow, a community workflow or a use case
   workflow?: Workflow;
   communityWorkflow?: CommunityWorkflow;
-  // Simplified props for direct use (alternative to workflow objects)
+  useCase?: UseCase;
+  // Display-only fields for a selected workflow that has none of the above
   title?: string;
   description?: string;
   steps?: PublicWorkflowStep[];
-  /** User-chosen icon slug (gaia-icons component name) */
-  icon?: string | null;
-  /** Hex color for the user-chosen icon */
-  iconColor?: string | null;
-  /** Built-in workflow key — keeps "add" idempotent with the provisioner */
-  systemWorkflowKey?: string | null;
-  /** The trigger this card advertises, reproduced on add */
-  triggerConfig?: TriggerConfigDraft;
-  /** Author, for cards built from flat props rather than a workflow object */
-  creator?: ContentCreator;
-  totalExecutions?: number;
-  slug?: string;
-  prompt?: string;
-  actionType?: "prompt" | "workflow";
 
   // Display configuration
   variant?: WorkflowVariant;
@@ -93,10 +79,8 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
   const {
     workflow,
     communityWorkflow,
+    useCase,
     description: propDescription,
-    slug,
-    prompt,
-    actionType: propActionType,
     variant = "explore",
     showExecutions = true,
     useBlurEffect = false,
@@ -143,10 +127,10 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       communityWorkflow,
       title,
       displayDescription,
-      description: propDescription,
+      description: propDescription ?? useCase?.description,
       steps,
-      slug,
-      prompt,
+      slug: useCase?.slug,
+      prompt: useCase?.prompt,
       variant,
       sourceTriggerConfig,
       systemWorkflowKey,
@@ -159,7 +143,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
   const buttonConfig = getButtonConfig(
     resolvedAction,
     actionButtonLabel,
-    propActionType,
+    useCase?.action_type,
   );
 
   // Render tool icons using the shared component
@@ -314,15 +298,10 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
   const {
     workflow,
     communityWorkflow,
+    useCase,
     title: propTitle,
     description: propDescription,
     steps: propSteps,
-    icon: propIcon,
-    iconColor: propIconColor,
-    systemWorkflowKey: propSystemWorkflowKey,
-    triggerConfig: propTriggerConfig,
-    creator: propCreator,
-    totalExecutions: propTotalExecutions,
     variant = "explore",
     showTrigger,
     showActivationStatus = false,
@@ -333,23 +312,36 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     missingIntegrations: propMissingIntegrations,
   } = props;
 
-  const title = propTitle || workflow?.title || communityWorkflow?.title || "";
+  const title =
+    propTitle ||
+    useCase?.title ||
+    workflow?.title ||
+    communityWorkflow?.title ||
+    "";
   const displayDescription =
     propDescription ||
+    useCase?.description ||
     workflow?.description ||
     communityWorkflow?.description ||
     "";
-  const steps = propSteps || workflow?.steps || communityWorkflow?.steps || [];
-  const customIcon = propIcon ?? workflow?.icon ?? communityWorkflow?.icon;
+  const steps =
+    propSteps ||
+    useCase?.steps ||
+    workflow?.steps ||
+    communityWorkflow?.steps ||
+    [];
+  const customIcon = useCase?.icon ?? workflow?.icon ?? communityWorkflow?.icon;
   const customIconColor =
-    propIconColor ?? workflow?.icon_color ?? communityWorkflow?.icon_color;
+    useCase?.icon_color ??
+    workflow?.icon_color ??
+    communityWorkflow?.icon_color;
   const totalExecutions =
-    propTotalExecutions ??
+    useCase?.total_executions ??
     workflow?.total_executions ??
     communityWorkflow?.total_executions ??
     0;
   const creator =
-    propCreator || communityWorkflow?.creator || workflow?.creator;
+    useCase?.creator || communityWorkflow?.creator || workflow?.creator;
 
   const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
   // A byline credits a community author; our own workflows don't need one.
@@ -365,11 +357,11 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     propMissingIntegrations ?? workflow?.missing_integrations;
   const isClickable = !!href || onCardClick || resolvedAction !== "none";
   const systemWorkflowKey =
-    propSystemWorkflowKey ??
+    useCase?.system_workflow_key ??
     communityWorkflow?.system_workflow_key ??
     undefined;
   const sourceTriggerConfig =
-    propTriggerConfig ?? communityWorkflow?.trigger_config ?? undefined;
+    useCase?.trigger_config ?? communityWorkflow?.trigger_config ?? undefined;
 
   return {
     title,

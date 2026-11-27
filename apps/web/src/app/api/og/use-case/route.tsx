@@ -1,3 +1,9 @@
+import type {
+  PublicWorkflowCard,
+  PublicWorkflowsResponse,
+  WorkflowResponse,
+  WorkflowWithIntegrations,
+} from "@shared/api/generated";
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 import { getIconPaths } from "@/config/iconPaths.generated";
@@ -24,19 +30,10 @@ import {
   truncateText,
 } from "../lib";
 
-interface OgWorkflow {
-  id?: string;
-  title?: string;
-  description?: string;
-  steps?: { category: string }[];
-  total_executions?: number;
-  creator?: { id?: string; name?: string; avatar?: string };
-}
-
 async function fetchWorkflow(
   apiBaseUrl: string,
   slug: string,
-): Promise<OgWorkflow | null> {
+): Promise<PublicWorkflowCard | WorkflowWithIntegrations | null> {
   try {
     const [exploreResponse, communityResponse] = await Promise.all([
       fetch(`${apiBaseUrl}/workflows/explore`, {
@@ -50,18 +47,14 @@ async function fetchWorkflow(
     ]);
 
     if (exploreResponse.ok) {
-      const data = (await exploreResponse.json()) as {
-        workflows?: OgWorkflow[];
-      };
-      const found = data.workflows?.find((w) => w.id === slug);
+      const data = (await exploreResponse.json()) as PublicWorkflowsResponse;
+      const found = data.workflows.find((w) => w.id === slug);
       if (found) return found;
     }
 
     if (communityResponse.ok) {
-      const data = (await communityResponse.json()) as {
-        workflows?: OgWorkflow[];
-      };
-      const found = data.workflows?.find((w) => w.id === slug);
+      const data = (await communityResponse.json()) as PublicWorkflowsResponse;
+      const found = data.workflows.find((w) => w.id === slug);
       if (found) return found;
     }
 
@@ -70,10 +63,8 @@ async function fetchWorkflow(
       { cache: "no-store" },
     );
     if (publicResponse.ok) {
-      const data = (await publicResponse.json()) as {
-        workflow?: OgWorkflow;
-      };
-      return data.workflow ?? null;
+      const data = (await publicResponse.json()) as WorkflowResponse;
+      return data.workflow;
     }
   } catch (e) {
     console.error("[OG Image] Fetch failed:", e);
