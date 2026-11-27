@@ -532,7 +532,7 @@ def test_local_runs_each_module_as_its_own_shard_and_summarises(tmp_path: Path) 
     assert "module(s) with survivors on changed lines" in result.stdout
     # The survivors view, not just a name: what `mise mutation:one` promises.
     assert "SURVIVORS — 1 surviving mutant(s)" in result.stdout
-    assert "replay: python3 scripts/ci/mutation.py replay" in result.stdout
+    assert "replay: mise mutation:replay" in result.stdout
 
 
 def test_local_names_the_refusal_when_a_shard_never_ran(tmp_path: Path) -> None:

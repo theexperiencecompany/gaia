@@ -748,6 +748,9 @@ run = "python3 tools/evlog_map --all"
 description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
 # --no-project: the runner is stdlib-only.
 run = "uv run --no-project python scripts/dev/gaia_verify.py"
+# The public values ci.yml's ts-build-test job builds the web app with (its env: block and the
+# repo variables), so the seo check audits the same HTML; change them there and here together.
+env = { NEXT_PUBLIC_API_BASE_URL = "https://api.heygaia.io/api/v1/", NEXT_PUBLIC_TURNSTILE_SITE_KEY = "0x4AAAAAAFmle2JW7do2XZZB" }
 
 
 [tasks."ratchets"]
@@ -777,6 +780,10 @@ run = "uv run python scripts/dev/ci_remote.py --json --compact --no-stack"
 [tasks."mutation:one"]
 description = "Run changed app module(s) locally through the lane's own runner and print each one's surviving mutants with file:line, full diff and mapped tests: `mise mutation:one app/services/x.py`"
 run = "bash scripts/ci/test-services.sh exec -- uv run python scripts/ci/mutation.py local"
+
+[tasks."mutation:replay"]
+description = "Re-run one surviving mutant against its mapped tests, with this machine's test services up so contract tests count: `mise mutation:replay <shard.verdict.json> <file.py:LINE>`"
+run = "bash scripts/ci/test-services.sh exec -- uv run python scripts/ci/mutation.py replay"
 
 [tasks."mutation:survivors"]
 description = "Print every surviving mutant from a shard artifact (shard.verdict.json, record dir, or shard.log) with file:line, change, full diff and tests: `mise mutation:survivors <source>`"
