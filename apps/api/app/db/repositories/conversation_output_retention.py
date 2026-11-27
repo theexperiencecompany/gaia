@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import asyncio
+from collections.abc import Collection, Sequence
 from datetime import datetime
 
 import bson
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from pymongo import UpdateOne
 
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.repositories.conversation_entries import (
@@ -48,10 +48,20 @@ class EntryCards(BaseModel):
 class ToolOutputRetentionRepository(ConversationRepository):
     """Finds the entries older than a cutoff the sweep has not cut, and writes their cut cards back."""
 
-    async def list_unswept(self, at_before: datetime, limit: int) -> list[EntryCards]:
-        """Return up to limit entries committed before at_before whose cards the sweep has not cut, oldest first."""
+    async def list_unswept(
+        self, at_before: datetime, limit: int, *, excluding: Collection[str] = ()
+    ) -> list[EntryCards]:
+        """Return up to limit entries committed before at_before whose cards the sweep has not cut, oldest first.
+
+        excluding names entries this run already passed over, so a page never comes back.
+        """
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-        unswept = {**HOLDS_CARDS, **_UNSWEPT, "at": {"$lt": at_before}}
+        unswept = {
+            **HOLDS_CARDS,
+            **_UNSWEPT,
+            "at": {"$lt": at_before},
+            "_id": {"$nin": [ObjectId(entry_id) for entry_id in excluding]},
+        }
         with store_errors("output retention read"):  # pragma: no mutate — error label
             # pragma: no mutate start — the projection, order and hint only shape how the index is read
             cursor = entries.find(
@@ -64,23 +74,23 @@ class ToolOutputRetentionRepository(ConversationRepository):
             rows = [row async for row in cursor.limit(limit)]
         return [EntryCards.model_validate(row) for row in rows]
 
-    async def store_cut(self, cut: Sequence[EntryCards]) -> int:
-        """Write each entry's cut cards and mark it swept, unless it changed since it was read; return how many landed.
+    async def store_cut(self, cut: Sequence[EntryCards]) -> frozenset[str]:
+        """Write each entry's cut cards and mark it swept, unless it changed since it was read; return the ids written.
 
         Neither revision nor the head's updatedAt moves: no client is told to refetch.
         """
-        writes = [
-            UpdateOne(
+        written = await asyncio.gather(*(self._store_one(entry) for entry in cut))
+        return frozenset(entry_id for entry_id in written if entry_id is not None)
+
+    async def _store_one(self, entry: EntryCards) -> str | None:
+        """Return the entry's id once its cut landed, None when it changed since it was read."""
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+        with store_errors("output retention write"):  # pragma: no mutate — error label
+            result = await entries.update_one(
                 {"_id": ObjectId(entry.id), REVISION_FIELD: entry.revision, **_UNSWEPT},
                 {"$set": {"tool_data": entry.tool_data, OUTPUTS_DROPPED_FIELD: True}},
             )
-            for entry in cut
-        ]
-        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-        with store_errors("output retention write"):  # pragma: no mutate — error label
-            # conditional updates that miss are no errors, so the order of the batch changes nothing
-            result = await entries.bulk_write(writes, ordered=False)  # pragma: no mutate
-        return result.matched_count
+        return entry.id if result.matched_count else None
 
 
 tool_output_retention_repository = ToolOutputRetentionRepository()

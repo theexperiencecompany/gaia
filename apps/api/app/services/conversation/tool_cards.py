@@ -3,6 +3,10 @@
 Pure: the same payloads always fold to the same cards. A comms reply, finished work, a
 running work item on the screen and a replayed workflow playbook all fold through it, so a
 card looks the same live, settled and reloaded.
+
+A stored card keeps a bounded share of outputs and thinking (capped_outputs), or none past
+its retention (dropped_outputs). A thinking step left with no text is not kept, and a card
+left with nothing is removed.
 """
 
 from __future__ import annotations
@@ -130,7 +134,7 @@ def capped_outputs(cards: Iterable[ToolDataEntry]) -> tuple[ToolDataEntry, ...]:
 
 
 def dropped_outputs(cards: Iterable[ToolDataEntry]) -> tuple[ToolDataEntry, ...]:
-    """Return cards with every tool output and all thinking dropped, as capped_outputs cuts them with no budget."""
+    """Return cards with every tool output and all thinking dropped; a card left with nothing is removed."""
     return _kept_cards(cards, lambda: _Budget(0))
 
 

@@ -6,6 +6,7 @@ real indexes) and the ARQ task the daily cron runs.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
 import uuid
 
@@ -217,7 +218,12 @@ async def test_a_backlog_past_one_page_is_cut_page_by_page_and_totalled(
     freed = _cards_bytes(before) - _cards_bytes(after)
     assert freed > 0
     assert summary == f"entries=6 bytes_freed={freed}"
-    assert event["tool_output_retention"] == {"entries_cut": 6, "bytes_freed": freed}
+    assert event["tool_output_retention"] == {
+        "entries_cut": 6,
+        "bytes_freed": freed,
+        "entries_passed_over": 0,
+        "out_of_time": False,
+    }
     assert [row[OUTPUTS_DROPPED_FIELD] for row in after] == [True] * 6
     assert await _stored(entries_collection, kept) == kept_before
 
@@ -251,8 +257,10 @@ async def test_a_page_whose_every_entry_changed_since_it_was_read_fails_loud(
     old = await _aged_chat(repo, entries_collection, TOOL_OUTPUT_RETENTION + timedelta(days=1))
     read = tool_output_retention_repository.list_unswept
 
-    async def read_then_amended(at_before: datetime, limit: int) -> list[EntryCards]:
-        page = await read(at_before, limit)
+    async def read_then_amended(
+        at_before: datetime, limit: int, *, excluding: Collection[str] = ()
+    ) -> list[EntryCards]:
+        page = await read(at_before, limit, excluding=excluding)
         await entries_collection.update_many({}, {"$inc": {"revision": 1}})
         return page
 
@@ -263,3 +271,60 @@ async def test_a_page_whose_every_entry_changed_since_it_was_read_fails_loud(
     assert failed.value.message == "the tool output retention sweep stored no entry of a page"
     assert failed.value.meta == {"page": "2"}
     assert all(OUTPUTS_DROPPED_FIELD not in row for row in await _stored(entries_collection, old))
+
+
+async def test_an_entry_that_changes_after_every_read_is_passed_over_and_the_rest_counted(
+    entries_collection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(conversation_retention_tasks, "TOOL_OUTPUT_DROP_PAGE", 3)
+    repo = ConversationRepository()
+    past = TOOL_OUTPUT_RETENTION + timedelta(days=1)
+    old = [await _aged_chat(repo, entries_collection, past) for _ in range(2)]
+    [moving, *steady] = [row for doc in old for row in await _stored(entries_collection, doc)]
+    read = tool_output_retention_repository.list_unswept
+
+    async def read_then_moved(
+        at_before: datetime, limit: int, *, excluding: Collection[str] = ()
+    ) -> list[EntryCards]:
+        page = await read(at_before, limit, excluding=excluding)
+        await entries_collection.update_one({"id": moving["id"]}, {"$inc": {"revision": 1}})
+        return page
+
+    monkeypatch.setattr(tool_output_retention_repository, "list_unswept", read_then_moved)
+
+    async with captured_wide_event() as event:
+        summary = await drop_expired_tool_outputs({})
+
+    after = [row for doc in old for row in await _stored(entries_collection, doc)]
+    cut_rows = [row for row in after if row["id"] != moving["id"]]
+    freed = _cards_bytes(steady) - _cards_bytes(cut_rows)
+    assert summary == f"entries=3 bytes_freed={freed}"
+    assert event["tool_output_retention"] == {
+        "entries_cut": 3,
+        "bytes_freed": freed,
+        "entries_passed_over": 1,
+        "out_of_time": False,
+    }
+    [still] = [row for row in after if row["id"] == moving["id"]]
+    assert OUTPUTS_DROPPED_FIELD not in still and still["tool_data"] == moving["tool_data"]
+
+
+async def test_a_run_out_of_time_stops_between_pages_and_the_next_carries_on(
+    entries_collection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(conversation_retention_tasks, "TOOL_OUTPUT_DROP_PAGE", 2)
+    # Each reading of the clock is one budget later: the first page spends the whole of it.
+    ticks = iter(range(0, 100 * 900, 900))
+    monkeypatch.setattr(conversation_retention_tasks, "RUN_BUDGET_SECONDS", 900)
+    monkeypatch.setattr(conversation_retention_tasks, "clock", lambda: next(ticks))
+    repo = ConversationRepository()
+    past = TOOL_OUTPUT_RETENTION + timedelta(days=1)
+    old = [await _aged_chat(repo, entries_collection, past) for _ in range(2)]
+
+    async with captured_wide_event() as event:
+        assert (await drop_expired_tool_outputs({})).startswith("entries=2 ")
+    assert event["tool_output_retention"]["out_of_time"] is True
+
+    assert (await drop_expired_tool_outputs({})).startswith("entries=2 ")
+    rows = [row for doc in old for row in await _stored(entries_collection, doc)]
+    assert [row.get(OUTPUTS_DROPPED_FIELD) for row in rows] == [True] * 4
