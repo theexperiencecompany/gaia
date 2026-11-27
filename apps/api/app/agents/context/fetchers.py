@@ -171,11 +171,11 @@ async def _recall(user_id: str, query: str) -> MemorySearchResult | None:
 
 
 async def _recall_for_turn(ctx: SectionContext) -> MemorySearchResult | None:
-    """Reuse the recall comms made on the user's request; recall on query only when it missed.
+    """Recall on the user's request; recall on query only when that matched nothing confidently.
 
-    Comms recalled on request_query moments ago, so that call is a cache hit. The
-    brief found the same memories on real turns plus noise its template words matched;
-    it earns its own recall only when the request matched nothing confidently ("yes do it").
+    A short request recalls in well under a second; a brief runs to thousands of chars
+    and found the same memories plus noise its template words matched. The brief earns
+    its own recall only when the request matched nothing confidently ("yes do it").
     """
     if not ctx.user_id:
         return None

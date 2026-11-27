@@ -1,11 +1,15 @@
 """Push Notification Constants."""
 
+from datetime import timedelta
 from enum import StrEnum
 import re
 from typing import Final, Literal
 
 # Maximum devices a user can register for push notifications
 MAX_DEVICES_PER_USER = 10
+
+#: How long a notification is kept; the TTL index on created_at deletes it after that.
+NOTIFICATION_RETENTION: Final = timedelta(days=90)
 
 # Expo push token format: ExponentPushToken[xxx] or ExpoPushToken[xxx]
 EXPO_TOKEN_PATTERN = re.compile(r"^Expo(nent)?PushToken\[[a-zA-Z0-9_-]+\]$")
