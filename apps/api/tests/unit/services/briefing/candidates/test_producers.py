@@ -674,10 +674,11 @@ def test_a_row_whose_unknown_state_became_known_is_offered_again() -> None:
 
 
 @pytest.mark.regression
-def test_a_row_first_read_by_a_brief_that_never_went_out_is_offered_again() -> None:
+@pytest.mark.parametrize("after", [timedelta(0), timedelta(hours=1)], ids=["as-it-ran", "after"])
+def test_a_row_first_read_by_a_brief_that_never_went_out_is_offered_again(after: timedelta) -> None:
     """Regression: a failed composition had recorded the sighting, so the row was never shown."""
     memory = _seen_unshown("after-the-last-brief").model_copy(
-        update={"first_seen": SINCE + timedelta(hours=1), "last_seen": SINCE + timedelta(hours=1)}
+        update={"first_seen": SINCE + after, "last_seen": SINCE + after}
     )
 
     assert (
