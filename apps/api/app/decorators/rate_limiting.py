@@ -116,7 +116,7 @@ def build_rate_limit_card(card: RateLimitCardData) -> RateLimitCard:
         "tool_data": {
             "tool_name": "rate_limit_data",
             "tool_category": "system",
-            "data": card.model_dump(mode="json"),
+            "data": card.model_dump(mode="json"),  # pragma: no mutate — all fields str|None
             "timestamp": datetime.now(UTC).isoformat(),
         }
     }

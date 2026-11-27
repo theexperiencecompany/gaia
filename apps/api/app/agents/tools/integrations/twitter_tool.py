@@ -224,13 +224,13 @@ def CUSTOM_CREATE_THREAD(
         raise ValueError("Thread must have at least 2 tweets")
 
     tweet_ids: list[str] = []
-    previous_tweet_id: str | None = None
+    previous_tweet_id: str | None = None  # pragma: no mutate — read by truthiness
 
     total_tweets = len(request.tweets)
     writer({"progress": f"Creating thread with {total_tweets} tweets..."})
 
     for i, tweet_text in enumerate(request.tweets):
-        media_ids = None
+        media_ids = None  # pragma: no mutate — read by truthiness
         if request.media_ids and i < len(request.media_ids):
             media_ids = request.media_ids[i] if request.media_ids[i] else None
 
