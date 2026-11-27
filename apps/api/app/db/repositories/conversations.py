@@ -746,10 +746,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             cursor=page[0].seq if older else None,
         )
 
-    async def _with_openers(self, head: Head, page: list[LoggedEntry]) -> list[LoggedEntry]:
-        """Extend page back until it holds the opener of everything it completes that the log has."""
+    async def _with_openers(
+        self, head: Head, page: list[LoggedEntry], running: Sequence[str] = ()
+    ) -> list[LoggedEntry]:
+        """Extend page back until it holds the opener of everything it completes, and of running, that the log has."""
         while page:
-            missing = openers_outside(page)
+            missing = openers_outside(page, running)
             if not missing:
                 return page
             # Both only narrow the read: an opener is the earliest entry naming it, before the page.
@@ -776,7 +778,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         async def lookup(ids: Sequence[str], reply_ids: Sequence[str]) -> list[StoredRow]:
             return await self._related_rows(user_id, ids, reply_ids)
 
-        beside = await _read_beside(rows, lookup)
+        beside = await read_beside(rows, lookup)
         related: dict[str, list[LoggedEntry]] = {}
         for row in [*rows, *beside]:
             related.setdefault(row.conversation_id, []).append(row.logged)
@@ -982,7 +984,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 conversation_repository = ConversationRepository()
 
 
-async def _read_beside(
+async def read_beside(
     window: Sequence[StoredRow],
     lookup: Callable[[Sequence[str], Sequence[str]], Awaitable[list[StoredRow]]],
 ) -> list[StoredRow]:

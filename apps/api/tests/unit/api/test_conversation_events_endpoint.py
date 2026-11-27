@@ -51,7 +51,7 @@ async def said(
     owned_conversations: set[tuple[str, str]],
     fake_redis: fakeredis.aioredis.FakeRedis,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+) -> Runtime:
     """One owned conversation holding two messages, whose frames its stream still holds."""
     owned_conversations.add((CONVERSATION, FAKE_USER.user_id))
     monkeypatch.setattr(conversations, "follow_screen", _opening_screen_only)
@@ -64,6 +64,7 @@ async def said(
         await fake_redis.xadd(
             f"{EVENTS_KEY_PREFIX}{CONVERSATION}", {"frame": frame.model_dump_json()}
         )
+    return runtime
 
 
 async def _screen(client: AsyncClient, **params: int) -> list[_Json]:
@@ -162,10 +163,15 @@ async def test_a_stream_s_request_event_says_what_it_served(
     assert stream["frames"] == served.content.count(b"data: ") == 1
 
 
-@pytest.mark.usefixtures("said")
-async def test_a_head_amended_since_is_answered_with_the_whole_screen_and_says_so(
-    test_app: FastAPI, fake_redis: fakeredis.aioredis.FakeRedis
+async def test_a_head_amended_since_is_answered_with_the_amended_item_and_says_so(
+    said: Runtime,
+    test_app: FastAPI,
+    client: AsyncClient,
+    fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
+    for message_id in ("u3", "u4"):
+        message = UserMessage(id=message_id, text="hi", surface=ConversationSource.WEB)
+        await said.log.append(CONVERSATION, FAKE_USER.user_id, message)
     amended = EntryUpdatedFrame(
         seq=1, entry=UserMessage(id="u1", text="hi", surface=ConversationSource.WEB)
     )
@@ -175,7 +181,8 @@ async def test_a_head_amended_since_is_answered_with_the_whole_screen_and_says_s
 
     served = await _served(test_app, wire=2, after=2)
 
-    assert served.event["conversation"]["resume"] == EventsResume.FULL_AMENDED
+    assert served.event["conversation"]["resume"] == EventsResume.AMENDED
+    assert [item["id"] for item in await _screen(client, wire=2, after=2)] == ["u1", "u3", "u4"]
 
 
 @pytest.mark.usefixtures("said")

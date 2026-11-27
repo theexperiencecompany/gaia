@@ -1,7 +1,7 @@
 """GET /conversations/{id}/events over real HTTP, Mongo and Redis: what wire 2 and after send, in bytes."""
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -22,7 +22,9 @@ from app.api.v1.middleware.logging import LoggingMiddleware
 from app.constants.chat import ConversationSource
 from app.constants.conversation import EVENTS_KEY_PREFIX
 from app.constants.summarization import MAX_ENTRY_TEXT_CHARS, MAX_OUTPUT_CHARS
+from app.db.repositories.conversation_entries import EntryWindow, Head
 from app.db.repositories.conversation_log import conversation_log_repository
+from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
 from app.models.conversation_log_models import (
@@ -403,22 +405,79 @@ async def test_a_reconnect_is_sent_the_newest_user_message_even_when_nothing_cha
     assert resumed.frames[0]["items"] == [first.items["m2"]]
 
 
-async def test_a_reconnect_is_sent_the_whole_screen_when_an_entry_it_held_was_amended(
-    api: str, conversation: Conversation
-) -> None:
-    await conversation.say("m1")
-    first = await _read(api, conversation.id, wire=2)
+async def _react(conversation: Conversation, message_id: str) -> None:
+    """React to a message as the instant reaction does: amend it in the log and publish the change."""
     log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
     reacted = await log.react_once(
-        conversation.id, USER, "m1", Reaction(emoji="👍", by=ReactionBy.JEV)
+        conversation.id, USER, message_id, Reaction(emoji="👍", by=ReactionBy.JEV)
     )
     assert reacted is not None
     await conversation.ports.frames.publish(
         conversation.id, EntryUpdatedFrame(seq=reacted.seq, entry=reacted.entry)
     )
+
+
+async def test_a_reconnect_after_an_entry_it_held_was_amended_is_sent_that_item_and_converges(
+    api: str, conversation: Conversation
+) -> None:
+    await conversation.say("m1")
+    await conversation.say("m2")
+    first = await _read(api, conversation.id, wire=2)
+    await _react(conversation, "m1")
     resumed = await _read(api, conversation.id, wire=2, after=first.head)
-    assert resumed.items == await conversation.screen()
+    assert [item["id"] for item in _items(resumed.frames[0]["items"])] == ["m1", "m2"]
     assert _item(_item(resumed.items["m1"]["message"])["reaction"])["emoji"] == "👍"
+    first.items.update(resumed.items)
+    assert first.items == await conversation.screen()
+
+
+@dataclass
+class _EntryReads:
+    """How many log entries the conversation_entries collection returned."""
+
+    rows: int = 0
+
+
+@pytest.fixture
+def entry_reads(monkeypatch: pytest.MonkeyPatch) -> _EntryReads:
+    reads = _EntryReads()
+    stored_rows = ConversationRepository._stored_rows
+
+    async def counted(
+        self: ConversationRepository, heads: Sequence[Head], window: EntryWindow
+    ) -> list[dict[str, object]]:
+        rows = await stored_rows(self, heads, window)
+        reads.rows += len(rows)
+        return rows
+
+    monkeypatch.setattr(ConversationRepository, "_stored_rows", counted)
+    return reads
+
+
+@pytest.mark.regression
+async def test_a_reconnect_after_a_reaction_on_a_long_chat_reads_and_is_sent_only_what_changed(
+    api: str, conversation: Conversation, entry_reads: _EntryReads
+) -> None:
+    """Regression for a bot reopen after a reaction reading the whole log and resending every item."""
+    turns = 40
+    for turn in range(turns):
+        task = f"t{turn}"
+        await conversation.start_work(task, await conversation.say(f"m{turn}"))
+        await conversation.run_tools(task, iter(range(3)), output_chars=5_000)
+        await conversation.finish_work(task)
+    first = await _read(api, conversation.id, wire=2)
+    await _react(conversation, "m30")
+
+    entry_reads.rows = 0
+    resumed = await _read(api, conversation.id, wire=2, after=first.head)
+
+    newest = f"m{turns - 1}"
+    assert [item["id"] for item in _items(resumed.frames[0]["items"])] == ["m30", newest]
+    assert resumed.received < 0.01 * first.received
+    # From the amended message to the head, not the whole log.
+    assert entry_reads.rows < first.head / 3
+    first.items.update(resumed.items)
+    assert first.items == await conversation.screen()
 
 
 async def test_a_reconnect_is_sent_the_whole_screen_once_the_stream_no_longer_holds_its_head(

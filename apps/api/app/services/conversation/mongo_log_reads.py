@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 
-from app.models.conversation_log_models import ConversationState, LoggedEntry
+from app.models.conversation_log_models import ConversationState, LoggedEntry, ScreenWindow
 from app.services.conversation.mongo_log_base import MongoLogBase, not_found
 from app.services.conversation.ports import Unsettled
 
@@ -18,6 +18,17 @@ class LogReads(MongoLogBase):
         if entries is None:
             raise not_found(conversation_id)
         return entries
+
+    async def read_screen(
+        self, conversation_id: str, user_id: str, *, after: int | None, limit: int
+    ) -> ScreenWindow:
+        """Return the entries after after (the newest limit when None) a screen projects from."""
+        window = await self._repository.read_screen(
+            conversation_id, user_id=user_id, after=after, limit=limit
+        )
+        if window is None:
+            raise not_found(conversation_id)
+        return window
 
     async def pinned(self, conversation_id: str, user_id: str) -> Sequence[LoggedEntry]:
         """Return the user messages and replies the user pinned, in order."""

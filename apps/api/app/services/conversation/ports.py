@@ -20,6 +20,7 @@ from app.models.conversation_log_models import (
     PreemptHint,
     RejectReason,
     Reply,
+    ScreenWindow,
     StepClaim,
     UserMessage,
     WithdrawApprovals,
@@ -88,6 +89,16 @@ class ConversationLog(Protocol):
         self, conversation_id: str, user_id: str, seq: int
     ) -> Sequence[LoggedEntry]:
         """Return the entries after seq in order, with their current content."""
+        ...
+
+    async def read_screen(
+        self, conversation_id: str, user_id: str, *, after: int | None, limit: int
+    ) -> ScreenWindow:
+        """Return the entries after after (the newest limit when None) that a screen projects from.
+
+        The run reaches back to the newest user message, to the opener of every span it holds and
+        of running work, and carries the entries its items read beside them.
+        """
         ...
 
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:

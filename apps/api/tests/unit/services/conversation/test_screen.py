@@ -46,6 +46,7 @@ from app.models.hil_models import ApprovalDescription, ApprovalDetail
 from app.services.conversation import screen_patches as screen_patches_module
 from app.services.conversation.screen import (
     TOOL_CALL_CARD,
+    needed_beside,
     project_screen,
     work_root,
     work_timeline,
@@ -1308,3 +1309,16 @@ def test_only_the_last_patch_of_one_entry_names_its_head() -> None:
         (ScreenUpdateFrame, "work:t1", 3),
         (ScreenInsertFrame, "u4", 4),
     ]
+
+
+def test_an_amendment_to_an_entry_older_than_the_window_changes_nothing_the_window_shows() -> None:
+    tracker = ScreenTracker("c1", [logged(5, user("u5"))], {})
+
+    assert tracker.take(EntryUpdatedFrame(seq=2, entry=user("u2"))) == []
+    assert [item.id for item in tracker.items] == ["u5"]
+
+
+def test_a_work_item_reads_the_messages_it_answers_beside_it_for_its_retry_target() -> None:
+    work = WorkStarted(id="work:t2", task_id="t2", cause_through=1, answers=("u1",), joins="t1")
+
+    assert needed_beside([logged(2, work)]) == (["u1", "work:t1"], [])

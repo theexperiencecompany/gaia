@@ -65,3 +65,18 @@ async def test_every_read_of_a_conversation_the_user_lacks_is_not_found(
         await reads.state(conversation, "someone_else")
     with pytest.raises(ConversationNotFoundError, match="c-missing"):
         await reads.unsettled("c-missing", UID)
+    with pytest.raises(ConversationNotFoundError, match="c-missing"):
+        await reads.read_screen("c-missing", UID, after=None, limit=1)
+
+
+async def test_a_screen_window_is_the_repository_s(
+    reads: LogReads, log: MongoConversationLog, conversation: str
+) -> None:
+    await _seed(log, conversation)
+
+    window = await reads.read_screen(conversation, UID, after=2, limit=1)
+    assert ([e.entry.id for e in window.entries], window.start) == (
+        # The settle's answer is read beside the run.
+        ["m1", "s1-open", "s1", "n1"],
+        2,
+    )

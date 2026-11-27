@@ -29,6 +29,7 @@ from app.models.conversation_frame_models import (
 from app.models.conversation_log_models import (
     DisplayState,
     Entry,
+    ScreenWindow,
     WorkFinished,
     WorkOutcome,
     WorkStarted,
@@ -302,20 +303,20 @@ async def test_another_conversation_s_stream_vouches_for_nothing(
 
 
 @pytest.mark.parametrize(
-    ("amended_seq", "placed_after_head", "resumed"),
+    ("amended_seq", "placed_after_head", "opening"),
     [
-        (2, True, False),
-        (1, True, False),
-        (3, True, True),
-        (2, False, True),
+        (2, True, ["u2", "u3"]),
+        (1, True, ["u1", "u3"]),
+        (3, True, ["u3"]),
+        (2, False, ["u3"]),
     ],
     ids=["the head entry", "an older entry", "a newer entry", "before the head was reached"],
 )
-async def test_an_amendment_since_the_head_to_an_entry_the_client_held_opens_on_the_whole_screen(
+async def test_an_amendment_since_the_head_to_an_entry_the_client_held_reopens_on_that_item_and_what_is_newer(
     fake_redis: fakeredis.aioredis.FakeRedis,
     amended_seq: int,
     placed_after_head: bool,
-    resumed: bool,
+    opening: list[str],
 ) -> None:
     runtime = Runtime()
     amended = EntryUpdatedFrame(seq=amended_seq, entry=user(f"u{amended_seq}"))
@@ -327,17 +328,49 @@ async def test_an_amendment_since_the_head_to_an_entry_the_client_held_opens_on_
         await _publish(fake_redis, amended)
     await _said(runtime, fake_redis, "u3")
 
-    assert await _opening(runtime, 2) == (["u3"] if resumed else ["u1", "u2", "u3"])
+    assert await _opening(runtime, 2) == opening
 
 
-async def test_an_amendment_two_frames_past_the_head_still_opens_on_the_whole_screen(
+async def test_an_amendment_two_frames_past_the_head_still_reopens_on_the_amended_item(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
     runtime = Runtime()
     await _said(runtime, fake_redis, "u1", "u2", "u3")
     await _publish(fake_redis, EntryUpdatedFrame(seq=1, entry=user("u1")))
 
-    assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
+    assert await _opening(runtime, 2) == ["u1", "u3"]
+
+
+@pytest.mark.parametrize(
+    ("after", "amended", "read_after"),
+    [(0, None, None), (2, None, 2), (2, 1, 0), (9, None, None)],
+    ids=["fresh", "resumed", "amended", "not held"],
+)
+async def test_an_open_reads_the_log_only_from_what_its_client_may_lack(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+    after: int,
+    amended: int | None,
+    read_after: int | None,
+) -> None:
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1", "u2", "u3")
+    if amended is not None:
+        await _publish(fake_redis, EntryUpdatedFrame(seq=amended, entry=user(f"u{amended}")))
+    reads: list[int | None] = []
+    read_screen = runtime.log.read_screen
+
+    async def recorded(
+        conversation_id: str, user_id: str, *, after: int | None, limit: int
+    ) -> ScreenWindow:
+        reads.append(after)
+        return await read_screen(conversation_id, user_id, after=after, limit=limit)
+
+    monkeypatch.setattr(runtime.log, "read_screen", recorded)
+
+    await _opening(runtime, after)
+
+    assert reads == [read_after]
 
 
 async def test_a_reply_the_client_held_is_projected_with_its_conversation_s_links(
@@ -602,7 +635,7 @@ async def test_the_head_check_reads_further_back_until_it_meets_the_head(
     assert [count for count in pages_read if count != 1] == [EVENTS_RESUME_PAGE, grown]
 
 
-async def test_an_amendment_past_the_first_page_still_opens_on_the_whole_screen(
+async def test_an_amendment_past_the_first_page_still_reopens_on_the_amended_item(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
     runtime = Runtime()
@@ -611,7 +644,7 @@ async def test_an_amendment_past_the_first_page_still_opens_on_the_whole_screen(
     await _publish(fake_redis, *(_reply_text(index) for index in range(EVENTS_RESUME_PAGE + 5)))
     await _said(runtime, fake_redis, "u3")
 
-    assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
+    assert await _opening(runtime, 2) == ["u1", "u3"]
 
 
 async def test_a_head_older_than_everything_a_long_stream_holds_opens_on_the_whole_screen(

@@ -27,7 +27,7 @@ from app.db.repositories.conversation_entries import (
 )
 from app.db.repositories.conversations import (
     ConversationRepository,
-    _read_beside,
+    read_beside,
     union_with_outboxes,
 )
 from app.models.conversation_log_models import (
@@ -187,7 +187,7 @@ async def test_a_hit_reads_its_settle_then_the_message_the_settle_quotes_asking_
             or getattr(row.logged.entry, "reply_id", None) in reply_ids
         ]
 
-    related = await _read_beside([_row(2, reply)], lookup)
+    related = await read_beside([_row(2, reply)], lookup)
 
     assert related == [_row(3, settle), _row(1, asked)]
     assert calls == [(["work:r1:finished", "work:r1:lost"], ["r1"]), (["u1"], [])]
