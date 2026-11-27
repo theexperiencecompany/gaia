@@ -89,7 +89,7 @@ class TestRemember:
 
 def _line(remembered: RememberedSignal, clock: UserClock = CLOCK) -> str:
     """Say one signal as both the composition and the voice read it."""
-    [candidate] = app_signal_candidates([remembered], clock)
+    [candidate] = app_signal_candidates([remembered], clock, clock.day_start())
     return item_line(1, candidate, clock)
 
 
@@ -105,8 +105,22 @@ class TestASignalsLine:
         )
 
         assert _line(remembered) == (
-            "1. [Linear] waiting on you, important: Issue 9 | issue | state: Todo"
+            "1. [Linear] found by its scout, important: Issue 9 | issue | Linear shows it as Todo"
             " | first seen yesterday, never mentioned, moved from Backlog to Todo | " + _READ_ONLY
+        )
+
+    @pytest.mark.regression
+    def test_a_date_says_what_it_means_beside_due(self) -> None:
+        """Regression: "due Tue Nov 24" on a lead was its next follow-up, and read as a reply's age."""
+        signal = _signal("6").model_copy(
+            update={
+                "due_at": datetime(2026, 10, 24, 17, 0, tzinfo=UTC),
+                "due_label": "next follow-up scheduled",
+            }
+        )
+
+        assert "| due Sat Oct 24 (next follow-up scheduled) |" in _line(
+            RememberedSignal(signal=signal)
         )
 
     def test_every_detail_a_signal_carries_is_on_its_line(self) -> None:
@@ -123,7 +137,8 @@ class TestASignalsLine:
         )
 
         assert _line(remembered) == (
-            "1. [Linear] waiting on you: Issue 5 | issue | state: Todo | why: blocks the release"
+            "1. [Linear] found by its scout: Issue 5 | issue | Linear shows it as Todo"
+            " | why: blocks the release"
             " | first seen today, never mentioned | due Sat Oct 24"
             " | names Priya, Sam (the app does not say their part in it) | linkable | " + _READ_ONLY
         )

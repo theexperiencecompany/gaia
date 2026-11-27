@@ -1136,7 +1136,11 @@
       }
     },
     "semgrep": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh semgrep --lane scan/semgrep"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/tools/semgrep/**/*",
         "ciHarness",
@@ -1150,7 +1154,6 @@
           "job": "scan",
           "check": "semgrep",
           "area": "security",
-          "runner": "action",
           "events": ["merge_group", "push", "workflow_dispatch"]
         }
       }

@@ -465,7 +465,6 @@ unfixable = [
 "apps/api/app/services/outbound_delivery.py" = ["PLR0913"]  # publish_outbound_file predates this change; the reminder/proactive-delivery feature only adds channel-targeted delivery to publish_outbound_message here
 "apps/api/app/services/todos/todo_service.py" = ["PLR0913"]  # get_all_todos predates this change; the triggers feature only adds subscription teardown-on-delete here
 "apps/api/app/services/tracked_todo_service.py" = ["PLR0913"]  # the flagged function predates this change; the triggers feature adds subscription teardown to this file
-"apps/api/app/services/triggers/handlers/calendar.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/github.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/google_sheets.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/notion.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here

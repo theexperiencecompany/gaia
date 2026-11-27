@@ -112,7 +112,7 @@ One rule governs it:
 
 ### Pre-model hooks (shared by comms + executor + subagents)
 
-- `apps/api/app/agents/core/nodes/filter_messages.py` — `filter_messages_node` trims history.
+- `apps/api/app/agents/llm/transcript.py` — `provider_transcript`, run by `ainvoke_llm`/`invoke_llm` on every model call: each tool call is followed by exactly its results (misplaced ones moved, unanswered ones answered as unfinished, orphans dropped).
 - `apps/api/app/agents/core/nodes/manage_system_prompts.py` — `manage_system_prompts_node` collapses repeat system messages for cache-prefix stability.
 - `apps/api/app/agents/core/nodes/memory_node.py` — `memory_node` end-graph hook on the **comms** turn only, for passive durable-memory learning. It ingests the delta since the thread's high-water mark, labels the transcript `user`/`gaia`/`tool`, and skips system-generated conversations.
 - `apps/api/app/agents/core/nodes/follow_up_actions_node.py` — **comms-only** end hook for proactive suggestions.

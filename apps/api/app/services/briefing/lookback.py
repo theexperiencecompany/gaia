@@ -27,6 +27,12 @@ async def last_brief(user_id: str, clock: UserClock, kind: BriefingKind) -> Brie
     return await briefing_repository.get_before_date(user_id, kind=kind, before_date=clock.date_str)
 
 
+async def last_brief_made(user_id: str, clock: UserClock) -> datetime | None:
+    """Return when the latest brief before today, daily or weekly, was made; None before any."""
+    last = await briefing_repository.get_before_date(user_id, kind=None, before_date=clock.date_str)
+    return None if last is None else _created(last)
+
+
 def lookback_since(clock: UserClock, last: BriefingModel | None) -> datetime:
     """Return when the look-back starts: the last brief, at most LOOKBACK_MAX_DAYS back.
 

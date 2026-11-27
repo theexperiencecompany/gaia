@@ -796,6 +796,35 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
     # ---- trigger-subscription finders --------------------------------------
 
+    async def test_distinct_users_with_active_subscription_skips_paused_done_and_other_triggers(
+        self, repo, make_doc
+    ):
+        soon = "calendar_event_starting_soon"
+        await repo.create(
+            make_doc(user_id="u1", trigger_subscriptions=[_subscription(trigger_name=soon)])
+        )
+        await repo.create(
+            make_doc(user_id="u1", trigger_subscriptions=[_subscription(trigger_name=soon)])
+        )
+        await repo.create(
+            make_doc(
+                user_id="u2",
+                trigger_subscriptions=[
+                    _subscription(trigger_name=soon, status=TriggerSubscriptionStatus.PAUSED)
+                ],
+            )
+        )
+        await repo.create(
+            make_doc(
+                user_id="u3",
+                completed=True,
+                trigger_subscriptions=[_subscription(trigger_name=soon)],
+            )
+        )
+        await repo.create(make_doc(user_id="u4", trigger_subscriptions=[_subscription()]))
+
+        assert await repo.distinct_users_with_active_subscription(soon) == ["u1"]
+
     async def test_find_active_by_composio_trigger_spans_users(self, repo, make_doc):
         shared = _subscription(
             trigger_name="slack_new_message",

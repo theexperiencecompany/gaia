@@ -174,6 +174,8 @@ IN_TEST_DIR = "mutants-killed-in-test"
 IN_TEST_DIR_ENV = "MUTMUT_IN_TEST_DIR"
 _RESULT_LINE = re.compile(r"^\s+(?P<name>\S+__mutmut_\d+): (?P<status>.+)$")
 _TIMED_OUT_TEST = re.compile(r"^(FAILED|ERROR) .*Failed: Timeout \(>", re.MULTILINE)
+# A test pytest -vv reports red before any mutant ran: the stats run's tests fail on clean code.
+_FAILED_TEST = re.compile(r"^(\S+::\S+) (?:FAILED|ERROR)\b", re.MULTILINE)
 CLASSIFIER_KINDS = ("EQUIV", "CHANGED", "UNCHANGED", "LOGGING", "LINTED")
 
 # Holds the host CPU tokens for as long as its stdin stays open, through the
@@ -1310,6 +1312,12 @@ def no_state_outcome(module: str, workdir: Path, log: str) -> Outcome | None:
             Status.ERROR,
             f"{module} reached no verdict: {timed_out} test(s) hit the {MUTANT_TEST_TIMEOUT}s "
             "per-test timeout before mutmut graded a mutant, so no survivors were measured",
+        )
+    if failed := _FAILED_TEST.findall(log):
+        return Outcome(
+            Status.ERROR,
+            f"{module} reached no verdict: {len(failed)} test(s) fail on the unmutated code, "
+            f"so mutmut graded no mutant (first: {failed[0]}); fix that test, not a survivor",
         )
     return Outcome(
         Status.ERROR,

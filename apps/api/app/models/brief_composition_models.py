@@ -41,7 +41,9 @@ class ComposedItem(BaseModel):
     outcome: BriefOutcome | None = Field(
         description="Where it got to, when it needs nothing from them; else null"
     )
-    title: str = Field(description="A noun phrase naming the thing, never a sentence")
+    title: str = Field(
+        description="Who or what and what happened or is asked, readable on its own, in plain words"
+    )
     detail: str | None = Field(description="The one fact that matters, or null")
 
 

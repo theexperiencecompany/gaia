@@ -3,7 +3,7 @@
 Faked seams: the repository reads the reading producers make.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
@@ -58,6 +58,8 @@ from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 USER_ID = make_user_id()
 NOW = datetime(2026, 11, 11, 2, 30, tzinfo=UTC)
+#: When the last stored brief was made, before which the passed-over rows were first read.
+LAST_BRIEF = NOW - timedelta(hours=20)
 TZ = ZoneInfo("Asia/Kolkata")
 CLOCK = UserClock(tz=TZ, now_local=NOW.astimezone(TZ), date_str="2026-11-11", day_of_year=315)
 
@@ -126,7 +128,9 @@ def _scouts(*remembered: RememberedSignal) -> ScoutSignals:
 async def _gathered(
     work: TrackedWork, scouts: ScoutSignals, open_own: list[TodoDocument] | None = None
 ) -> GatheredCandidates:
-    sources = CandidateSources(work, scouts, [], CLOCK.day_start(days_ago=-1), open_own or [])
+    sources = CandidateSources(
+        work, scouts, [], CLOCK.day_start(days_ago=-1), open_own or [], last_brief_at=LAST_BRIEF
+    )
     return await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
 
 
@@ -200,7 +204,12 @@ class TestTheCalendarJoinsThePool:
     async def test_todays_events_are_timed_in_the_users_own_clock(self) -> None:
         events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
         sources = CandidateSources(
-            TrackedWork(), _scouts(), events, CLOCK.day_start(days_ago=-1), []
+            TrackedWork(),
+            _scouts(),
+            events,
+            CLOCK.day_start(days_ago=-1),
+            [],
+            last_brief_at=LAST_BRIEF,
         )
 
         gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
@@ -331,6 +340,28 @@ class TestWhatEarlierBriefsShowedIsNotNews:
         assert candidate.moved and not candidate.is_repeat
         assert gathered.has_news
 
+    async def test_a_scout_row_the_last_brief_passed_over_stays_out_of_the_pool(self) -> None:
+        """The run's look-back start decides passed over: rows first read before it, left out, drop."""
+        memory = SignalMemoryDocument(
+            user_id=USER_ID,
+            integration_id="gmail",
+            external_id="old",
+            first_seen=NOW - timedelta(days=2),
+            last_seen=NOW - timedelta(days=1),
+        )
+        passed = _gmail_signal("old", "Old thread").model_copy(update={"memory": memory})
+        passed = passed.model_copy(
+            update={
+                "signal": passed.signal.model_copy(update={"importance": SignalImportance.NORMAL})
+            }
+        )
+
+        gathered = await _gathered(
+            TrackedWork(), _scouts(passed, _gmail_signal("new", "New thread"))
+        )
+
+        assert [c.title for c in gathered.pool.values()] == ["New thread"]
+
     async def test_an_undated_own_todo_alone_is_no_news(self) -> None:
         undated = TodoDocument(id="u1", user_id=USER_ID, title="Plan Q1")
 
@@ -379,7 +410,9 @@ class TestWhereGaiaCanAct:
             CLOCK,
             NOW,
             NOW,
-            CandidateSources(work, scouts, events, CLOCK.day_start(days_ago=-1), []),
+            CandidateSources(
+                work, scouts, events, CLOCK.day_start(days_ago=-1), [], last_brief_at=LAST_BRIEF
+            ),
         )
 
         assert [(c.source, c.gaia_acts) for c in gathered.pool.values()] == [
@@ -473,7 +506,12 @@ def _app_signal(
 async def _gathered_signals(*remembered: RememberedSignal) -> GatheredCandidates:
     events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
     sources = CandidateSources(
-        TrackedWork(), _scouts(*remembered), events, CLOCK.day_start(days_ago=-1), []
+        TrackedWork(),
+        _scouts(*remembered),
+        events,
+        CLOCK.day_start(days_ago=-1),
+        [],
+        last_brief_at=LAST_BRIEF,
     )
     return await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
 
@@ -547,7 +585,12 @@ class TestEachSourceIsCappedByRank:
             for n in range(BRIEF_POOL_PER_SOURCE + 3)
         ]
         sources = CandidateSources(
-            TrackedWork(), _scouts(), events, CLOCK.day_start(days_ago=-1), []
+            TrackedWork(),
+            _scouts(),
+            events,
+            CLOCK.day_start(days_ago=-1),
+            [],
+            last_brief_at=LAST_BRIEF,
         )
 
         gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
@@ -586,6 +629,7 @@ class TestAHeldResultSayingWhatAnotherSaysIsFolded:
             CLOCK.day_start(days_ago=-1),
             [],
             held=held,
+            last_brief_at=LAST_BRIEF,
         )
 
         gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
@@ -607,7 +651,11 @@ async def test_reminders_are_read_from_the_users_day_start_to_the_spans_end(
     due_before = CLOCK.day_start(days_ago=-1)
 
     await gather_candidates(
-        USER_ID, CLOCK, NOW, NOW, CandidateSources(TrackedWork(), _scouts(), [], due_before, [])
+        USER_ID,
+        CLOCK,
+        NOW,
+        NOW,
+        CandidateSources(TrackedWork(), _scouts(), [], due_before, [], last_brief_at=LAST_BRIEF),
     )
 
     find.assert_awaited_once_with(USER_ID, CLOCK.day_start(), due_before)
@@ -646,7 +694,9 @@ async def test_failed_runs_are_read_for_the_user_since_the_last_brief(
     runs = AsyncMock(return_value=[])
     monkeypatch.setattr(workflow_repository, "find_system_workflows", system)
     monkeypatch.setattr(workflow_executions_repository, "list_since", runs)
-    sources = CandidateSources(TrackedWork(), _scouts(), [], CLOCK.day_start(days_ago=-1), [])
+    sources = CandidateSources(
+        TrackedWork(), _scouts(), [], CLOCK.day_start(days_ago=-1), [], last_brief_at=LAST_BRIEF
+    )
 
     await gather_candidates(USER_ID, CLOCK, since, NOW, sources)
 
@@ -669,7 +719,13 @@ async def test_held_results_look_up_the_users_own_inbox_desk(
         text="Revenue up 4%",
     )
     sources = CandidateSources(
-        TrackedWork(), _scouts(), [], CLOCK.day_start(days_ago=-1), [], held=[held]
+        TrackedWork(),
+        _scouts(),
+        [],
+        CLOCK.day_start(days_ago=-1),
+        [],
+        held=[held],
+        last_brief_at=LAST_BRIEF,
     )
 
     await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)

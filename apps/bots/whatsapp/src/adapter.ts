@@ -31,7 +31,6 @@ import {
   friendlyMediaError,
   hashLogIdentifier,
   type IncomingMedia,
-  isLegibleAsPhoto,
   MEDIA_READ_TIMEOUT_MS,
   neverReopened,
   type OutboundFile,
@@ -1031,12 +1030,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     if (!uploaded.id) throw new Error("Kapso media upload returned no id");
 
     const to = `+${destinationId}`;
-    // WhatsApp image messages cap around 5 MB and are downscaled; deliver larger
-    // or tall images as a document so they arrive full size and legible.
     const asImage =
-      mime.startsWith("image/") &&
-      data.length <= WHATSAPP_IMAGE_MAX_BYTES &&
-      isLegibleAsPhoto(data);
+      mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES;
     if (asImage) {
       await this.whatsAppClient.messages.sendImage({
         phoneNumberId,

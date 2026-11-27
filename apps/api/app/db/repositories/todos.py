@@ -533,6 +533,21 @@ class TodosRepository(CachedUserScopedRepository[TodoDocument, TodoUpdate]):
             }
         )
 
+    async def distinct_users_with_active_subscription(self, trigger_name: str) -> list[str]:
+        """Every user id with an incomplete todo actively watching trigger_name."""
+        return await self._distinct(
+            "user_id",
+            {
+                "completed": False,
+                "trigger_subscriptions": {
+                    "$elemMatch": {
+                        "trigger_name": trigger_name,
+                        "status": TriggerSubscriptionStatus.ACTIVE.value,
+                    }
+                },
+            },
+        )
+
     async def find_paused_by_user_and_trigger(
         self, user_id: str, trigger_name: str
     ) -> list[TodoDocument]:
