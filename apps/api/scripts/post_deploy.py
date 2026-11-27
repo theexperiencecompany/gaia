@@ -25,6 +25,7 @@ from app.services.workflow.scheduler import workflow_scheduler
 from scripts._cli import apply_requested
 from scripts.backfill_last_active_at import backfill as backfill_last_active_at
 from scripts.clear_email_derived_names import clear_email_derived_names
+from scripts.contract_moved_fields import contract as contract_moved_fields
 from scripts.migrate_inbox_desk_recurrence import migrate as migrate_inbox_desk_recurrence
 from scripts.migrate_notification_details import migrate as migrate_notification_details
 from scripts.migrate_todo_delivery import migrate as migrate_todo_delivery
@@ -33,7 +34,8 @@ from scripts.provision_daily_briefings import rollout as provision_daily_briefin
 from scripts.retire_legacy_triggers import migrate as retire_legacy_triggers
 
 #: Order matters: shapes are migrated before anything reads them, activity is backfilled before
-#: dormancy reads it, and briefs are provisioned before the desk follows them.
+#: dormancy reads it, briefs are provisioned before the desk follows them, and the contract
+#: drops old fields only after the expands that copied them.
 #: A migration reads only the fields it rewrites, never a whole old document.
 POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
     ("retire_legacy_triggers", retire_legacy_triggers),
@@ -44,6 +46,7 @@ POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
     ("migrate_todo_delivery", migrate_todo_delivery),
     ("clear_email_derived_names", clear_email_derived_names),
     ("migrate_notification_details", migrate_notification_details),
+    ("contract_moved_fields", contract_moved_fields),
 )
 
 #: How often the runner applying a step refreshes its claim.
