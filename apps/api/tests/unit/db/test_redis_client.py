@@ -23,7 +23,6 @@ from app.db.redis import (
     deserialize_any,
     get_and_delete_cache,
     get_cache,
-    key_namespace,
     redis_cache,
     serialize_any,
     set_cache,
@@ -928,6 +927,14 @@ class TestRedisCacheLogsNoKeySecrets:
         assert "liveSecretCode" not in logged
         assert "connect_link" in logged
 
-    def test_the_namespace_is_everything_before_the_first_colon(self) -> None:
-        assert key_namespace("connect_link:code:with:colons") == "connect_link"
-        assert key_namespace("plainkey") == "plainkey"
+    async def test_the_logged_namespace_is_everything_before_the_first_colon(self) -> None:
+        cache = RedisCache.__new__(RedisCache)
+        cache.redis = AsyncMock()
+        cache.redis.get.side_effect = ConnectionError("down")
+
+        with patch("app.db.redis.log") as mock_log:
+            await cache.get("connect_link:code:with:colons")
+            await cache.get("plainkey")
+
+        namespaces = [c.kwargs["key_namespace"] for c in mock_log.error.call_args_list]
+        assert namespaces == ["connect_link", "plainkey"]
