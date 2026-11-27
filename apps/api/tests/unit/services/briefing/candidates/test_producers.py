@@ -687,6 +687,12 @@ def test_a_row_first_read_by_a_brief_that_never_went_out_is_offered_again(after:
     )
 
 
+def test_before_any_brief_no_row_counts_as_passed_over() -> None:
+    row = _docs_row("seen-by-a-failed-run", seen=_seen_unshown("seen-by-a-failed-run"))
+
+    assert len(app_signal_candidates([row], CLOCK, None)) == 1
+
+
 def test_app_signals_lead_with_the_scouts_urgent_then_the_recently_moved() -> None:
     """The founder's GitHub: Jun 2025 issues and a Jun 30 PR led two PR threads updated this week."""
 

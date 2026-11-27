@@ -30,6 +30,7 @@ from app.services.briefing.lookback import (
     Lookback,
     compute_winback_state,
     format_lookback_block,
+    last_brief_made,
     lookback_since,
 )
 from app.services.briefing.work import read_work
@@ -301,3 +302,22 @@ class TestComputeWinbackState:
 
         assert last_active.await_args.args[1] == datetime(2026, 10, 12, 8, tzinfo=UTC)
         assert state.unacknowledged == 0
+
+
+@pytest.mark.regression
+async def test_the_last_brief_made_is_the_newest_of_any_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a digest used its Monday as the last brief, so rows no brief weighed dropped."""
+    weekly = _sent_days_ago(_brief(BriefingMood.CLEAR), 1)
+    read = AsyncMock(return_value=weekly)
+    monkeypatch.setattr(briefing_repository, "get_before_date", read)
+
+    assert await last_brief_made(USER_ID, CLOCK) == weekly.created_at
+    read.assert_awaited_once_with(USER_ID, kind=None, before_date=CLOCK.date_str)
+
+
+async def test_before_any_brief_there_is_no_last_brief(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(briefing_repository, "get_before_date", AsyncMock(return_value=None))
+
+    assert await last_brief_made(USER_ID, CLOCK) is None

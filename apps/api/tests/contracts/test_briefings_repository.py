@@ -380,6 +380,38 @@ class TestBriefingsReads:
             is None
         )
 
+    async def test_get_before_date_of_any_kind_returns_the_newest_made(self, repo):
+        user_id = "u-before-any"
+        await _upsert(
+            repo,
+            user_id,
+            "2026-08-03",
+            BriefingKind.DAILY,
+            make_briefing_payload(),
+            edition=_EDITION,
+        )
+        await _upsert(
+            repo,
+            user_id,
+            "2026-08-04",
+            BriefingKind.DAILY,
+            make_briefing_payload(),
+            edition=_EDITION,
+        )
+        digest = await _upsert(
+            repo,
+            user_id,
+            "2026-08-04",
+            BriefingKind.WEEKLY,
+            make_briefing_payload(mood="weekly"),
+            edition=_EDITION,
+        )
+
+        result = await repo.get_before_date(user_id, kind=None, before_date="2026-08-05")
+
+        assert result is not None and result.id == digest.id
+        assert await repo.get_before_date(user_id, kind=None, before_date="2026-08-03") is None
+
     async def test_list_recent_reads_only_briefs_whose_delivery_completed(self, repo):
         """A brief stored but never delivered, or delivered part-way, is not one the user received."""
         user_id = "u-undelivered"

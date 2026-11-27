@@ -31,14 +31,16 @@ def _rank(item: RememberedSignal) -> tuple[bool, float]:
     return (signal.importance is not SignalImportance.HIGH, -recency)
 
 
-def _passed_over(item: RememberedSignal, last_brief: datetime) -> bool:
+def _passed_over(item: RememberedSignal, last_brief: datetime | None) -> bool:
     """Whether the last stored brief weighed this undated row, left it out, and nothing changed since.
 
-    last_brief is where the run's look-back starts, the last stored brief: a row first read after
-    it, by a run that never went out, was never weighed.
+    last_brief is when the last stored brief was made: a row first read after it, by a run that
+    never went out, was never weighed, and before any brief nothing was.
     """
     memory, signal = item.memory, item.signal
-    if memory is None or memory.times_shown or memory.last_state != signal.state:
+    if last_brief is None or memory is None or memory.times_shown:
+        return False
+    if memory.last_state != signal.state:
         return False
     first, updated, seen = (
         as_utc(memory.first_seen),
@@ -51,7 +53,7 @@ def _passed_over(item: RememberedSignal, last_brief: datetime) -> bool:
 
 
 def app_signal_candidates(
-    remembered: Sequence[RememberedSignal], clock: UserClock, last_brief: datetime
+    remembered: Sequence[RememberedSignal], clock: UserClock, last_brief: datetime | None
 ) -> list[BriefCandidate]:
     """Return one candidate per signal not passed over before, important then most recently moved first."""
     return [
