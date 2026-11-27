@@ -15,6 +15,7 @@ from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.hil import TOOL_READ_ONLY_VERDICT_TTL
 from app.constants.log_tags import LogTag
+from app.constants.notifications import NOTIFICATION_RETENTION
 from app.constants.payments import CLAIMED_STATUS
 from app.constants.scouts import SIGNAL_MEMORY_RETENTION
 from app.constants.waits import WAIT_TTL_SECONDS
@@ -696,6 +697,11 @@ async def create_notification_indexes() -> None:
             ),
             # For notification type filtering
             notifications_collection.create_index([("user_id", 1), ("type", 1)]),
+            notifications_collection.create_index(
+                "created_at",
+                expireAfterSeconds=int(NOTIFICATION_RETENTION.total_seconds()),
+                name="created_at_ttl",
+            ),
         )
 
     except Exception as e:
