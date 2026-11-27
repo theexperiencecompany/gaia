@@ -3,7 +3,7 @@
 Faked seams: the repository reads the reading producers make.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
@@ -330,6 +330,28 @@ class TestWhatEarlierBriefsShowedIsNotNews:
         (candidate,) = gathered.pool.values()
         assert candidate.moved and not candidate.is_repeat
         assert gathered.has_news
+
+    async def test_a_scout_row_the_last_brief_passed_over_stays_out_of_the_pool(self) -> None:
+        """The run's look-back start decides passed over: rows first read before it, left out, drop."""
+        memory = SignalMemoryDocument(
+            user_id=USER_ID,
+            integration_id="gmail",
+            external_id="old",
+            first_seen=NOW - timedelta(days=2),
+            last_seen=NOW - timedelta(days=1),
+        )
+        passed = _gmail_signal("old", "Old thread").model_copy(update={"memory": memory})
+        passed = passed.model_copy(
+            update={
+                "signal": passed.signal.model_copy(update={"importance": SignalImportance.NORMAL})
+            }
+        )
+
+        gathered = await _gathered(
+            TrackedWork(), _scouts(passed, _gmail_signal("new", "New thread"))
+        )
+
+        assert [c.title for c in gathered.pool.values()] == ["New thread"]
 
     async def test_an_undated_own_todo_alone_is_no_news(self) -> None:
         undated = TodoDocument(id="u1", user_id=USER_ID, title="Plan Q1")
