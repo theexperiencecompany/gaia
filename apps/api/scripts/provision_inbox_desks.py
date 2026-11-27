@@ -28,9 +28,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.core.provider_registration import register_lazy_providers
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.services.todos.inbox_desk import provision_inbox_desk
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import analytics_context, worker_context
 
 
 @dataclass
@@ -54,9 +57,13 @@ async def run_backfill(*, dry_run: bool) -> BackfillResult:
     if dry_run:
         return result
 
+    # No app lifespan here: register the providers is_paid, the todo store and capture() read.
+    register_lazy_providers("main_app")
     for user_id in paying:
         try:
-            await provision_inbox_desk(user_id)
+            # A script is an entry point: each desk's provisioning reports through capture().
+            with analytics_context(worker_context(Trigger.SYSTEM)):
+                await provision_inbox_desk(user_id)
         except Exception as e:
             # One user's failure must not end the run for everyone behind them; it is
             # reported, and a re-run retries them.
