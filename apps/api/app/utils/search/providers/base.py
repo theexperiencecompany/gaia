@@ -3,12 +3,12 @@
 from abc import ABC, abstractmethod
 
 from app.constants.providers import CredentialProviderName
+from app.models.web_search_models import SearchResponse
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve,
     resolved_config,
 )
-from app.utils.search.models import SearchResponse
 
 
 class SearchProvider(ABC):

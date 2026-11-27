@@ -1,7 +1,7 @@
 """The search_results card's payload: what a web search shows the user in the chat."""
 
+from app.models.web_search_models import SearchResultItem
 from app.schemas.common import ResponseModel
-from app.utils.search.models import SearchResultItem
 
 
 class SearchResultCount(ResponseModel):

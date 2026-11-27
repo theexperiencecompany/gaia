@@ -13,8 +13,8 @@ search_for_research a ResearchSearchResult.
 
 from app.constants.cache import WEB_SEARCH_CACHE_TTL
 from app.decorators.caching import Cacheable
+from app.models.web_search_models import ResearchSearchResult, SearchResponse, WebSearchResult
 from app.utils.search.engine import SearchEngine
-from app.utils.search.models import ResearchSearchResult, SearchResponse, WebSearchResult
 
 __all__ = [
     "ResearchSearchResult",

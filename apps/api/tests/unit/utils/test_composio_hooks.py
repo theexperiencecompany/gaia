@@ -1264,7 +1264,18 @@ class TestGmailAfterHooks:
         assert isinstance(result, dict)
         assert result["people"][0]["name"] == "Jane Doe"
         assert result["result_count"] == 1
-        writer.assert_called_once()
+        writer.assert_called_once_with(
+            {
+                "people_search_data": [
+                    {
+                        "name": "Jane Doe",
+                        "email": "jane@example.com",
+                        "phone": "",
+                        "resource_name": "people/c1",
+                    }
+                ]
+            }
+        )
 
 
 # ============================================================================
@@ -2275,7 +2286,7 @@ class TestRedditAfterHooks:
                     "url": "https://reddit.com/r/python/p1",
                     "permalink": "/r/python/p1",
                     "is_self": True,
-                    "link_flair_text": None,
+                    "link_flair_text": "Showcase",
                 }
             }
         )
@@ -2299,7 +2310,7 @@ class TestRedditAfterHooks:
                         "url": "https://reddit.com/r/python/p1",
                         "permalink": "/r/python/p1",
                         "is_self": True,
-                        "link_flair_text": None,
+                        "link_flair_text": "Showcase",
                     },
                 }
             }

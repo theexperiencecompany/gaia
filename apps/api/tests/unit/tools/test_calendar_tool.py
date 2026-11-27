@@ -443,7 +443,10 @@ class TestGetDaySummary:
         metadata_mock = (
             AsyncMock(side_effect=RuntimeError("calendar list down"))
             if raises_metadata
-            else AsyncMock(return_value=metadata or ({}, {}))
+            # Only the caller's calendars are named; anyone else's lookup fails.
+            else AsyncMock(
+                side_effect=lambda user_id: {AUTH["user_id"]: metadata or ({}, {})}[user_id]
+            )
         )
         user_doc = UserDocument.model_validate(user) if user is not None else None
         with (

@@ -13,9 +13,10 @@ Provider-level unit tests live in tests/unit/utils/search/.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.config.settings import settings
+from app.constants.providers import CredentialProviderName
+from app.models.web_search_models import SearchResponse, SearchResultItem
 from app.services.providers.provider_credentials_service import resolve
 from app.utils.search import ResearchSearchResult, perform_search, search_for_research
-from app.utils.search.models import SearchResponse, SearchResultItem
 from tests.helpers import InMemoryCredentialStore
 
 # ---------------------------------------------------------------------------
@@ -217,7 +218,7 @@ class TestTavilyProvider:
 
         selfhost_credential_store.save("tavily", api_key="stored-key")  # pragma: allowlist secret
         with patch.object(settings, "TAVILY_API_KEY", ""):
-            await resolve("tavily")
+            await resolve(CredentialProviderName.TAVILY)
             assert TavilyProvider().is_configured() is True
 
     async def test_search_maps_payload_to_search_response(self) -> None:

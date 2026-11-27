@@ -18,6 +18,7 @@ from app.constants.search import (
 from app.db.redis import get_cache, set_cache
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_user_id
+from app.models.web_search_models import ResearchSearchResult
 from app.templates.docstrings.research_tool_docs import (
     DEEP_RESEARCH,
     RESEARCH_INSTRUCTIONS,
@@ -30,7 +31,6 @@ from app.utils.research_utils import (
     rank_and_deduplicate_urls,
 )
 from app.utils.search import search_for_research
-from app.utils.search.models import ResearchSearchResult
 from app.utils.webpage_fetch import fetch_with_httpx
 from shared.py.wide_events import log
 

@@ -8,8 +8,8 @@ budget-capped, so search can never incur a bill while it is reachable.
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.web_search_models import SearchResponse, SearchResultItem
 from app.services.providers.provider_credentials_service import ProviderConfig
-from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import CredentialSearchProvider
 
 _TIMEOUT = 15.0
