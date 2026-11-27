@@ -48,7 +48,7 @@ class Signal(BaseModel):
     integration_id: str
     app: str = Field(description="The integration's display name")
     external_id: str = Field(min_length=1, description="The item's id inside the integration")
-    kind: str = Field(description="What the item is to the user, in a few plain words")
+    kind: str = Field(description="What the item is to the user, in a few words of the app's terms")
     title: str = Field(min_length=1)
     why: str | None = Field(default=None, description="Why it needs attention now")
     importance: SignalImportance = SignalImportance.NORMAL

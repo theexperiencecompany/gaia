@@ -29,7 +29,7 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
   "sources": [
     {{
       "step_id": "<that step id>",
-      "kind": "<what each item is to the user, in a few plain words anyone would understand, not {app}'s own terms: 'a person you reached out to', not 'lead in a sequence'>",
+      "kind": "<what each item is to the user, in a few words of {app}'s own terms>",
       "items_path": "<dotted path from that call's result to the list of items, '' if the result is the list>",
       "fields": {{
         "external_id": "<path inside one item to its id>",
@@ -46,7 +46,7 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
         "updated_at": "<path to when the item last changed, or null>"
       }},
       "amount_unit": "<what that figure counts, exactly as the values read: USD, USD cents, points; or null>",
-      "due_label": "<what the due date is to the user when it is no plain deadline, in plain words: next follow-up scheduled, renews; or null>"
+      "due_label": "<what the due date is to the user, in plain words, when it is not a deadline; null when it is one>"
     }}
   ],
   "signals": [
