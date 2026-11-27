@@ -64,6 +64,8 @@ apps/web/src/features/landing/components/demo/todos-demo/todosDemoConstants.type
 apps/web/src/features/landing/components/demo/todos-demo/todosDemoConstants.types.ts:DemoSubTask=SubTaskInput
 apps/web/src/features/landing/components/demo/todos-demo/todosDemoConstants.types.ts:DemoTodo=SubTaskInput
 apps/web/src/features/landing/components/demo/todos-demo/todosDemoConstants.types.ts:DemoWorkflowStep=PublicWorkflowStep
+# growth approved by aryanranderiya on 2026-11-27: static landing-page demo data whose field names coincide with a tool card; not API data
+apps/web/src/features/landing/components/features/demos/MCPSupportDemo.tsx:Tool=CalendarListCard
 apps/web/src/features/landing/components/features/demos/SkillsDemo.tsx:DemoSkill=MyIntegrationItem
 apps/web/src/features/landing/components/sections/ComparisonGrid.tsx:CompetitorInfo=ComposioCatalogEntry
 apps/web/src/features/landing/data/featuresData.types.ts:FeatureBenefit=CreateWorkflowRequest
