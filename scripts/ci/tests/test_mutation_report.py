@@ -167,7 +167,7 @@ def test_report_groups_mutants_under_one_source_line(tmp_path: Path) -> None:
     # Each mutant still names its own edit, in words rather than in mutant ids.
     assert '"1" → None' in report
     assert "nx=True → nx=None" in report
-    assert "mutation.py replay" in report
+    assert "mise mutation:replay" in report
 
 
 def test_report_splits_distinct_lines(tmp_path: Path) -> None:
@@ -411,7 +411,7 @@ def test_the_shard_advice_points_at_the_replay_artifact(
 
     advice = [str(item) for item in sequence(emitted[f"mutation/{BOT_MODULE}"]["advice"])]
     assert any(f"apps/api/{BOT_MODULE}:{BOT_ARGS_LINE}" in item for item in advice)
-    replay = next(item for item in advice if "mutation.py replay" in item)
+    replay = next(item for item in advice if "mise mutation:replay" in item)
     assert "shard.verdict.json" in replay
     assert "verify-logs/verdicts" not in replay
 
