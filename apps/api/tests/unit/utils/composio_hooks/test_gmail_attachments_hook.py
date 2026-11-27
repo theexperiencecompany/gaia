@@ -26,6 +26,7 @@ from app.utils.composio_hooks.file_upload_hooks import (
     resolve_tool_attachments,
 )
 from app.utils.composio_hooks.gmail_hooks import (
+    _compose_card,
     _compose_recipient_ready,
     _compose_recipients,
     _normalize_compose_body,
@@ -262,6 +263,26 @@ class TestNormalizeComposeBody:
         _normalize_compose_body(args)
         assert args["is_html"] is True
         assert "body" not in args
+
+
+class TestComposeCardAddresses:
+    """The card always carries address lists, whatever shape the model sent."""
+
+    @pytest.mark.regression
+    def test_a_single_cc_string_becomes_a_one_address_list(self):
+        card = _compose_card(
+            "GMAIL_SEND_EMAIL",
+            _compose({"recipient_email": "r@x.com", "cc": "c@x.com", "bcc": "b@x.com"}),
+            [],
+        )
+        assert card.cc == ["c@x.com"]
+        assert card.bcc == ["b@x.com"]
+
+    def test_missing_cc_is_an_empty_list(self):
+        card = _compose_card(
+            "GMAIL_SEND_EMAIL", _compose({"recipient_email": "r@x.com", "cc": None}), []
+        )
+        assert card.cc == []
 
 
 class TestComposeRecipients:

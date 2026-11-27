@@ -5594,20 +5594,10 @@
         "description": "One tool card: stored on messages and log entries, and streamed in frames.\n\nEvery key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.\ndata is open on purpose: each tool owns the JSON its card reads.",
         "properties": {
           "data": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/CalendarEventDisplay"
-                },
-                "type": "array"
-              },
-              {
-                "items": {
-                  "$ref": "#/components/schemas/GoogleCalendarEventResource"
-                },
-                "type": "array"
-              }
-            ]
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventDisplay"
+            },
+            "type": "array"
           },
           "mcp_server_url": {
             "anyOf": [
@@ -10158,21 +10148,11 @@
             "type": "array"
           },
           "bcc": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bcc"
+            "items": {
+              "type": "string"
+            },
+            "title": "Bcc",
+            "type": "array"
           },
           "body": {
             "anyOf": [
@@ -10186,21 +10166,11 @@
             "title": "Body"
           },
           "cc": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cc"
+            "items": {
+              "type": "string"
+            },
+            "title": "Cc",
+            "type": "array"
           },
           "draft_id": {
             "anyOf": [
@@ -10749,21 +10719,11 @@
             "title": "Message Id"
           },
           "recipients": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recipients"
+            "items": {
+              "type": "string"
+            },
+            "title": "Recipients",
+            "type": "array"
           },
           "subject": {
             "anyOf": [
@@ -33825,15 +33785,8 @@
             "type": "string"
           },
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id"
+            "title": "Id",
+            "type": "string"
           },
           "integration_ids": {
             "items": {

@@ -80,8 +80,6 @@ export default function WorkflowCreatedCard({
 
   // Fetch full workflow when modal opens
   const handleOpenModal = async () => {
-    // Only a workflow the backend saved carries an id to open.
-    if (!workflow.id) return;
     setIsLoading(true);
     try {
       const response = await workflowApi.getWorkflow(workflow.id, {
@@ -102,7 +100,7 @@ export default function WorkflowCreatedCard({
   // Refresh workflow when the modal closes (in case of edits)
   const handleModalOpenChange = (open: boolean) => {
     setIsModalOpen(open);
-    if (!open && fullWorkflow && workflow.id) {
+    if (!open && fullWorkflow) {
       workflowApi
         .getWorkflow(workflow.id, { silent: true })
         .then((response) => {

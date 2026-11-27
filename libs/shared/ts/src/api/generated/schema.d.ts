@@ -8727,7 +8727,7 @@ export interface components {
          *     data is open on purpose: each tool owns the JSON its card reads.
          */
         CalendarFetchDataCard: {
-            data: components["schemas"]["CalendarEventDisplay"][] | components["schemas"]["GoogleCalendarEventResource"][];
+            data: components["schemas"]["CalendarEventDisplay"][];
             /** Mcp Server Url */
             mcp_server_url?: string | null;
             /** Mcp Ui */
@@ -10830,11 +10830,11 @@ export interface components {
             /** Attachments */
             attachments: components["schemas"]["AttachmentDisplay"][];
             /** Bcc */
-            bcc: string[] | string | null;
+            bcc: string[];
             /** Body */
             body: string | null;
             /** Cc */
-            cc: string[] | string | null;
+            cc: string[];
             /**
              * Draft Id
              * @default null
@@ -11048,7 +11048,7 @@ export interface components {
             /** Message Id */
             message_id: string | null;
             /** Recipients */
-            recipients: string[] | string | null;
+            recipients: string[];
             /** Subject */
             subject: string | null;
             /** Timestamp */
@@ -21354,7 +21354,7 @@ export interface components {
             /** Description */
             description: string;
             /** Id */
-            id: string | null;
+            id: string;
             /** Integration Ids */
             integration_ids: string[];
             /** Title */

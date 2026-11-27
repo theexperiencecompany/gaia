@@ -120,6 +120,18 @@ def _warn_metadata_unavailable(user_id: str, error: Exception) -> None:
     )
 
 
+def _event_cards(
+    user_id: str, events: list[GoogleCalendarEventResource]
+) -> list[CalendarEventDisplay]:
+    """Format events for the card; without calendar names and colors they still render, unnamed."""
+    try:
+        color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
+    except Exception as e:
+        _warn_metadata_unavailable(user_id, e)
+        color_map, name_map = {}, {}
+    return [calendar_service.format_event_for_frontend(e, color_map, name_map) for e in events]
+
+
 def _extract_datetime(dt: GoogleCalendarEventDateTime) -> str:
     """Return the timed dateTime of a Google start/end, else its all-day date."""
     return dt.dateTime or dt.date or ""
@@ -339,15 +351,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         events = result.events
 
-        try:
-            color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
-            event_cards: list[CalendarEventDisplay] | list[GoogleCalendarEventResource] = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map)
-                for event in events
-            ]
-        except Exception as e:
-            _warn_metadata_unavailable(user_id, e)
-            event_cards = events
+        event_cards = _event_cards(user_id, events)
         formatted_events = [card.model_dump() for card in event_cards]
 
         busy_minutes: float = 0.0
@@ -426,15 +430,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         events = result.events
 
-        try:
-            color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
-            event_cards: list[CalendarEventDisplay] | list[GoogleCalendarEventResource] = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map)
-                for event in events
-            ]
-        except Exception as e:
-            _warn_metadata_unavailable(user_id, e)
-            event_cards = events
+        event_cards = _event_cards(user_id, events)
         calendar_fetch_data = [card.model_dump() for card in event_cards]
 
         if event_cards:
@@ -467,15 +463,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         events = [event.model_dump() for event in result.matching_events]
 
-        try:
-            color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
-            event_cards: list[CalendarEventDisplay] | list[GoogleCalendarEventResource] = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map)
-                for event in result.matching_events
-            ]
-        except Exception as e:
-            _warn_metadata_unavailable(user_id, e)
-            event_cards = result.matching_events
+        event_cards = _event_cards(user_id, result.matching_events)
         calendar_search_data = [card.model_dump() for card in event_cards]
 
         if event_cards:

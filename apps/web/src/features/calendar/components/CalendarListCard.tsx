@@ -1,9 +1,5 @@
 import { ScrollShadow } from "@heroui/react";
-import type {
-  CalendarEventDisplay,
-  CalendarFetchDataCard,
-  GoogleCalendarEventResource,
-} from "@shared/api/generated";
+import type { CalendarFetchDataCard } from "@shared/api/generated";
 import { useMemo } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { GoogleCalendarIcon } from "@/components/shared/icons";
@@ -19,27 +15,13 @@ interface CalendarListProps {
   isCollapsible?: boolean;
 }
 
-const isEventDisplay = (
-  event: CalendarEventDisplay | GoogleCalendarEventResource,
-): event is CalendarEventDisplay => typeof event.start_time === "string";
-
-// The calendar search fallback streams raw Google events, which carry none of the card's display fields.
-function displayEvents(
-  events: CalendarFetchDataCard["data"],
-): CalendarEventDisplay[] {
-  return events.map((event) => {
-    if (isEventDisplay(event)) return event;
-    throw new Error("calendar_fetch_data holds a raw Google event");
-  });
-}
-
 export default function CalendarListCard({
   events,
   isCollapsible = true,
 }: CalendarListProps) {
   const eventsByDay = useMemo(() => {
     if (!events) return {};
-    return groupFetchDataByDate(displayEvents(events));
+    return groupFetchDataByDate(events);
   }, [events]);
 
   if (events && events.length > 0) {

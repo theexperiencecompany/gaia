@@ -36,7 +36,7 @@ class WorkflowCreatedTriggerConfig(ResponseModel):
 class WorkflowCreatedData(ResponseModel):
     """The workflow_created card: a workflow created directly, with no draft to confirm."""
 
-    id: str | None
+    id: str
     title: str
     description: str
     trigger_config: WorkflowCreatedTriggerConfig

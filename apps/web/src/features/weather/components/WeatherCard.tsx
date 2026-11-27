@@ -646,14 +646,21 @@ function WeatherDetailsGrid({
   return (
     <div className="mt-2 grid grid-cols-3 gap-2">
       {[
-        {
-          icon: (
-            <FastWindIcon className="h-6 w-6" color={weatherTheme.colorCode} />
-          ),
-          label: "Wind",
-          value: `${weatherData.wind?.speed} m/s`,
-          tooltipText: "Wind speed in meters per second",
-        },
+        ...(weatherData.wind
+          ? [
+              {
+                icon: (
+                  <FastWindIcon
+                    className="h-6 w-6"
+                    color={weatherTheme.colorCode}
+                  />
+                ),
+                label: "Wind",
+                value: `${weatherData.wind.speed} m/s`,
+                tooltipText: "Wind speed in meters per second",
+              },
+            ]
+          : []),
         {
           icon: (
             <DropletIcon className="h-6 w-6" color={weatherTheme.colorCode} />

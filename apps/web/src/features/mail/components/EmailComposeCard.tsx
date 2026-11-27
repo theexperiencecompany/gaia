@@ -44,7 +44,7 @@ import type {
   EmailComposeData,
 } from "@/types/features/mailTypes";
 
-// The card's cc/bcc arrive as a list, or as one address when the agent passed a single string.
+// The server sends lists; a card stored before it did can still hold one bare address.
 const addressList = (addresses: string[] | string | null): string[] =>
   typeof addresses === "string" ? [addresses] : (addresses ?? []);
 

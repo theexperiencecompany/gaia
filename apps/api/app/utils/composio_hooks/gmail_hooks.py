@@ -314,6 +314,13 @@ def _compose_recipients(tool: str, compose: GmailComposeArguments) -> list[str]:
     return [compose.recipient_email, *extra_recipients]
 
 
+def _address_list(value: list[str] | str | None) -> list[str]:
+    """Return a recipient field as a list: the model may send one address as a bare string."""
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else value
+
+
 def _compose_card(
     tool: str, compose: GmailComposeArguments, attachment_display: list[AttachmentDisplay]
 ) -> EmailComposeCard:
@@ -323,8 +330,8 @@ def _compose_card(
         subject=compose.subject,
         body=compose.body,
         thread_id=compose.thread_id,
-        bcc=compose.bcc,
-        cc=compose.cc,
+        bcc=_address_list(compose.bcc),
+        cc=_address_list(compose.cc),
         is_html=compose.is_html,
         attachments=attachment_display,
     )
@@ -754,7 +761,7 @@ def gmail_send_draft_after_hook(
                             message_id=sent.id,
                             message="Draft sent successfully!",
                             timestamp=sent.timestamp,
-                            recipients=message_data.to,
+                            recipients=_address_list(message_data.to),
                             subject=message_data.subject,
                         )
                     ],

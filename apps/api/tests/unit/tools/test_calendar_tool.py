@@ -53,6 +53,7 @@ from app.models.calendar_models import (
 from app.models.common_models import GatherContextInput
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.user_models import UserDocument
+from app.services.calendar_service import format_event_for_frontend
 from app.services.composio.account_scope import account_scope, current_selection
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.calendar_utils import CALENDAR_API_BASE
@@ -91,6 +92,11 @@ def _tools() -> dict[str, Any]:
 @pytest.fixture
 def tools() -> dict[str, Any]:
     return _tools()
+
+
+def _display_rows(events: list[GoogleCalendarEventResource]) -> list[dict[str, object]]:
+    """Return the rows a card shows when calendar names and colours could not be loaded."""
+    return [format_event_for_frontend(event, {}, {}).model_dump() for event in events]
 
 
 def _assert_metadata_failure_logged(logged: MagicMock, error_type: str, error: str) -> None:
@@ -629,7 +635,7 @@ class TestGetDaySummary:
             out, _ = self._run(
                 tools, GetDaySummaryInput(date="2026-03-15"), events=events, raises_metadata=True
             )
-        assert out["events"] == [event.model_dump() for event in events]
+        assert out["events"] == _display_rows(events)
         _assert_metadata_failure_logged(logged, "RuntimeError", "calendar list down")
 
     def test_a_failed_user_lookup_falls_back_to_utc_and_says_so(self, tools, writer) -> None:
@@ -744,11 +750,14 @@ class TestFetchEvents:
         out, _ = self._run(tools, FetchEventsInput(), events=[])
         assert out["has_more"] is False
 
-    def test_metadata_failure_falls_back_to_raw_events(self, tools, writer) -> None:
+    @pytest.mark.regression
+    def test_metadata_failure_still_streams_display_rows(self, tools, writer) -> None:
+        """Regression: a raw Google event in the card threw in the web chat and took the view down."""
         events = [_timed_event("2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z")]
         with patch(f"{MODULE}.log") as logged:
             out, _ = self._run(tools, FetchEventsInput(), events=events, raises_metadata=True)
-        assert out["calendar_fetch_data"] == [event.model_dump() for event in events]
+        assert out["calendar_fetch_data"] == _display_rows(events)
+        writer.assert_called_once_with({"calendar_fetch_data": _display_rows(events)})
         _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
     def test_nothing_is_streamed_when_there_are_no_events(self, tools, writer) -> None:
@@ -826,7 +835,7 @@ class TestFindEvent:
                 matching_events=events,
                 raises_metadata=True,
             )
-        assert out["calendar_search_data"] == [event.model_dump() for event in events]
+        assert out["calendar_search_data"] == _display_rows(events)
         _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
 

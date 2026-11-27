@@ -16,7 +16,6 @@ from app.models.brief_view_models import BriefCard
 from app.models.calendar_models import (
     CalendarEventDisplay,
     CalendarListCard,
-    GoogleCalendarEventResource,
 )
 from app.models.desktop_card_models import ScreenshotCard
 from app.models.device_card_models import DeviceApprovalCard, DeviceOnboardingCard
@@ -72,7 +71,7 @@ TOOL_CARDS: Final[Mapping[str, object]] = {
     "email_thread_data": EmailThreadCard,
     "email_sent_data": list[EmailComposeCard | EmailSentDraftCard],
     "contacts_data": list[ContactCard],
-    "calendar_fetch_data": list[CalendarEventDisplay] | list[GoogleCalendarEventResource],
+    "calendar_fetch_data": list[CalendarEventDisplay],
     "calendar_list_fetch_data": list[CalendarListCard],
     "people_search_data": list[ContactCard],
     "todo_data": TodoCardData,

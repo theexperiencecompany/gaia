@@ -20,8 +20,8 @@ class EmailComposeCard(ResponseModel):
     subject: str | None
     body: str | None
     thread_id: str | None
-    bcc: list[str] | str | None
-    cc: list[str] | str | None
+    bcc: list[str]
+    cc: list[str]
     is_html: bool | None
     attachments: list[AttachmentDisplay]
     draft_id: str | None = None
@@ -33,7 +33,7 @@ class EmailSentDraftCard(ResponseModel):
     message_id: str | None
     message: str
     timestamp: str | None
-    recipients: list[str] | str | None
+    recipients: list[str]
     subject: str | None
 
 
