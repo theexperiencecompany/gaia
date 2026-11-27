@@ -73,6 +73,8 @@ from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 USER_ID = make_user_id()
 NOW = datetime(2026, 11, 10, 2, 30, tzinfo=UTC)
+#: When the last stored brief ran, before which every passed-over row was first read.
+SINCE = NOW - timedelta(hours=20)
 CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-11-10", day_of_year=314)
 DESK_ID = "desk-1"
 
@@ -544,7 +546,7 @@ class TestAppSignals:
         )
 
         [found] = app_signal_candidates(
-            [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], CLOCK
+            [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], CLOCK, SINCE
         )
 
         assert (found.app, found.source, found.importance) == (
@@ -581,7 +583,9 @@ class TestAppSignals:
             last_state="Todo",
         )
 
-        [found] = app_signal_candidates([RememberedSignal(signal=signal, memory=memory)], CLOCK)
+        [found] = app_signal_candidates(
+            [RememberedSignal(signal=signal, memory=memory)], CLOCK, SINCE
+        )
 
         assert (found.moved, found.is_repeat) == (False, True)
 
@@ -643,6 +647,7 @@ def test_a_row_an_earlier_brief_passed_over_unchanged_is_not_offered_again() -> 
             _docs_row("dated", seen=_seen_unshown("dated"), due_at=NOW + timedelta(days=1)),
         ],
         CLOCK,
+        SINCE,
     )
 
     assert sorted(c.ref.external_id for c in found if c.ref is not None) == [
@@ -656,9 +661,29 @@ def test_a_passed_over_row_whose_state_moved_is_offered_again() -> None:
     row = _docs_row("moved", seen=_seen_unshown("moved", state="draft"), state="shared")
     moved = RememberedSignal(signal=row.signal, memory=row.memory, previous_state="draft")
 
-    [found] = app_signal_candidates([moved], CLOCK)
+    [found] = app_signal_candidates([moved], CLOCK, SINCE)
 
     assert found.moved
+
+
+@pytest.mark.regression
+def test_a_row_whose_unknown_state_became_known_is_offered_again() -> None:
+    row = _docs_row("now-shared", seen=_seen_unshown("now-shared", state=None), state="shared")
+
+    assert len(app_signal_candidates([row], CLOCK, SINCE)) == 1
+
+
+@pytest.mark.regression
+def test_a_row_first_read_by_a_brief_that_never_went_out_is_offered_again() -> None:
+    """Regression: a failed composition had recorded the sighting, so the row was never shown."""
+    memory = _seen_unshown("after-the-last-brief").model_copy(
+        update={"first_seen": SINCE + timedelta(hours=1), "last_seen": SINCE + timedelta(hours=1)}
+    )
+
+    assert (
+        len(app_signal_candidates([_docs_row("after-the-last-brief", seen=memory)], CLOCK, SINCE))
+        == 1
+    )
 
 
 def test_app_signals_lead_with_the_scouts_urgent_then_the_recently_moved() -> None:
@@ -691,6 +716,7 @@ def test_app_signals_lead_with_the_scouts_urgent_then_the_recently_moved() -> No
             github("overdue", datetime(2026, 3, 1, tzinfo=UTC), SignalImportance.HIGH),
         ],
         CLOCK,
+        SINCE,
     )
 
     assert [c.ref.external_id for c in found if c.ref is not None] == [

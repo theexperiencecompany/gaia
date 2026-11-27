@@ -1,6 +1,7 @@
 """App signals as candidates: what the scouts found in the user's connected apps."""
 
 from collections.abc import Sequence
+from datetime import datetime
 import math
 
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
@@ -30,18 +31,27 @@ def _rank(item: RememberedSignal) -> tuple[bool, float]:
     return (signal.importance is not SignalImportance.HIGH, -recency)
 
 
-def _passed_over(item: RememberedSignal) -> bool:
-    """Whether an earlier brief saw this undated row, left it out, and nothing has changed since."""
+def _passed_over(item: RememberedSignal, last_brief: datetime) -> bool:
+    """Whether the last stored brief weighed this undated row, left it out, and nothing changed since.
+
+    last_brief is where the run's look-back starts, the last stored brief: a row first read after
+    it, by a run that never went out, was never weighed.
+    """
     memory, signal = item.memory, item.signal
-    if memory is None or memory.times_shown or item.previous_state is not None:
+    if memory is None or memory.times_shown or memory.last_state != signal.state:
         return False
-    updated, seen = as_utc(signal.updated_at), as_utc(memory.last_seen)
+    first, updated, seen = (
+        as_utc(memory.first_seen),
+        as_utc(signal.updated_at),
+        as_utc(memory.last_seen),
+    )
+    weighed = first is not None and first < last_brief
     edited_since = updated is not None and seen is not None and updated > seen
-    return signal.due_at is None and not edited_since
+    return weighed and signal.due_at is None and not edited_since
 
 
 def app_signal_candidates(
-    remembered: Sequence[RememberedSignal], clock: UserClock
+    remembered: Sequence[RememberedSignal], clock: UserClock, last_brief: datetime
 ) -> list[BriefCandidate]:
     """Return one candidate per signal not passed over before, important then most recently moved first."""
     return [
@@ -65,5 +75,5 @@ def app_signal_candidates(
             moved=item.previous_state is not None,
         )
         for item in sorted(remembered, key=_rank)
-        if not _passed_over(item)
+        if not _passed_over(item, last_brief)
     ]

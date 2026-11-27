@@ -27,6 +27,7 @@ from app.constants.scouts import (
     SCOUT_RELEARN_BACKOFF,
     SCOUT_REPLAY_FAILURES_BEFORE_RELEARN,
     SCOUT_SPEND_MICROS_PER_USD,
+    SCOUTS_REFRESHED_KEY,
     SCOUTS_REFRESHED_TTL,
 )
 from app.constants.user_activity import ActivityStatus
@@ -364,13 +365,17 @@ class TestRefreshedAheadOfTheBrief:
         remembered = [MagicMock(name="remembered")]
         remember = AsyncMock(return_value=remembered)
         monkeypatch.setattr(service, "remember", remember)
+        before = datetime.now(UTC)
         await service.refresh_scouts(USER)
+        after = datetime.now(UTC)
 
         signals = await service.scout_signals(USER, _NOW)
 
-        [(user_id, sent, now)] = [call.args for call in remember.await_args_list]
-        assert (user_id, [s.external_id for s in sent], now) == (USER_ID, ["replayed-1"], _NOW)
+        [(user_id, sent, seen)] = [call.args for call in remember.await_args_list]
+        assert (user_id, [s.external_id for s in sent]) == (USER_ID, ["replayed-1"])
         assert signals.remembered is remembered
+        # Seen when the refresh read them, not when the brief took them: an edit between counts.
+        assert before <= seen <= after
 
     async def test_with_nothing_refreshed_the_brief_runs_its_scouts_itself(
         self, scouts: Scouts, monkeypatch: pytest.MonkeyPatch
@@ -407,7 +412,7 @@ class TestRefreshedAheadOfTheBrief:
 
         await service.refresh_scouts(USER)
 
-        ttl = await fake_redis.ttl(f"scouts:refreshed:{USER_ID}")
+        ttl = await fake_redis.ttl(SCOUTS_REFRESHED_KEY.format(user_id=USER_ID))
         assert 0 < ttl <= SCOUTS_REFRESHED_TTL.total_seconds()
 
 

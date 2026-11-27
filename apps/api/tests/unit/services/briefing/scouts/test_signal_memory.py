@@ -89,7 +89,7 @@ class TestRemember:
 
 def _line(remembered: RememberedSignal, clock: UserClock = CLOCK) -> str:
     """Say one signal as both the composition and the voice read it."""
-    [candidate] = app_signal_candidates([remembered], clock)
+    [candidate] = app_signal_candidates([remembered], clock, clock.day_start())
     return item_line(1, candidate, clock)
 
 

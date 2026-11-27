@@ -189,7 +189,7 @@ async def gather_candidates(
         *await reminder_candidates(user_id, day_start, day_end),
         *own_todo_candidates(sources.open_own, day_end, work),
         *await failed_run_candidates(user_id, since),
-        *app_signal_candidates(sources.scouts.remembered, clock),
+        *app_signal_candidates(sources.scouts.remembered, clock, since),
         *await held_candidates(user_id, sources.held),
         *user_done_candidates(sources.user_done),
         *gaia_work_candidates(work),

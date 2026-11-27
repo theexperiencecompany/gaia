@@ -364,3 +364,5 @@ class RefreshedScouts(BaseModel):
     """One brief's scout results, refreshed ahead of its slot and kept until the brief takes them."""
 
     results: list[ScoutResult]
+    #: When the refresh started reading the apps: the rows' sighting time, not the brief's.
+    fetched_at: datetime
