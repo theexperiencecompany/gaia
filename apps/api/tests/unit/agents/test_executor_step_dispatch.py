@@ -4,6 +4,7 @@ from collections.abc import Coroutine
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.tools import ToolException
 import pytest
 
 from app.agents.core.background.executor_queue import build_lock_value, try_acquire_lock
@@ -45,18 +46,19 @@ async def test_a_refused_work_started_dispatches_nothing_and_frees_the_lock() ->
     with (
         patch.object(et, "record_work_started", AsyncMock(return_value=False)) as record,
         patch.object(et, "spawn_background_task") as spawn,
+        pytest.raises(ToolException, match=et._NOT_STARTED_STOPPED),
     ):
-        result = await _dispatch()
+        await _dispatch()
     record.assert_awaited_once_with(STEP, "conv-1", USER_ID, "task-1", handoff="call_1")
     spawn.assert_not_called()
     assert await redis_cache.client.get(BUSY_KEY) is None
-    assert result == et._NOT_STARTED_STOPPED
 
 
 async def test_a_refused_work_started_frees_the_lock_its_stream_took() -> None:
     with (
         patch.object(et, "record_work_started", AsyncMock(return_value=False)),
         patch.object(et, "spawn_background_task"),
+        pytest.raises(ToolException),
     ):
         await _dispatch({**_configurable(), "stream_id": "stream-1"})
     assert await redis_cache.client.get(BUSY_KEY) is None
@@ -125,6 +127,6 @@ async def test_work_whose_join_is_refused_is_not_handed_over() -> None:
     await _hold_lock()
     with ExitStack() as stack:
         _busy(stack, order, joined=False)
-        result = await _dispatch()
+        with pytest.raises(ToolException, match=et._NOT_STARTED_STOPPED):
+            await _dispatch()
     assert order == ["logged"]
-    assert result == et._NOT_STARTED_STOPPED

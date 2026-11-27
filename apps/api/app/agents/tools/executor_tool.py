@@ -12,7 +12,8 @@ from typing import Annotated
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import InjectedToolCallId, tool
+from langchain_core.tools import InjectedToolCallId, ToolException, tool
+from pydantic import Field
 
 from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_channel import ExecutorInbox
@@ -100,6 +101,16 @@ async def _acquire_lock_through_redirect(
 async def call_executor(
     config: RunnableConfig,
     tool_call_id: Annotated[str, InjectedToolCallId],
+    ack: Annotated[
+        str,
+        Field(
+            pattern=r"\S",
+            description="Write this first. Your one short line to the user that you are on it "
+            "('on it', 'checking your calendar'), joined to the answer of any other message "
+            "this turn answers ('36. comparing those laptops now'). It is sent the moment it "
+            "is written and is your whole reply this turn.",
+        ),
+    ],
     task: Annotated[
         str,
         "The task to execute - describe what needs to be done",
@@ -155,8 +166,10 @@ async def call_executor(
     or when you need context from your capabilities.
 
     The executor runs in the background and posts its result to the
-    conversation as a new bot message when it completes.
+    conversation as a new bot message when it completes. ack reaches the user
+    as it streams; a hand-off that starts ends the turn on it.
     """
+    del ack  # the run's driver streams it; dispatch never reads it
     base_configurable: AgentConfigurable = agent_configurable(config)
     # Shallow-copy so the executor's overrides (todo binding) never mutate the
     # comms agent's live RunnableConfig. The model is inherited from the comms
@@ -168,7 +181,7 @@ async def call_executor(
 
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
-        return "Internal error: conversation context unavailable. Please try again."
+        raise _not_started("Internal error: conversation context unavailable. Please try again.")
     user_id = get_user_id(config)
     step: StepTurnRef = configurable["conversation_step"]
     # Checked before dispatch, closed only once handed: a failed hand-off still owes them.
@@ -180,7 +193,7 @@ async def call_executor(
             f"{LogTag.TOOL} call_executor refused: the attempt only reports finished work",
             conversation_id=conversation_id,
         )
-        return NOTHING_NEW_ASKED
+        raise _not_started(NOTHING_NEW_ASKED)
     task_id = str(uuid4())
     # Read off the configurable, never a tool argument: asking the comms model to
     # re-transcribe the request corrupted 3 of 4 recipient addresses on a pasted
@@ -227,15 +240,16 @@ async def call_executor(
             user_id=user_id,
             handoff=tool_call_id,
         )
+    except ToolException:
+        raise
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error dispatching executor", error=str(e))
         # Release only if this dispatch's acquire holds the lock: an unconditional
         # delete here freed a FOREIGN lock when failure hit the queue branch,
         # letting a second concurrent executor start in the same conversation.
         await release_lock_if_owned(conversation_id, configurable.get("stream_id"), task_id)
-        return f"Error starting task: {e!s}"
-    if dispatched != _NOT_STARTED_STOPPED:
-        close(config, Closing.HANDED, for_messages)
+        raise _not_started(f"Error starting task: {e!s}") from e
+    close(config, Closing.HANDED, for_messages)
     return dispatched
 
 
@@ -323,7 +337,7 @@ async def _dispatch_executor(
                 joins=held_task_id,
                 handoff=handoff,
             ):
-                return _NOT_STARTED_STOPPED
+                raise _not_started(_NOT_STARTED_STOPPED)
             await ExecutorInbox(conversation_id).append(task_id, task)
             log.info(
                 f"{LogTag.TOOL} Executor busy — task handed to the live run",
@@ -332,8 +346,7 @@ async def _dispatch_executor(
             )
             return (
                 "It's been added to the work already in progress and will be "
-                "covered in the same answer. Acknowledge it with a reaction or a few plain "
-                "words; never mention runs, task ids, queues, or waiting."
+                "covered in the same answer."
             )
 
     # MCP tools load lazily inside each subagent's first use — the old eager
@@ -348,7 +361,7 @@ async def _dispatch_executor(
         handoff=handoff,
     ):
         await release_lock_if_owned(conversation_id, stream_id, task_id)
-        return _NOT_STARTED_STOPPED
+        raise _not_started(_NOT_STARTED_STOPPED)
 
     if stream_id:
         mark_executor_spawned(stream_id)
@@ -477,6 +490,15 @@ _NOT_STARTED_STOPPED = (
     "Not dispatched: the user stopped this request, or this turn was replaced by a newer one. "
     "Do not say the work is underway."
 )
+#: A failed hand-off's ack was already shown, so the model's next words must undo it.
+_ACK_UNDONE = "Your ack already reached the user: tell them in words that this did not start."
+
+
+def _not_started(reason: str) -> ToolException:
+    """Fail the hand-off back to the model, which then owes the user a correction of its ack."""
+    return ToolException(f"{reason} {_ACK_UNDONE}")
+
+
 _NOTHING_TO_CANCEL = "No executor tasks are running or pending for this conversation."
 _NOTHING_MATCHED = "None of the specified task_ids matched any running or pending tasks."
 

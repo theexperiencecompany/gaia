@@ -56,7 +56,7 @@ async def _send(client: AsyncClient, conversation_id: str, text: str) -> None:
 
 
 def _comms() -> list[Any]:
-    return [call("call_executor", {"task": ASK}, call_id="tc_exec"), "On it.", NARRATED, NARRATED]
+    return [call("call_executor", {"task": ASK}, call_id="tc_exec"), NARRATED, NARRATED]
 
 
 async def _ledger(

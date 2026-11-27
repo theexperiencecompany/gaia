@@ -72,9 +72,9 @@ import re
 from typing import Any
 
 DEFAULT_REPLY = "ok (llm-stub)"
-# The front door's turn right after a hand-off: the result arrives on its own, so
-# comms stays silent (STAY_SILENT_TOOL_NAME, apps/api/app/constants/comms.py) rather
-# than saying the script's reply, which the result then says a second time.
+# The front door's turn after a hand-off that failed (one that starts ends the turn on its
+# ack): it stays silent (STAY_SILENT_TOOL_NAME, apps/api/app/constants/comms.py) rather
+# than saying the script's reply, a result the work never produced.
 STAY_SILENT_TOOL = "stay_silent"
 # Comms names the user's messages each reply answers by their [#n] handle.
 ANSWERED_TOOL = "answered"
@@ -92,6 +92,8 @@ CALL_EXECUTOR_TOOL = "call_executor"
 # hand-off against call_executor's own schema.
 SCRIPTED_CRITERIA = ["scripted directives executed"]
 SCRIPTED_HAND_OFF_ARGS: dict[str, Any] = {
+    # First, as call_executor declares it: the API streams it to the user once whole.
+    "ack": "on it",
     "acceptance_criteria": SCRIPTED_CRITERIA,
     "desired_outcome": "the scripted directives run",
     "time_horizon": "one_shot",
@@ -748,7 +750,7 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
         if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
             return ToolCallResponse(
                 name=CALL_EXECUTOR_TOOL,
-                args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS, "for_messages": handles},
+                args={**SCRIPTED_HAND_OFF_ARGS, "task": task_text, "for_messages": handles},
                 **_narration(script),
             )
         args = nxt.args

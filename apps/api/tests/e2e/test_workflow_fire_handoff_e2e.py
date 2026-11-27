@@ -40,7 +40,6 @@ pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("conversation_indexes")]
 
 REPORT = "Overnight: 2 invoices due, 1 meeting moved to 3pm."
 NARRATED = "Your morning digest: 2 invoices are due and a meeting moved to 3pm."
-HANDED_OFF = "On it."
 
 
 def _comms() -> list[Any]:
@@ -51,7 +50,6 @@ def _comms() -> list[Any]:
             {"task": "Run the morning digest workflow", "for_messages": []},
             call_id="tc_exec",
         ),
-        HANDED_OFF,
         NARRATED,
     ]
 

@@ -154,6 +154,7 @@ _ASKING_STEP = StepTurnRef(epoch=1, batch_start=1, cause_through=1, answers=["m1
 async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     """Invoke call_executor and return the brief it handed to _dispatch_executor."""
     tool_args = {
+        "ack": "on it",
         "desired_outcome": "it is done",
         "time_horizon": "one_shot",
         "for_messages": [1],

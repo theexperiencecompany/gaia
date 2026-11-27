@@ -99,7 +99,7 @@ def _executor() -> list[Any]:
 
 
 def _comms() -> list[Any]:
-    return [call("call_executor", {"task": ASK}, call_id="tc_exec"), "On it.", NARRATED]
+    return [call("call_executor", {"task": ASK}, call_id="tc_exec"), NARRATED]
 
 
 async def _send(client: AsyncClient, conversation_id: str) -> None:

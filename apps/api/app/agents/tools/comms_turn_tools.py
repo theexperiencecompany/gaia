@@ -2,8 +2,8 @@
 
 Each is a tool call, so the choice arrives as arguments its schema validated, never inside
 reply text. Every one names the messages it closes by their [#n] handle; a message stays open
-until one does. The comms graph ends the turn after a step whose calls are all of these
-(turn_ending), so no model call follows.
+until one does. The comms graph ends the turn after a step whose calls are all of these, or a
+hand-off carrying its ack (turn_ending), once none failed, so no model call follows.
 """
 
 from collections.abc import Sequence
@@ -13,12 +13,18 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCal
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import ToolException, tool
 from langgraph.prebuilt import InjectedState
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.agents.core.comms_ledger import Closing, close
+from app.agents.core.held_replies import handoff_ack
 from app.constants.chat import ConversationSource
-from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
+from app.constants.comms import (
+    ANSWERED_TOOL_NAME,
+    REACT_TOOL_NAME,
+    STAY_SILENT_TOOL_NAME,
+)
 from app.constants.conversation import LOG_SEQ
+from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.reactions import (
     EMOJI_PRESENTATION_SELECTOR,
     OFFENSIVE_REACTION_EMOJI,
@@ -46,6 +52,14 @@ class StaySilentArgs(BaseModel):
         default_factory=list,
         description=f"{_HANDLES} Empty when no message is open (a background result, a hand-off).",
     )
+
+
+class HandoffArgs(BaseModel):
+    """A hand-off read for its ack alone; call_executor's own schema checks the rest when it runs."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ack: str = Field(pattern=r"\S")
 
 
 def reaction_refusal(emoji: str, config: RunnableConfig) -> str | None:
@@ -95,7 +109,11 @@ def unanswered_in_words(messages: Sequence[AnyMessage], seqs: Sequence[int]) -> 
     worded = [
         index
         for index, message in enumerate(messages)
-        if isinstance(message, AIMessage) and extract_text_content(message.content).strip()
+        if isinstance(message, AIMessage)
+        and (
+            extract_text_content(message.content).strip()
+            or any(handoff_ack(call) for call in message.tool_calls)
+        )
     ]
     since = {seq: arrived.get(seq, len(messages)) for seq in seqs}
     # `>=` reads the same: a reply's index is never a user message's, nor len(messages).
@@ -127,21 +145,22 @@ async def stay_silent(
     return "Sent nothing."
 
 
-_ENDINGS: dict[str, type[AnsweredArgs | ReactArgs | StaySilentArgs]] = {
+TurnEnding = AnsweredArgs | ReactArgs | StaySilentArgs | HandoffArgs
+
+_ENDINGS: dict[str, type[TurnEnding]] = {
     ANSWERED_TOOL_NAME: AnsweredArgs,
     REACT_TOOL_NAME: ReactArgs,
     STAY_SILENT_TOOL_NAME: StaySilentArgs,
+    CALL_EXECUTOR_NAME: HandoffArgs,
 }
 
 
-def turn_ending(
-    message: AIMessage, config: RunnableConfig
-) -> AnsweredArgs | ReactArgs | StaySilentArgs | None:
-    """Return how a model message ends the turn; None when it calls work, or calls nothing.
+def turn_ending(message: AIMessage, config: RunnableConfig) -> TurnEnding | None:
+    """Return how a model message ends the turn; None when it calls other work, or calls nothing.
 
-    Only a message whose every call is a turn ending, each valid by its schema and a reaction
-    the run's surface accepts, ends the turn: an invalid one goes back to the model as a failed call.
-    A reaction or silence wins over answered when a step makes both: it decides the outcome.
+    Only a message whose every call is a turn ending (a hand-off counts by its ack), each valid by
+    its schema and a reaction the run's surface accepts, ends the turn: an invalid or failed one
+    goes back to the model. A reaction, silence or hand-off wins over answered: it decides the outcome.
     """
     calls: list[ToolCall] = message.tool_calls
     if not calls or any(call["name"] not in _ENDINGS for call in calls):

@@ -869,7 +869,7 @@ class TestARunThatFindsItsChatBusyWaits:
         ]
         # Twice: the recheck does no tool work, so the completion nudge asks once more.
         executor = prompt_reading([RECHECKED, RECHECKED])
-        comms = [call("call_executor", {"task": RECHECK}, call_id="tc_exec"), "On it.", NARRATED]
+        comms = [call("call_executor", {"task": RECHECK}, call_id="tc_exec"), NARRATED]
 
         async with open_stack(executor=executor, comms=comms):
             follow_up = executor.hold_calls_seeing(RECHECK)

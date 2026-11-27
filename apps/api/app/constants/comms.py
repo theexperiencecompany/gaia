@@ -10,3 +10,5 @@ STAY_SILENT_TOOL_NAME = "stay_silent"
 ANSWERED_TOOL_NAME = "answered"
 #: The tools whose call ends a comms turn: a message calling only these is the reply itself.
 TURN_ENDING_TOOL_NAMES = frozenset({ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME})
+#: call_executor's acknowledgment argument: streamed to the user once whole, and the turn's reply.
+HANDOFF_ACK_ARG = "ack"

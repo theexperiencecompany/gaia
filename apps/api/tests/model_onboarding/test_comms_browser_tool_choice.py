@@ -114,10 +114,15 @@ def _started_turn() -> list[AnyMessage]:
         HumanMessage(content="star the gaia repo on github for me"),
         AIMessage(
             content="",
-            tool_calls=[{"name": "call_executor", "args": {"task": TASK}, "id": "call-1"}],
+            tool_calls=[
+                {
+                    "name": "call_executor",
+                    "args": {"ack": "Opening GitHub.", "task": TASK},
+                    "id": "call-1",
+                }
+            ],
         ),
         ToolMessage(content=handoff_message("4f1c2a"), tool_call_id="call-1"),
-        AIMessage(content="Opening GitHub."),
     ]
 
 

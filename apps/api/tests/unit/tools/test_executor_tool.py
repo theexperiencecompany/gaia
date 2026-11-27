@@ -16,7 +16,8 @@ from uuid import UUID
 
 import fakeredis.aioredis
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool, StructuredTool
+from langchain_core.tools import BaseTool, StructuredTool, ToolException
+from pydantic import BaseModel
 import pytest
 
 from app.agents.core.background import executor_queue, running_registry, work_cancel
@@ -51,6 +52,7 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
     EXECUTOR_INBOX_PREFIX,
 )
+from app.constants.comms import HANDOFF_ACK_ARG
 from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
@@ -138,6 +140,7 @@ async def call_executor_with(
     kwargs.setdefault("time_horizon", DEFAULT_TEST_INTENT.time_horizon)
     kwargs.setdefault("tool_call_id", "call_1")
     kwargs.setdefault("for_messages", [1])
+    kwargs.setdefault("ack", "on it")
     return await run_call_executor(
         config=config,
         task=task,
@@ -147,6 +150,7 @@ async def call_executor_with(
 
 
 CONVERSATION_ID = "conv-1"
+_NOT_STARTED = "^Not dispatched: the user stopped this request"
 LOCK_KEY = f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}"
 INBOX_KEY = f"{EXECUTOR_INBOX_PREFIX}{CONVERSATION_ID}"
 
@@ -499,10 +503,10 @@ class TestCallExecutorDispatch:
         config["configurable"]["conversation_step"] = {**step, "asked": False}
         mock_log = MagicMock()
         monkeypatch.setattr(executor_tool, "log", mock_log)
-        response = await call_executor_with(config=config, task="check my Gmail inbox")
+        with pytest.raises(ToolException, match=NOTHING_NEW_ASKED):
+            await call_executor_with(config=config, task="check my Gmail inbox")
         await drain_background_tasks()
 
-        assert response == NOTHING_NEW_ASKED
         mock_log.warning.assert_called_once_with(
             f"{LogTag.TOOL} call_executor refused: the attempt only reports finished work",
             conversation_id=CONVERSATION_ID,
@@ -536,9 +540,10 @@ class TestCallExecutorDispatch:
         monkeypatch.setattr(executor_tool, "record_work_started", AsyncMock(return_value=False))
         open_ledger("run-1", {1: "m-handed"})
         try:
-            await call_executor_with(
-                config=await turn_config(comms_run="run-1"), task="x", for_messages=[1]
-            )
+            with pytest.raises(ToolException, match=_NOT_STARTED):
+                await call_executor_with(
+                    config=await turn_config(comms_run="run-1"), task="x", for_messages=[1]
+                )
 
             assert spawned_runs == []
             assert drain("run-1") == []
@@ -617,9 +622,9 @@ class TestCallExecutorDispatch:
     async def test_missing_thread_id_refuses_instead_of_running_unanchored(
         self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
-        response = await call_executor_with(config=RunnableConfig(configurable={}), task="x")
+        with pytest.raises(ToolException, match="conversation context unavailable"):
+            await call_executor_with(config=RunnableConfig(configurable={}), task="x")
 
-        assert response == "Internal error: conversation context unavailable. Please try again."
         assert spawned_runs == []
         assert await fake_redis.keys(f"{EXECUTOR_BUSY_PREFIX}*") == []
 
@@ -679,8 +684,7 @@ class TestCallExecutorLockContention:
 
         handed_over = (
             "It's been added to the work already in progress and will be "
-            "covered in the same answer. Acknowledge it with a reaction or a few plain "
-            "words; never mention runs, task ids, queues, or waiting."
+            "covered in the same answer."
         )
         assert response == handed_over
         assert len(spawned_runs) == 1  # handed-over work must NOT start its own run
@@ -760,7 +764,8 @@ class TestCallExecutorLockContention:
         record = AsyncMock(wraps=record_work_started)
         monkeypatch.setattr(executor_tool, "record_work_started", record)
 
-        await call_executor_with(config=await turn_config(), task="x")
+        with pytest.raises(ToolException, match=_NOT_STARTED):
+            await call_executor_with(config=await turn_config(), task="x")
 
         assert redirect_budget == []
         assert record.await_args is not None
@@ -885,9 +890,9 @@ class TestCallExecutorFailures:
 
         monkeypatch.setattr(executor_tool, "mark_executor_spawned", explode)
 
-        response = await call_executor_with(config=await turn_config(), task="x")
+        with pytest.raises(ToolException, match="^Error starting task: session registry down"):
+            await call_executor_with(config=await turn_config(), task="x")
 
-        assert response == "Error starting task: session registry down"
         assert await fake_redis.get(LOCK_KEY) is None
         assert spawned_runs == []
 
@@ -906,9 +911,9 @@ class TestCallExecutorFailures:
 
         monkeypatch.setattr(ExecutorInbox, "append", explode)
 
-        response = await call_executor_with(config=await turn_config("stream-2"), task="b")
+        with pytest.raises(ToolException, match="^Error starting task: redis write failed"):
+            await call_executor_with(config=await turn_config("stream-2"), task="b")
 
-        assert response == "Error starting task: redis write failed"
         assert await fake_redis.get(LOCK_KEY) == "stream-1:live-task"
 
 
@@ -1775,3 +1780,18 @@ class TestSparedRunHearsNoInterruption:
         await run_cancel_executor(config=config_for(), task_ids=["running-task"])
 
         assert [entry.tag for entry in await inbox().read()] == [AgentTag.EXECUTOR_INTERRUPTED]
+
+
+class TestHandoffAckArgument:
+    def test_the_ack_is_the_first_argument_the_model_writes_and_is_required(self) -> None:
+        model = call_executor.tool_call_schema
+        assert isinstance(model, type) and issubclass(model, BaseModel)
+        schema = model.model_json_schema()
+        assert next(iter(schema["properties"])) == HANDOFF_ACK_ARG
+        assert HANDOFF_ACK_ARG in schema["required"]
+
+    async def test_a_refused_hand_off_tells_the_model_its_ack_needs_undoing(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        with pytest.raises(ToolException, match="Your ack already reached the user"):
+            await call_executor_with(config=RunnableConfig(configurable={}), task="x")

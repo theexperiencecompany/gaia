@@ -16,6 +16,7 @@ from app.agents.core.comms_ledger import (
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.agents.tools.comms_turn_tools import (
     AnsweredArgs,
+    HandoffArgs,
     ReactArgs,
     answered,
     react,
@@ -27,6 +28,7 @@ from app.agents.tools.comms_turn_tools import (
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME
 from app.constants.conversation import LOG_SEQ
+from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.reactions import TELEGRAM_REACTION_PALETTE, THANKS_REACTION_EMOJI
 from tests.tool_helpers import tool_coroutine
 
@@ -128,3 +130,28 @@ def test_a_reaction_beside_answered_decides_how_the_turn_ends() -> None:
     assert turn_ending(AIMessage(content="", tool_calls=calls[:1]), {}) == AnsweredArgs(
         message_ids=[1]
     )
+
+
+def _handoff(args: dict[str, object]) -> ToolCall:
+    return ToolCall(name=CALL_EXECUTOR_NAME, args={"task": "clean my inbox", **args}, id="h")
+
+
+def test_a_hand_off_carrying_its_ack_ends_the_turn_and_one_without_does_not() -> None:
+    def ending(*calls: ToolCall) -> object:
+        return turn_ending(AIMessage(content="", tool_calls=list(calls)), {})
+
+    answering = ToolCall(name=ANSWERED_TOOL_NAME, args={"message_ids": [2]}, id="a")
+    lookup = ToolCall(name="web_search_tool", args={"query": "x"}, id="w")
+    assert ending(_handoff({"ack": "on it"})) == HandoffArgs(ack="on it")
+    assert ending(answering, _handoff({"ack": "36. on it"})) == HandoffArgs(ack="36. on it")
+    assert ending(_handoff({})) is None
+    assert ending(_handoff({"ack": "  "})) is None
+    assert ending(_handoff({"ack": "on it"}), lookup) is None
+
+
+def test_a_hand_offs_ack_is_words_answered_can_name() -> None:
+    acked: list[AnyMessage] = [
+        asked(1),
+        AIMessage(content="", tool_calls=[_handoff({"ack": "36. on the rest now"})]),
+    ]
+    assert unanswered_in_words(acked, [1]) == []

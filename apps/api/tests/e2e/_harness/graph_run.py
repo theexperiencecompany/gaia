@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+import json
 from typing import Any, TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -27,6 +28,7 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langchain_core.messages.tool import ToolCallChunk
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools import BaseTool
 from langgraph.store.memory import InMemoryStore
@@ -248,6 +250,8 @@ class RecordingFakeModel(BindableToolsFakeModel):
 #: What a scripted hand-off sends for call_executor's required args, filled
 #: here so one schema change doesn't rewrite fifty scripts by hand.
 SCRIPTED_ACCEPTANCE_CRITERIA = ["scripted e2e hand-off"]
+#: The ack a scripted hand-off streams to the user, unless the script writes its own.
+SCRIPTED_HANDOFF_ACK = "On it."
 SCRIPTED_HANDOFF_DEFAULTS: dict[str, Any] = {
     "desired_outcome": "scripted e2e outcome",
     "time_horizon": "one_shot",
@@ -272,6 +276,8 @@ def call(name: str, args: dict[str, Any] | None = None, call_id: str = "c1") -> 
     """
     call_args = dict(args or {})
     if name == "call_executor":
+        # First, as the schema declares it: the stream reads it before the rest arrives.
+        call_args = {"ack": call_args.pop("ack", SCRIPTED_HANDOFF_ACK), **call_args}
         call_args.setdefault("acceptance_criteria", list(SCRIPTED_ACCEPTANCE_CRITERIA))
         for key, value in SCRIPTED_HANDOFF_DEFAULTS.items():
             call_args.setdefault(key, value)
@@ -565,16 +571,39 @@ class StreamingScriptedModel(RecordingFakeModel):
         # script position whichever path a tier takes, and a subclass's response
         # override applies when streamed too.
         message = self._generate(messages, stop=stop, **kwargs).generations[0].message
-        chunk = ChatGenerationChunk(
-            message=AIMessageChunk(
-                content=message.content,
-                tool_calls=getattr(message, "tool_calls", []),
-                id=message.id,
+        for chunk_message in _streamed_chunks(message):
+            chunk = ChatGenerationChunk(message=chunk_message)
+            if run_manager is not None:
+                await run_manager.on_llm_new_token(chunk.text or "", chunk=chunk)
+            yield chunk
+            await self.after_chunk(chunk_message)
+
+    async def after_chunk(self, chunk: AIMessageChunk) -> None:
+        """Run between two streamed chunks; a test overrides it to hold the stream mid-call."""
+
+
+def _streamed_chunks(message: BaseMessage) -> list[AIMessageChunk]:
+    """Stream a scripted message as a provider does: its text, then each call's arguments one key at a time."""
+    calls = getattr(message, "tool_calls", [])
+    if not calls:
+        return [AIMessageChunk(content=message.content, id=message.id)]
+    chunks = [AIMessageChunk(content=message.content, id=message.id)] if message.content else []
+    for index, tool_call in enumerate(calls):
+        pairs = [
+            f"{json.dumps(key)}: {json.dumps(value)}" for key, value in tool_call["args"].items()
+        ]
+        pieces = ["{" + (pairs[0] if pairs else ""), *(f", {pair}" for pair in pairs[1:])]
+        pieces[-1] += "}"
+        for position, piece in enumerate(pieces):
+            first = position == 0
+            part = ToolCallChunk(
+                name=tool_call["name"] if first else None,
+                args=piece,
+                id=tool_call["id"] if first else None,
+                index=index,
             )
-        )
-        if run_manager is not None:
-            await run_manager.on_llm_new_token(chunk.text or "", chunk=chunk)
-        yield chunk
+            chunks.append(AIMessageChunk(content="", id=message.id, tool_call_chunks=[part]))
+    return chunks
 
 
 def streaming_model(script: Sequence[Any]) -> StreamingScriptedModel:

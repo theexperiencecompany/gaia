@@ -2641,7 +2641,7 @@ async def test_a_fire_hands_its_work_to_the_executor_through_call_executor(
         content="",
         tool_calls=[graph_call("call_executor", {"task": "t", "for_messages": for_messages})],
     )
-    model = gated(hand_off, "on it", "Three unread: rent, dentist, flights")
+    model = gated(hand_off, "Three unread: rent, dentist, flights")
     turns = _Turns()
     async with _fire_rig(rig_for, model, turns) as (rig, notified):
         with patch.object(executor_tool, "run_executor_background", _fake_executor("3 unread")):

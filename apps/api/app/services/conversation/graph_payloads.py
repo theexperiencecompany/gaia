@@ -258,6 +258,8 @@ async def _updates(
             yield card
     # The node finished, so its message is whole: a preamble before a hand-off is said, and stays.
     closing = last_ai_message(messages)
+    if closing is not None and is_comms:
+        state.held.hold_handoff(closing)
     closing_text = (
         _finish_visible_text(state, closing.id or "")
         if closing is not None

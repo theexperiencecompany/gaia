@@ -333,14 +333,16 @@ def open_stack(
     async def opened(
         *,
         executor: Sequence[Any] | StreamingScriptedModel,
-        comms: Sequence[Any] = (),
+        comms: Sequence[Any] | StreamingScriptedModel = (),
     ) -> AsyncIterator[Stack]:
         built = Stack(
             checkpointer=checkpointer,
             executor_model=executor
             if isinstance(executor, StreamingScriptedModel)
             else streaming_model(executor),
-            comms_model=streaming_model(comms),
+            comms_model=comms
+            if isinstance(comms, StreamingScriptedModel)
+            else streaming_model(comms),
         )
 
         async def record_push(_user_id: str, event: dict[str, Any]) -> None:

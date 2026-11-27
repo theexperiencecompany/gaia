@@ -107,3 +107,104 @@ class TestReplyText:
 
     def test_a_run_that_said_nothing_has_no_reply(self) -> None:
         assert HeldReplies().reply_text() == ""
+
+
+def _handoff_part(args: str, *, first: bool = False) -> AIMessageChunk:
+    return AIMessageChunk(
+        content="",
+        id="m1",
+        tool_call_chunks=[
+            {
+                "name": "call_executor" if first else None,
+                "args": args,
+                "id": "tc" if first else None,
+                "index": 0,
+            }
+        ],
+    )
+
+
+def _stream(held: HeldReplies, pieces: list[str]) -> list[str]:
+    """Hold each streamed fragment of one hand-off's arguments; return the text each one held."""
+    return [
+        held.hold(_handoff_part(piece, first=index == 0), _NODE).text
+        for index, piece in enumerate(pieces)
+    ]
+
+
+def _whole_call(name: str, args: str, message_id: str) -> AIMessageChunk:
+    return AIMessageChunk(
+        content="",
+        id=message_id,
+        tool_call_chunks=[{"name": name, "args": args, "id": f"tc-{message_id}", "index": 0}],
+    )
+
+
+@pytest.mark.unit
+class TestHandoffAck:
+    def test_the_ack_is_held_once_exactly_when_its_value_is_whole(self) -> None:
+        held = HeldReplies()
+
+        texts = _stream(held, ['{"ack": "on', ' it"', ', "ta', 'sk": "clean', ' my inbox"}'])
+
+        assert texts == ["", "", "", "on it", ""]
+        assert held.texts == {"m1": "on it"}
+
+    def test_an_ack_written_last_is_held_when_the_arguments_close(self) -> None:
+        held = HeldReplies()
+
+        texts = _stream(held, ['{"task": "clean my inbox", ', '"ack": "on it"', "}"])
+
+        assert texts == ["", "", "on it"]
+
+    def test_an_escaped_quote_does_not_end_the_ack(self) -> None:
+        held = HeldReplies()
+
+        texts = _stream(held, ['{"ack": "the \\"big\\" one', ' now", "task": "x"}'])
+
+        assert texts == ["", 'the "big" one now']
+
+    def test_another_tools_arguments_hold_nothing(self) -> None:
+        held = HeldReplies()
+
+        chunk = held.hold(_whole_call("lookup", '{"ack": "x", "q": 1}', "m1"), _NODE)
+
+        assert chunk.text == ""
+        assert held.texts == {}
+
+    def test_a_blank_ack_holds_nothing(self) -> None:
+        held = HeldReplies()
+
+        assert _stream(held, ['{"ack": "  ", "task": "x"}']) == [""]
+
+    def test_a_second_hand_off_in_the_run_does_not_say_it_twice(self) -> None:
+        held = HeldReplies()
+        _stream(held, ['{"ack": "on it", "task": "x"}'])
+
+        again = held.hold(
+            _whole_call("call_executor", '{"ack": "on it", "task": "x"}', "m2"),
+            {"langgraph_checkpoint_ns": "agent:2"},
+        )
+
+        assert again.text == ""
+        assert held.texts == {"m1": "on it"}
+
+    def test_a_tier_whose_text_is_never_the_answer_holds_no_ack(self) -> None:
+        held = HeldReplies()
+        chunk = _whole_call("call_executor", '{"ack": "on it", "task": "x"}', "m1")
+
+        assert held.hold(chunk, {}, reply_tier=False).text == ""
+
+    def test_a_finished_message_that_never_streamed_holds_its_ack(self) -> None:
+        held = HeldReplies()
+        message = AIMessage(
+            content="",
+            id="m1",
+            tool_calls=[
+                {"name": "call_executor", "args": {"ack": "on it", "task": "x"}, "id": "tc"}
+            ],
+        )
+
+        assert held.hold_handoff(message).text == "on it"
+        assert held.hold_handoff(message).text == ""
+        assert held.settle([message], "") == ("on it", "m1")

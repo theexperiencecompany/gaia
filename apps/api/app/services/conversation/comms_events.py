@@ -13,7 +13,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import ValidationError
 
 from app.agents.core.held_replies import last_ai_message
-from app.agents.tools.comms_turn_tools import AnsweredArgs, ReactArgs, StaySilentArgs, turn_ending
+from app.agents.tools.comms_turn_tools import HandoffArgs, ReactArgs, TurnEnding, turn_ending
 from app.models.agent_models import StreamChunkMetadata
 from app.models.conversation_frame_models import (
     FollowUpActionsEvent,
@@ -39,7 +39,7 @@ from app.services.conversation.ports import (
     Summarized,
 )
 from app.utils.agent_utils import NodeMessagesUpdate
-from app.utils.message_breaks import strip_partial_message_break
+from app.utils.message_breaks import append_message_bubble, strip_partial_message_break
 from app.utils.multimodal import extract_text_content
 from shared.py.conversation_wire import ToolDataEntry
 
@@ -84,7 +84,7 @@ class CommsEventMapper:
         self._follow_ups: tuple[str, ...] = ()
         self._answer = ""
         # pragma: no mutate start — before a model update only isinstance reads it
-        self._ending: AnsweredArgs | ReactArgs | StaySilentArgs | None = None
+        self._ending: TurnEnding | None = None
         # pragma: no mutate end
         self._final_reported = False  # pragma: no mutate — only read as truthiness
 
@@ -153,6 +153,8 @@ class CommsEventMapper:
         if not has_tool_calls:
             self._answered = True
             self._answer = extract_text_content(answer.content)
+            if isinstance(self._ending, HandoffArgs):
+                self._answer = append_message_bubble(self._answer, self._ending.ack)
         return [ModelOutput(has_tool_calls=has_tool_calls)]
 
     def _outcome(self) -> RunOutcome:

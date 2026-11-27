@@ -110,7 +110,7 @@ class TestCommsToolSurface:
     async def test_delegating_to_the_executor_actually_dispatches(self, logged_work: AsyncMock):
         """Uses its own thread: call_executor's busy lock (executor:busy:{thread_id}, 30-minute TTL) would otherwise queue this dispatch instead of running it."""
         async with comms_graph(
-            [call("call_executor", {"task": "book a table"}, call_id="c1"), "On it."]
+            [call("call_executor", {"task": "book a table"}, call_id="c1")]
         ) as graph:
             run = await run_graph(
                 graph,
@@ -123,6 +123,7 @@ class TestCommsToolSurface:
         assert not result.startswith("Error"), result
         assert "task_id" in result, f"the handoff was never dispatched: {result!r}"
         assert logged_work.await_args.args[0] == STEP
+        assert len(run.prompts) == 1, "a hand-off carrying its ack ends the turn"
 
     @pytest.mark.regression
     async def test_a_handoff_missing_a_required_argument_is_corrected_then_dispatched(
@@ -131,7 +132,7 @@ class TestCommsToolSurface:
         """A dropped acceptance_criteria comes back naming the field to fix, and the retry runs."""
         incomplete = {"name": "call_executor", "args": {"task": "sign me in"}, "id": "c1"}
         retry = call("call_executor", {"task": "sign me in"}, call_id="c2")
-        async with comms_graph([incomplete, retry, "On it."]) as graph:
+        async with comms_graph([incomplete, retry]) as graph:
             run = await run_graph(
                 graph, "sign me in to github", thread_id=f"retry-{uuid4()}", conversation_step=STEP
             )
@@ -150,6 +151,7 @@ class TestCommsToolSurface:
             for message in run.prompts[1]
         ), "the model never saw the correction"
         assert "task_id" in str(results["c2"].content), results["c2"].content
+        assert len(run.prompts) == 2, "the corrected hand-off ends the turn"
 
     @pytest.mark.parametrize("tool", ["plan_tasks", "handoff", "read", "bash", "deep_research"])
     async def test_an_executor_tool_is_not_reachable_from_comms(self, tool: str):
@@ -534,7 +536,7 @@ class TestTheConversationGrowsAppendOnly:
     async def test_a_turn_that_called_a_tool_still_begins_with_its_own_history(self) -> None:
         """filter_messages_node rebuilds an AI message's tool_calls on every later call (filter_messages.py) — the rebuild must be stable, same message in, same bytes out."""
         async with comms_graph(
-            [call("call_executor", {"task": "do it"}, call_id="x1"), "done", "second reply"]
+            [call("call_executor", {"task": "do it"}, call_id="x1"), "second reply"]
         ) as graph:
             requests = await self._requests_across_turns(
                 graph, ("delegate something", "and now this"), f"cache-tool-{uuid4()}"

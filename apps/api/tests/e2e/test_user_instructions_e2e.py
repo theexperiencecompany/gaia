@@ -39,7 +39,7 @@ def _read(prompts: list[list[BaseMessage]]) -> str:
 
 
 def _comms() -> list[Any]:
-    return [call("call_executor", {"task": ASK}, call_id="tc_exec"), "On it.", "Done."]
+    return [call("call_executor", {"task": ASK}, call_id="tc_exec"), "Done."]
 
 
 @pytest.mark.usefixtures("mongo_db")
