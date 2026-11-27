@@ -8,12 +8,15 @@ export const SOFT_TINT_CLASSES = {
 
 /**
  * A selected chip lifts on a shadow tinted by its own fill (v2's Chip variant="shadow");
- * hue secondary repaints an accent chip as v2's purple secondary, a colour v3 dropped,
- * and hue brand gives it v2's text-primary label (#00bbff, not the soft #66aaf9).
+ * isBordered is v2's bordered chip, a hairline on the variant's own fill (v3 documents
+ * a border on secondary but ships none); hue secondary repaints an accent chip as v2's
+ * purple secondary, a colour v3 dropped, and hue brand gives it v2's text-primary label
+ * (#00bbff, not the soft #66aaf9).
  */
 export const chipVariants = tv({
   variants: {
     isSelected: { true: "gaia-chip-selected", false: "" },
+    isBordered: { true: "gaia-chip-bordered", false: "" },
     tint: SOFT_TINT_CLASSES,
     hue: {
       default: "",
@@ -23,6 +26,7 @@ export const chipVariants = tv({
   },
   defaultVariants: {
     isSelected: false,
+    isBordered: false,
     tint: "default",
     hue: "default",
   },
