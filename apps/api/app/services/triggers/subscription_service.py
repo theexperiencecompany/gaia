@@ -476,6 +476,27 @@ async def resync_subscriptions_for_trigger_names(
     return resynced
 
 
+async def reregister_active_subscriptions(user_id: str, trigger_name: str) -> int:
+    """Rebuild a user's active watches on trigger_name from their stored trigger_data.
+
+    For when the Composio config the handler sends has changed, so the instances
+    registered under the old config fire on the wrong terms. Returns the todo count.
+    """
+    reregistered = 0
+    for todo in await todo_repository.find_active_by_user_and_trigger(user_id, trigger_name):
+        active = [
+            s
+            for s in todo.trigger_subscriptions
+            if s.trigger_name == trigger_name and s.status is TriggerSubscriptionStatus.ACTIVE
+        ]
+        trigger_ids = await _reregister(user_id, todo.id, active)
+        await todo_repository.resume_trigger_subscriptions(
+            todo.id, user_id=user_id, trigger_ids=trigger_ids
+        )
+        reregistered += 1
+    return reregistered
+
+
 async def _reregister(
     user_id: str, todo_id: str, subscriptions: list[TriggerSubscription]
 ) -> dict[str, list[str]]:

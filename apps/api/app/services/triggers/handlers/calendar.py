@@ -8,13 +8,14 @@ Handles all calendar-specific trigger logic including:
 """
 
 from collections.abc import Mapping
-from typing import Any, ClassVar, Final
+from typing import ClassVar, Final
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import (
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
+    GoogleCalendarEventStartingSoonTriggerConfig,
 )
 from app.models.trigger_configs import (
     CalendarEventCreatedConfig,
@@ -118,21 +119,18 @@ class CalendarTriggerHandler(TriggerHandler):
         if not calendar_ids:
             return []
 
-        # Build configs for each calendar
-        configs: list[dict[str, Any]] = []
-        for calendar_id in calendar_ids:
-            config: dict[str, Any] = {"calendarId": calendar_id}
-            if trigger_name == "calendar_event_starting_soon":
-                if not isinstance(trigger_data, CalendarEventStartingSoonConfig):
-                    # Should be covered by validation above, but for MyPy safety:
-                    raise TypeError("Expected CalendarEventStartingSoonConfig")
-
-                starting_soon_data = trigger_data
-                if starting_soon_data.minutes_before_start is not None:
-                    config["countdown_window_minutes"] = starting_soon_data.minutes_before_start
-                if starting_soon_data.include_all_day is not None:
-                    config["include_all_day"] = starting_soon_data.include_all_day
-            configs.append(config)
+        configs: list[dict[str, object]]
+        if isinstance(trigger_data, CalendarEventStartingSoonConfig):
+            configs = [
+                GoogleCalendarEventStartingSoonTriggerConfig(
+                    calendar_id=calendar_id,
+                    minutes_before_start=trigger_data.minutes_before_start,
+                    include_all_day=trigger_data.include_all_day,
+                ).model_dump(by_alias=True)
+                for calendar_id in calendar_ids
+            ]
+        else:
+            configs = [{"calendarId": calendar_id} for calendar_id in calendar_ids]
 
         log.set(
             trigger_name=trigger_name,
