@@ -1,0 +1,124 @@
+# Founder-owned migration decisions (approved 2026-11-27). The transfer tool refuses to run while any prod
+# collection or typed mixed-type path is missing here, or any entry has approved: true.
+# Evidence: `mise db:inventory` against prod Atlas, 2026-11-27 (983k documents, 70 collections).
+#
+# action:
+#   migrate      table and data move to Postgres
+#   schema-only  the table is created (the code uses it, e.g. self-host), prod has no rows
+#   archive      exported once to R2 (encrypted), then not migrated
+#   drop         not migrated, nothing kept
+#   deferred     owned by another workstream; decided there
+
+collections:
+  # Used by a repository, holds data.
+  approval_ledger:           {action: migrate, approved: true, docs: 202}
+  blog:                      {action: migrate, approved: true, docs: 1}
+  bot_sessions:              {action: migrate, approved: true, docs: 75}
+  briefing_state:            {action: migrate, approved: true, docs: 15}
+  briefings:                 {action: migrate, approved: true, docs: 48}
+  browser_profiles:          {action: migrate, approved: true, docs: 801}
+  browser_tasks:             {action: migrate, approved: true, docs: 92}
+  calendar:                  {action: migrate, approved: true, docs: 149}
+  checkout_sessions:         {action: migrate, approved: true, docs: 138}
+  device_tokens:             {action: migrate, approved: true, docs: 1}
+  e2b_sandboxes:             {action: migrate, approved: true, docs: 294}
+  email_verdicts:            {action: migrate, approved: true, docs: 557}
+  files:                     {action: migrate, approved: true, docs: 384}
+  hil_tool_risk:             {action: migrate, approved: true, docs: 84}
+  instance_settings:         {action: migrate, approved: true, docs: 1}
+  integrations:              {action: migrate, approved: true, docs: 102}
+  llm_calls:                 {action: migrate, approved: true, docs: 232446, note: "90-day TTL; becomes the purge_expired job"}
+  notes:                     {action: migrate, approved: true, docs: 17}
+  notifications:             {action: migrate, approved: true, docs: 335224}
+  pending_brief_items:       {action: migrate, approved: true, docs: 2}
+  playbooks:                 {action: migrate, approved: true, docs: 305}
+  processed_webhooks:        {action: migrate, approved: true, docs: 35}
+  projects:                  {action: migrate, approved: true, docs: 1666}
+  reminders:                 {action: migrate, approved: true, docs: 25}
+  scouts:                    {action: migrate, approved: true, docs: 47}
+  search_urls:               {action: migrate, approved: true, docs: 1971}
+  short_links:               {action: migrate, approved: true, docs: 305}
+  signal_memory:             {action: migrate, approved: true, docs: 676}
+  skills:                    {action: migrate, approved: true, docs: 19}
+  subscription_plans:        {action: migrate, approved: true, docs: 4}
+  subscriptions:             {action: migrate, approved: true, docs: 27}
+  support_requests:          {action: migrate, approved: true, docs: 33}
+  todos:                     {action: migrate, approved: true, docs: 5819}
+  tool_output_shapes:        {action: migrate, approved: true, docs: 285}
+  tool_read_only_verdicts:   {action: migrate, approved: true, docs: 25}
+  usage_daily:               {action: migrate, approved: true, docs: 5058}
+  usage_snapshots:           {action: migrate, approved: true, docs: 7692}
+  user_instructions:         {action: migrate, approved: true, docs: 1}
+  user_integrations:         {action: migrate, approved: true, docs: 1295}
+  users:                     {action: migrate, approved: true, docs: 2603}
+  waits:                     {action: migrate, approved: true, docs: 17}
+  workflow_executions:       {action: migrate, approved: true, docs: 252976}
+  workflows:                 {action: migrate, approved: true, docs: 10153}
+
+  # Used by a repository, empty in prod (self-host and not-yet-used features).
+  artifacts:                       {action: schema-only, approved: true}
+  auth_credentials:                {action: schema-only, approved: true, note: "self-host local login"}
+  auth_invites:                    {action: schema-only, approved: true, note: "self-host invites"}
+  link_reports:                    {action: schema-only, approved: true}
+  pending_platform_registrations:  {action: schema-only, approved: true}
+  provider_credentials:            {action: schema-only, approved: true, note: "self-host bring-your-own keys"}
+
+  # Conversation runtime: owned by the conversation-cleanup work (PR #1970).
+  conversations:                    {action: deferred, approved: true, docs: 6043}
+  conversation_entries:             {action: deferred, approved: true, docs: 97094}
+  conversation_archived_messages:   {action: deferred, approved: true, docs: 37}
+  conversation_migration_failures:  {action: deferred, approved: true, docs: 0}
+
+  # No code reads or writes these; they exist only because indexes.py still creates them. Empty.
+  awards:        {action: drop, approved: true, docs: 0, cleanup: "delete its block in app/db/mongodb/indexes.py"}
+  payments:      {action: drop, approved: true, docs: 0, cleanup: "delete its block in app/db/mongodb/indexes.py"}
+  e2b_warm_pool: {action: drop, approved: true, docs: 0, cleanup: "delete its block in app/db/mongodb/indexes.py"}
+  team:          {action: drop, approved: true, docs: 0}
+
+  # No code reads or writes these, and they hold data. Proposed: archive user content, drop system leftovers.
+  goals:                                     {action: archive, approved: true, docs: 371,   last_write: 2026-04-05}
+  mail:                                      {action: archive, approved: true, docs: 14345, last_write: 2025-12-19}
+  vfs_nodes:                                 {action: archive, approved: true, docs: 2486,  last_write: 2026-06-06, size: 265 MB}
+  fs.files:                                  {action: archive, approved: true, docs: 132,   last_write: 2026-05-29, note: "GridFS; only scripts/delete_user_account.py reads it"}
+  fs.chunks:                                 {action: archive, approved: true, docs: 999,   last_write: 2026-05-29, size: 246 MB}
+  hil_approvals:                             {action: archive, approved: true, docs: 23,    last_write: 2026-09-24}
+  feedback:                                  {action: archive, approved: true, docs: 2,     last_write: 2024-07-06}
+  waitlist:                                  {action: archive, approved: true, docs: 34,    last_write: 2025-04-18}
+  integration_instructions:                  {action: drop,    approved: true, docs: 18,    last_write: 2026-10-10, note: "superseded by user_instructions"}
+  ai_models:                                 {action: drop,    approved: true, docs: 2,     last_write: 2026-08-23}
+  deploy_steps:                              {action: drop,    approved: true, docs: 8}
+  system_migration_audit:                    {action: drop,    approved: true, docs: 1,     last_write: 2026-07-03}
+  playbooks_backup_handoff_20261106_200447:  {action: drop,    approved: true, docs: 82,    note: "manual backup from 2026-11-06"}
+
+# Typed fields holding more than one non-null type. Strings and arrays inside LLM-written
+# blobs (tool arguments, tool_data, execution traces) vary by design; they become JSONB and
+# need no entry. Each fix: correct the writer, backfill the stored values, make the model strict.
+mixed_types:
+  users.gmail_history_id:
+    observed: {int: 31, string: 30}
+    proposal: drop the field
+    evidence: no code reads or writes it
+    approved: true
+  workflows.trigger_config.next_run:
+    observed: {date: 4748, null: 4043, string: 20}
+    proposal: datetime; parse the 20 ISO strings
+    evidence: all 20 written in one 250 ms burst on 2026-11-23 15:40:43, all one user, 19 activated, none has ever run
+    approved: true
+  subscriptions.created_at:
+    observed: {date: 25, string: 2}
+    proposal: datetime; parse the ISO strings; fix the writer
+    evidence: suspected writer apply_subscription_event fed by model_dump(mode="json") in payment_service.py cancel path (unconfirmed)
+    approved: true
+  subscriptions.updated_at:
+    observed: {date: 26, string: 1}
+    proposal: same as subscriptions.created_at
+    approved: true
+  files.page_wise_summary:
+    observed: {object: 153, array: 64, null: 103}
+    proposal: one shape; the model's PageWiseSummary union (list | dict | str | None) goes
+    evidence: the union type admits three shapes; prod holds two
+    approved: true
+  goals.user_id:
+    observed: {string: 369, object: 2}
+    proposal: none needed if goals is archived
+    approved: true

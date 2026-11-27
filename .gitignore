@@ -122,6 +122,7 @@ out
 postman/
 
 .agents/plans/
+.agents/db-migration/
 .agents/prod-convos/
 .agents/recording/
 .agents/sim/

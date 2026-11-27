@@ -77,6 +77,7 @@ members = [
   "libs",
   "apps/api",
   "apps/voice-agent",
+  "tools/db-migration",
 ]
 
 # vulture — Python dead-code detection (scripts/dead-code-check.sh + CI).

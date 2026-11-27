@@ -464,6 +464,15 @@ run = "cd apps/api && uv run --group backend python -m scripts.analytics_ops"
 description = "Make about ten small real calls to every configured LLM provider (or the ones named: `mise llm:conformance cloudflare gemini`) and fail when one behaves differently from what the code assumes: streamed usage and finish_reason counted once, tool calls, structured output, no reply cut at maxLength, an empty tool list, a 429 answered by another provider. Run before changing a model or provider; needs real keys, so team members run it as `mise infisical llm:conformance`. Not a CI lane"
 run = "cd apps/api && LOG_LEVEL=ERROR uv run --group backend python -m scripts.llm_conformance"
 
+[tasks."db:inventory"]
+description = "Profile the source MongoDB read-only into .agents/db-migration/inventory.json: every collection's documents, field paths with their observed BSON types (mixed types flagged), string and array size extremes, last write and live indexes. Records shapes only, never values. Refuses a login that can write. Needs MIGRATION_SOURCE_MONGO_URI (a read-role user)"
+run = "uv run --package gaia-db-migration db-inventory --out .agents/db-migration/inventory.json"
+
+[tasks."db:snapshot"]
+description = "Copy prod MongoDB (read-only) into the local database gaia_snapshot with every non-structural string overwritten by fake text of the same length: ids, enums, numbers, timestamps and document structure keep their values, string rules come from each collection's document model. Fails if a model-valid document turns invalid, or if Presidio finds PII in the kept strings. Only collections decisions.yaml migrates or defers; `-- --collections a b` for a subset. Needs MIGRATION_SOURCE_MONGO_URI"
+env = { MONGO_DB = "mongodb://localhost:27017/gaia_snapshot", LOG_LEVEL = "ERROR" }
+run = "uv run --package gaia-db-migration db-snapshot --target-uri mongodb://localhost:27017 --target-db gaia_snapshot --report .agents/db-migration/snapshot-report.json"
+
 [tasks."analytics:types"]
 description = "Export the Pydantic event catalog to analytics-catalog.json and regenerate the TypeScript event types in libs/shared/ts/src/analytics/generated (CI fails when either drifts)"
 run = "node scripts/ci/checks.mjs analytics-catalog --write"

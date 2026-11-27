@@ -1,0 +1,33 @@
+[project]
+name = "gaia-db-migration"
+version = "0.1.0"
+description = "One-time MongoDB to Postgres migration tooling: inventory, anonymised snapshot, transfer, verify"
+requires-python = ">=3.12"
+dependencies = [
+  "gaia",
+  "pymongo==4.18.3",
+  "faker>=40.0.0",
+  "pyyaml>=6.0.3",
+  "presidio-analyzer>=2.2.360",
+  "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+]
+
+[tool.uv.sources]
+gaia = { workspace = true }
+
+[project.scripts]
+db-inventory = "gaia_db_migration.inventory:main"
+db-snapshot = "gaia_db_migration.snapshot:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+  "mypy==1.19.1",
+  "types-pyyaml>=6.0.12",
+]

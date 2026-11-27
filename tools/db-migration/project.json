@@ -1,0 +1,31 @@
+{
+  "name": "db-migration",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "tools/db-migration/src",
+  "targets": {
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --package gaia-db-migration --frozen --group dev mypy --strict tools/db-migration/src"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/uv.lock",
+        "python",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "mypy-db-migration",
+          "area": "python"
+        }
+      }
+    }
+  }
+}
