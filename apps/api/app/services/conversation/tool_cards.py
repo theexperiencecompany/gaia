@@ -17,7 +17,11 @@ from pydantic import BaseModel, ConfigDict
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME, TOOL_CALLS_CARD
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
-from app.constants.summarization import MAX_OUTPUT_CHARS
+from app.constants.summarization import (
+    MAX_CARD_TEXT_CHARS,
+    MAX_ENTRY_TEXT_CHARS,
+    MAX_OUTPUT_CHARS,
+)
 from app.models.conversation_frame_models import (
     ArtifactDeltaEvent,
     ImageEvent,
@@ -102,40 +106,74 @@ def fold_cards(
 
 
 def capped_outputs(cards: Iterable[ToolDataEntry]) -> tuple[ToolDataEntry, ...]:
-    """Return cards with each tool call's output cut to its first MAX_OUTPUT_CHARS characters.
+    """Return cards with their tool outputs and thinking cut to what a log entry stores.
 
-    A cut call names its output's full length; an MCP App's tool_result is its app's data and stays whole.
+    A call keeps MAX_OUTPUT_CHARS of each, a card MAX_CARD_TEXT_CHARS and the cards together
+    MAX_ENTRY_TEXT_CHARS, spent in order; a cut output names its full length. An MCP App's
+    tool_result is its app's data and stays whole.
     """
-    return tuple(_capped_card(card) for card in cards)
+    entry = _Budget(MAX_ENTRY_TEXT_CHARS)
+    return tuple(_capped_card(card, _Budget(MAX_CARD_TEXT_CHARS, entry)) for card in cards)
 
 
-def _capped_card(card: ToolDataEntry) -> ToolDataEntry:
+@dataclass
+class _Budget:
+    """Characters of output and thinking still to keep; a card's budget also spends its entry's."""
+
+    remaining: int
+    entry: _Budget | None = None
+
+    def kept(self, text: str) -> str:
+        room = min(MAX_OUTPUT_CHARS, self.remaining)
+        if self.entry is not None:
+            room = min(room, self.entry.remaining)
+        kept = text[:room]
+        self.remaining -= len(kept)
+        if self.entry is not None:
+            self.entry.remaining -= len(kept)
+        return kept
+
+
+def _capped_card(card: ToolDataEntry, budget: _Budget) -> ToolDataEntry:
     name, data = card["tool_name"], card["data"]
     if name == TOOL_CALLS_CARD:
         calls = data if isinstance(data, list) else None
-        capped = _capped_call(data) if calls is None else [_capped_call(call) for call in calls]
+        capped = (
+            _capped_call(data, budget)
+            if calls is None
+            else [_capped_call(call, budget) for call in calls]
+        )
         return cast(ToolDataEntry, {**card, "data": capped})
     if name == SUBAGENT_GROUP_TOOL_NAME and isinstance(data, dict):
-        return cast(ToolDataEntry, {**card, "data": _capped_group(data)})
+        return cast(ToolDataEntry, {**card, "data": _capped_group(data, budget)})
     return card
 
 
-def _capped_group(group: _Group) -> _Group:
+def _capped_group(group: _Group, budget: _Budget) -> _Group:
     return {
         **group,
-        "tool_calls": [_capped_call(call) for call in _calls(group)],
+        "tool_calls": [_capped_call(call, budget) for call in _calls(group)],
         "nested_subagents": [
-            _capped_group(nested) if isinstance(nested, dict) else nested
+            _capped_group(nested, budget) if isinstance(nested, dict) else nested
             for nested in _nested(group)
         ],
     }
 
 
-def _capped_call(call: object) -> object:
-    output = call.get("output") if isinstance(call, dict) else None
-    if not isinstance(call, dict) or not isinstance(output, str) or len(output) <= MAX_OUTPUT_CHARS:
+def _capped_call(call: object, budget: _Budget) -> object:
+    if not isinstance(call, dict):
         return call
-    return {**call, "output": output[:MAX_OUTPUT_CHARS], OUTPUT_ORIGINAL_LENGTH: len(output)}
+    capped = dict(call)
+    if isinstance(reasoning := call.get("reasoning"), str):
+        capped["reasoning"] = budget.kept(reasoning)
+    if isinstance(output := call.get("output"), str):
+        kept = budget.kept(output)
+        if len(kept) < len(output):
+            # A seed cut before keeps the length its tool really returned.
+            whole = call.get(OUTPUT_ORIGINAL_LENGTH)
+            capped["output"] = kept
+            capped[OUTPUT_ORIGINAL_LENGTH] = whole if isinstance(whole, int) else len(output)
+    return capped
 
 
 def merged_thinking(calls: Iterable[dict[str, _Value]]) -> list[dict[str, _Value]]:
