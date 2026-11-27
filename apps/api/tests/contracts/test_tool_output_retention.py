@@ -9,12 +9,17 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import uuid
 
+import bson
 import pytest
 
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.conversation import TOOL_OUTPUT_RETENTION
 from app.db.repositories.conversation_entries import OUTPUTS_DROPPED_FIELD
 from app.db.repositories.conversation_log import conversation_log_repository
+from app.db.repositories.conversation_output_retention import (
+    EntryCards,
+    tool_output_retention_repository,
+)
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Notice, Reply, UserMessage
@@ -27,9 +32,11 @@ from app.services.conversation.tool_cards import (
     REASONING_STEP,
     TOOL_CALLS_CARD,
 )
+from app.utils.errors import ConversationStoreError
+from app.workers.tasks import conversation_retention_tasks
 from app.workers.tasks.conversation_retention_tasks import drop_expired_tool_outputs
 from shared.py.conversation_wire import ReplyItem, ToolDataEntry
-from tests.helpers import shown_items
+from tests.helpers import captured_wide_event, shown_items
 
 pytestmark = pytest.mark.usefixtures("entries_collection")
 
@@ -164,10 +171,6 @@ async def test_old_cards_lose_outputs_and_thinking_while_recent_ones_and_app_dat
         ]
     assert await _stored(entries_collection, recent) == recent_before
 
-    swept = await _stored(entries_collection, old)
-    assert await drop_expired_tool_outputs({}) == "entries=0 bytes_freed=0"
-    assert await _stored(entries_collection, old) == swept
-
     page = await repo.get(old.conversation_id, user_id=old.user_id)
     assert page is not None
     carded = [
@@ -180,3 +183,83 @@ async def test_old_cards_lose_outputs_and_thinking_while_recent_ones_and_app_dat
         assert item.tool_data[2] == app
         [first_call] = item.tool_data[0]["data"]
         assert first_call["output"] == "" and first_call[OUTPUT_ORIGINAL_LENGTH] == len(RESULT)
+
+
+async def _aged_chat(
+    repo: ConversationRepository, entries_collection, age: timedelta
+) -> ConversationDocument:
+    doc = await _chat(repo)
+    await entries_collection.update_many(
+        {"conversation_id": doc.conversation_id}, {"$set": {"at": datetime.now(UTC) - age}}
+    )
+    return doc
+
+
+def _cards_bytes(rows: list[dict[str, object]]) -> int:
+    return sum(len(bson.encode({"tool_data": row["tool_data"]})) for row in rows)
+
+
+async def test_a_backlog_past_one_page_is_cut_page_by_page_and_totalled(
+    entries_collection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(conversation_retention_tasks, "TOOL_OUTPUT_DROP_PAGE", 2)
+    repo = ConversationRepository()
+    past = TOOL_OUTPUT_RETENTION + timedelta(hours=1)
+    old = [await _aged_chat(repo, entries_collection, past) for _ in range(3)]
+    kept = await _aged_chat(repo, entries_collection, TOOL_OUTPUT_RETENTION - timedelta(hours=1))
+    before = [row for doc in old for row in await _stored(entries_collection, doc)]
+    kept_before = await _stored(entries_collection, kept)
+
+    async with captured_wide_event() as event:
+        summary = await drop_expired_tool_outputs({})
+
+    after = [row for doc in old for row in await _stored(entries_collection, doc)]
+    freed = _cards_bytes(before) - _cards_bytes(after)
+    assert freed > 0
+    assert summary == f"entries=6 bytes_freed={freed}"
+    assert event["tool_output_retention"] == {"entries_cut": 6, "bytes_freed": freed}
+    assert [row[OUTPUTS_DROPPED_FIELD] for row in after] == [True] * 6
+    assert await _stored(entries_collection, kept) == kept_before
+
+
+@pytest.mark.usefixtures("local_time_offset_from_utc")
+async def test_the_cutoff_is_a_utc_instant_whatever_zone_the_worker_runs_in(
+    entries_collection,
+) -> None:
+    repo = ConversationRepository()
+    nearly = await _aged_chat(repo, entries_collection, TOOL_OUTPUT_RETENTION - timedelta(hours=1))
+    before = await _stored(entries_collection, nearly)
+
+    assert await drop_expired_tool_outputs({}) == "entries=0 bytes_freed=0"
+    assert await _stored(entries_collection, nearly) == before
+
+
+async def test_a_second_run_finds_nothing_and_changes_nothing(entries_collection) -> None:
+    repo = ConversationRepository()
+    old = await _aged_chat(repo, entries_collection, TOOL_OUTPUT_RETENTION + timedelta(days=1))
+    assert (await drop_expired_tool_outputs({})).startswith("entries=2 ")
+    swept = await _stored(entries_collection, old)
+
+    assert await drop_expired_tool_outputs({}) == "entries=0 bytes_freed=0"
+    assert await _stored(entries_collection, old) == swept
+
+
+async def test_a_page_whose_every_entry_changed_since_it_was_read_fails_loud(
+    entries_collection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = ConversationRepository()
+    old = await _aged_chat(repo, entries_collection, TOOL_OUTPUT_RETENTION + timedelta(days=1))
+    read = tool_output_retention_repository.list_unswept
+
+    async def read_then_amended(at_before: datetime, limit: int) -> list[EntryCards]:
+        page = await read(at_before, limit)
+        await entries_collection.update_many({}, {"$inc": {"revision": 1}})
+        return page
+
+    monkeypatch.setattr(tool_output_retention_repository, "list_unswept", read_then_amended)
+
+    with pytest.raises(ConversationStoreError) as failed:
+        await drop_expired_tool_outputs({})
+    assert failed.value.message == "the tool output retention sweep stored no entry of a page"
+    assert failed.value.meta == {"page": "2"}
+    assert all(OUTPUTS_DROPPED_FIELD not in row for row in await _stored(entries_collection, old))

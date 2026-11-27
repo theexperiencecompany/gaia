@@ -51,13 +51,16 @@ class ToolOutputRetentionRepository(ConversationRepository):
     async def list_unswept(self, at_before: datetime, limit: int) -> list[EntryCards]:
         """Return up to limit entries committed before at_before whose cards the sweep has not cut, oldest first."""
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+        unswept = {**HOLDS_CARDS, **_UNSWEPT, "at": {"$lt": at_before}}
         with store_errors("output retention read"):  # pragma: no mutate — error label
+            # pragma: no mutate start — the projection, order and hint only shape how the index is read
             cursor = entries.find(
-                {**HOLDS_CARDS, **_UNSWEPT, "at": {"$lt": at_before}},
+                unswept,
                 {"_id": 1, REVISION_FIELD: 1, "tool_data": 1},
                 sort=[("at", 1)],
                 hint=OUTPUTS_TO_DROP_INDEX,
             )
+            # pragma: no mutate end
             rows = [row async for row in cursor.limit(limit)]
         return [EntryCards.model_validate(row) for row in rows]
 
@@ -66,8 +69,6 @@ class ToolOutputRetentionRepository(ConversationRepository):
 
         Neither revision nor the head's updatedAt moves: no client is told to refetch.
         """
-        if not cut:
-            return 0
         writes = [
             UpdateOne(
                 {"_id": ObjectId(entry.id), REVISION_FIELD: entry.revision, **_UNSWEPT},
@@ -77,7 +78,8 @@ class ToolOutputRetentionRepository(ConversationRepository):
         ]
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         with store_errors("output retention write"):  # pragma: no mutate — error label
-            result = await entries.bulk_write(writes, ordered=False)
+            # conditional updates that miss are no errors, so the order of the batch changes nothing
+            result = await entries.bulk_write(writes, ordered=False)  # pragma: no mutate
         return result.matched_count
 
 

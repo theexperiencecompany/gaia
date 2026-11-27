@@ -34,6 +34,7 @@ from app.services.conversation.tool_cards import (
     TOOL_CALLS_CARD,
     FoldedCards,
     coalesced_thinking,
+    dropped_outputs,
     fold_cards,
 )
 from app.services.conversation.tool_timeline import tool_timeline
@@ -571,6 +572,14 @@ def test_a_cut_seeds_output_keeps_the_length_its_tool_returned() -> None:
     cards = [stored] * (summarization.MAX_ENTRY_TEXT_CHARS // MAX_OUTPUT_CHARS + 1)
     *_, last = fold_cards([], seed=cards).tool_data
     assert last["data"] == {"tool_call_id": "c1", "output": "", "output_original_length": 9_000_000}
+
+
+def test_dropping_outputs_removes_a_card_of_thinking_alone_and_keeps_a_card_that_was_empty() -> (
+    None
+):
+    thought = card(TOOL_CALLS_CARD, [thinking("why")])
+    empty = card(TOOL_CALLS_CARD, [], tool_category="gmail")
+    assert dropped_outputs([thought, empty]) == (empty,)
 
 
 def test_thinking_past_a_spent_budget_leaves_no_empty_thinking_step() -> None:

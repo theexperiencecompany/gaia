@@ -507,6 +507,13 @@ class TestCreateConversationIndexes:
                 {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
             ),
             (
+                ([("outputs_dropped", 1), ("at", 1)],),
+                {
+                    "name": "entry_outputs_to_drop",
+                    "partialFilterExpression": {"tool_data.0": {"$exists": True}},
+                },
+            ),
+            (
                 ([("type", 1)],),
                 {"name": "message_shaped", "partialFilterExpression": {"type": {"$exists": True}}},
             ),
