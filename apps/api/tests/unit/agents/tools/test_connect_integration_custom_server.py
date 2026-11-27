@@ -61,6 +61,19 @@ async def test_reconnect_on_an_added_custom_server_gets_a_fresh_link_without_re_
         DODO_ID, "Dodo Payments", USER_ID, mode=ConnectMode.RECONNECT
     )
     seams.user_repo.exists.assert_awaited_once_with(USER_ID, DODO_ID)
+    seams.repo.get_custom.assert_awaited_once_with(DODO_ID)
+
+
+async def test_a_custom_server_does_not_stop_the_ids_after_it(seams: Seams) -> None:
+    seams.user_repo.exists.side_effect = lambda _user, iid: iid == DODO_ID
+
+    result = await connect_integration.ainvoke(
+        {"integration_ids": [DODO_ID, "nope"], "mode": ConnectMode.RECONNECT},
+        config={"configurable": {"user_id": USER_ID}},
+    )
+
+    assert result.splitlines()[0] == "card shown"
+    assert result.splitlines()[1].startswith("❌ 'nope' not found.")
 
 
 async def test_connect_on_a_connected_custom_server_reports_it_and_shows_no_card(
