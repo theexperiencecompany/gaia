@@ -18,6 +18,7 @@ gaia = { workspace = true }
 [project.scripts]
 db-inventory = "gaia_db_migration.inventory:main"
 db-snapshot = "gaia_db_migration.snapshot:main"
+db-shape = "gaia_db_migration.shape:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

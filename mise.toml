@@ -469,7 +469,7 @@ description = "Profile the source MongoDB read-only into .agents/db-migration/in
 run = "uv run --package gaia-db-migration db-inventory --out .agents/db-migration/inventory.json"
 
 [tasks."db:snapshot"]
-description = "Copy prod MongoDB (read-only) into the local database gaia_snapshot with every non-structural string overwritten by fake text of the same length: ids, enums, numbers, timestamps and document structure keep their values, string rules come from each collection's document model. Fails if a model-valid document turns invalid, or if Presidio finds PII in the kept strings. Only collections decisions.yaml migrates or defers; `-- --collections a b` for a subset. Needs MIGRATION_SOURCE_MONGO_URI"
+description = "Copy prod MongoDB (read-only) into the local database gaia_snapshot with every non-structural string overwritten by fake text of the same length: ids, enums, numbers, timestamps and document structure keep their values, string rules come from each collection's document model. Fails if a model-valid document turns invalid, or if Presidio finds PII in the kept strings. Only collections decisions.yaml migrates or creates; `-- --collections a b` for a subset. Needs MIGRATION_SOURCE_MONGO_URI"
 env = { MONGO_DB = "mongodb://localhost:27017/gaia_snapshot", LOG_LEVEL = "ERROR" }
 run = "uv run --package gaia-db-migration db-snapshot --target-uri mongodb://localhost:27017 --target-db gaia_snapshot --report .agents/db-migration/snapshot-report.json"
 

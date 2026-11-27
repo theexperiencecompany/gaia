@@ -7,7 +7,6 @@
 #   schema-only  the table is created (the code uses it, e.g. self-host), prod has no rows
 #   archive      exported once to R2 (encrypted), then not migrated
 #   drop         not migrated, nothing kept
-#   deferred     owned by another workstream; decided there
 
 collections:
   # Used by a repository, holds data.
@@ -63,11 +62,11 @@ collections:
   pending_platform_registrations:  {action: schema-only, approved: true}
   provider_credentials:            {action: schema-only, approved: true, note: "self-host bring-your-own keys"}
 
-  # Conversation runtime: owned by the conversation-cleanup work (PR #1970).
-  conversations:                    {action: deferred, approved: true, docs: 6043}
-  conversation_entries:             {action: deferred, approved: true, docs: 97094}
-  conversation_archived_messages:   {action: deferred, approved: true, docs: 37}
-  conversation_migration_failures:  {action: deferred, approved: true, docs: 0}
+  # Conversation runtime: the log migration finished and PR #1970 dropped the legacy arrays.
+  conversations:                    {action: migrate, approved: true, docs: 6053}
+  conversation_entries:             {action: migrate, approved: true, docs: 98305}
+  conversation_archived_messages:   {action: drop, approved: true, docs: 0, cleanup: "delete scripts/migrate_conversation_entries and conversation_migration_guard.py"}
+  conversation_migration_failures:  {action: drop, approved: true, docs: 0, cleanup: "same"}
 
   # No code reads or writes these; they exist only because indexes.py still creates them. Empty.
   awards:        {action: drop, approved: true, docs: 0, cleanup: "delete its block in app/db/mongodb/indexes.py"}

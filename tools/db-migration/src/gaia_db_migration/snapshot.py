@@ -27,7 +27,7 @@ from gaia_db_migration.source import RawDocument, connect_read_only
 
 DECISIONS_PATH = Path(__file__).resolve().parents[2] / "decisions.yaml"
 DEFAULT_INVENTORY = Path(".agents/db-migration/inventory.json")
-SNAPSHOT_ACTIONS = frozenset({"migrate", "schema-only", "deferred"})
+SNAPSHOT_ACTIONS = frozenset({"migrate", "schema-only"})
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 BATCH_SIZE = 500
 #: Index options that would change the copy after it is written.
