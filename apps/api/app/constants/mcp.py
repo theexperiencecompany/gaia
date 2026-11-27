@@ -54,6 +54,8 @@ MCP_TOOL_NAME_MAX_CHARS = 64
 MCP_TOOL_NAME_SEPARATOR = "_"
 # The <source> part when the integration's name has no ASCII letters or digits.
 MCP_UNNAMED_SOURCE_PREFIX = "mcp"
+# A failed tool call's log line keeps this much of the error: enough to name the fault, not a payload echo.
+MCP_TOOL_FAILURE_LOG_MAX_CHARS = 300
 # Leads a renamed tool's description: the server's docs, results and other tools
 # still use its own name, and the model must map that name to the renamed one.
 MCP_RENAMED_TOOL_NOTE = (

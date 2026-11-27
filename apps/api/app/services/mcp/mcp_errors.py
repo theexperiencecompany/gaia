@@ -6,6 +6,7 @@ from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from app.constants.log_tags import LogTag
+from app.utils.multimodal import ContentBlock, extract_text_content
 from shared.py.wide_events import log
 
 
@@ -84,6 +85,20 @@ _TERMINAL_OAUTH_ERROR_CODES: frozenset[str] = frozenset(
 )
 
 
+class McpToolResultError(Exception):
+    """An MCP server answered a tool call with isError; content is still what the model reads."""
+
+    def __init__(self, content: str | list[ContentBlock]) -> None:
+        self.content = content
+        super().__init__(extract_text_content(content))
+
+
+def response_status(exception: Exception) -> int | None:
+    """Return the HTTP status of the response an exception carries, or None when it carries none."""
+    status = getattr(getattr(exception, "response", None), "status_code", None)
+    return status if isinstance(status, int) else None
+
+
 def _extract_response_signal(exception: Exception) -> tuple[int | None, str | None]:
     """Return (status_code, oauth_error_code) from an exception with an HTTP response.
 
@@ -93,7 +108,7 @@ def _extract_response_signal(exception: Exception) -> tuple[int | None, str | No
     if response is None:
         return None, None
 
-    status = getattr(response, "status_code", None)
+    status = response_status(exception)
     error_code: str | None = None
     try:
         body = response.json() if callable(getattr(response, "json", None)) else None

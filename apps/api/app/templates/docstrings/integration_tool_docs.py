@@ -81,6 +81,9 @@ SECURITY (non-negotiable):
 WHEN NOT TO USE:
 - Do NOT use this for integrations already in the catalog (Gmail, Notion, GitHub, Slack, ...).
   Use connect_integration with the integration's id for those.
+- Do NOT use this for a server the user already added, even to get a fresh sign-in link: it
+  asks them to approve the server again. Use connect_integration with its id instead
+  (mode="reconnect" for a new link).
 """
 
 CONNECT_INTEGRATION = """
@@ -93,8 +96,8 @@ already connected), tell them which accounts are already connected and ask wheth
 they want to add another. check_integrations_status lists them.
 
 PARAMETERS:
-- `integration_ids` (List[str]): Exact integration IDs (e.g., "gmail", "notion");
-  call list_integrations first if unsure.
+- `integration_ids` (List[str]): Exact integration IDs (e.g., "gmail", "notion"), or the id
+  of a custom MCP server the user already added; call list_integrations first if unsure.
 - `mode`: "connect" (default), "add_account" for another account, or "reconnect"
   when they ask to reconnect or refresh access.
 - `account`: with "reconnect", the expired account to sign back in, by its listed

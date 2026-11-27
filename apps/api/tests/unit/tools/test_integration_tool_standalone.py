@@ -451,7 +451,11 @@ class TestConnectIntegration:
     @pytest.fixture(autouse=True)
     def _never_expired(self) -> Iterator[None]:
         """Pin the stored status to never-expired since these tests cover the tool's own behaviour, not the expired wording (see test_integration_checker.py)."""
-        with patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)):
+        with (
+            patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)),
+            # An id outside the catalog is not a custom server this user added.
+            patch.object(user_integration_repository, "exists", AsyncMock(return_value=False)),
+        ):
             yield
 
     @patch(f"{MODULE}.current_stream_writer")

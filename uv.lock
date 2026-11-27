@@ -72,6 +72,7 @@ excludes = [
 [manifest.dependency-groups]
 harness = [
     { name = "defusedxml", specifier = ">=0.7.1" },
+    { name = "interrogate", specifier = "==1.7.0" },
     { name = "promql-parser", specifier = ">=0.12.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-rerunfailures" },
