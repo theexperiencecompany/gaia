@@ -414,6 +414,21 @@ def test_a_no_state_run_says_how_many_tests_timed_out(tmp_path: Path) -> None:
     assert "MUTATION RUN FAILED (no state produced)" in outcome.output
 
 
+def test_a_no_state_run_names_the_test_that_fails_on_unmutated_code(tmp_path: Path) -> None:
+    """Regression: PR #1985's red stats run read as "no state and no timeout", naming no test."""
+    outcome = _shard(
+        tmp_path,
+        Run(
+            output="tests/unit/test_x.py::test_kinds_are_the_apps_own_terms FAILED [  1%]\n",
+            rc=1,
+            mutants={"x": ""},
+        ),
+    )
+    summary = str(outcome.verdict["summary"])
+    assert "1 test(s) fail on the unmutated code" in summary
+    assert "tests/unit/test_x.py::test_kinds_are_the_apps_own_terms" in summary
+
+
 def test_a_skip_carries_its_reason(tmp_path: Path) -> None:
     outcome = _shard(tmp_path, Run(output="could not find any test case for any mutant\n", rc=1))
     assert "nothing on the changed lines for a test to pin" in str(outcome.verdict["summary"])

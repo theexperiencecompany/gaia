@@ -310,7 +310,6 @@ apps/api/tests/unit/utils/test_context_utils.py	index
 apps/api/tests/unit/utils/test_context_utils.py	return-value
 apps/api/tests/unit/utils/test_crawl_obscura.py	attr-defined
 apps/api/tests/unit/utils/test_crawl_obscura.py	return-value
-apps/api/tests/unit/utils/test_file_utils.py	attr-defined
 apps/api/tests/unit/utils/test_image_utils.py	attr-defined
 apps/api/tests/unit/utils/test_notion_md.py	arg-type
 apps/api/tests/unit/utils/test_profile_card.py	attr-defined

@@ -49,6 +49,7 @@ from app.services.briefing.facts import (
 from app.services.briefing.held import held_items
 from app.services.briefing.kinds import KIND_SPECS, BriefKindSpec
 from app.services.briefing.lifecycle import already_delivered, left_undelivered
+from app.services.briefing.lookback import last_brief_made
 from app.services.briefing.metrics import counted_run
 from app.services.briefing.payload import PayloadParts, edition_payload
 from app.services.briefing.postmarks import new_stamp
@@ -180,6 +181,7 @@ async def _read(
             held=[] if spec.recaps_week else await held_items(user.id),
             due_before=span.end,
             open_own=reads.open_own,
+            last_brief_at=await last_brief_made(user.id, clock),
             user_done=reads.completed.since(since).user if spec.recaps_week else [],
         ),
     )

@@ -1,8 +1,8 @@
 """Pin the prompt layer at the model boundary, downstream of every pre-model hook.
 
 comms_turn_messages assembles the conversation -- static system prompt, dynamic context,
-the user's turn, the clock -- and the graph's pre-model hooks (filter_messages_node,
-manage_system_prompts_node) are free to rewrite it before the model sees it.
+the user's turn, the clock -- and the graph's pre-model hooks (manage_system_prompts_node)
+and the provider transcript are free to rewrite it before the model sees it.
 The recording model captures the message list right before it produces output, so these tests pin
 the bytes that actually reach the model: a prompt change that looks right in the builder but gets
 mangled by a hook fails here.

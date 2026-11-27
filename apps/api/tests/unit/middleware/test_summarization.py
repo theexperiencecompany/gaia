@@ -9,9 +9,11 @@ rather than against a re-derived threshold.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 import json
+import time
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
@@ -44,6 +46,7 @@ from app.agents.context.slots import (
     SUMMARY_SOURCE,
     is_conversation_summary,
 )
+from app.agents.llm import client as client_module
 from app.agents.middleware import summarization as summarization_module
 from app.agents.middleware.summarization import (
     CONVERSATION_SUMMARY_PROMPT,
@@ -53,6 +56,7 @@ from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
 from app.services.storage import JuiceFSUnavailable
 from shared.py.wide_events import log
+from tests.helpers import SilentAfterStream, sse_response, workers_ai_over
 
 MAX_INPUT_TOKENS = 1000
 
@@ -734,6 +738,26 @@ async def test_a_failed_summary_never_removes_history(
     assert "error" not in failures[0]
     if expected_message_count is not None:
         assert failures[0]["message_count"] == expected_message_count
+
+
+async def test_a_summarizer_that_stalls_leaves_history_in_place_within_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression: the summary call had no deadline, so a stream that never sent
+    # a chunk held the turn until the provider gave up (Workers AI: ~236 s).
+    deadline = 0.2
+    monkeypatch.setattr(client_module, "LLM_FIRST_CHUNK_DEADLINE_SECONDS", deadline)
+    model, _ = workers_ai_over([sse_response(SilentAfterStream())])
+    log.reset()
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1), archive=None)
+
+    started = time.monotonic()
+    result = await asyncio.wait_for(mw.afold({"messages": _humans(6)}, _config()), timeout=5)
+
+    assert time.monotonic() - started < deadline * 10
+    assert result is None
+    failures = [e for e in log.get()["errors"] if e["msg"].endswith("Summary generation failed")]
+    assert failures[0]["error_type"] == "LLMStreamStallError"
 
 
 async def test_the_summary_is_a_record_of_the_past_not_a_plan() -> None:

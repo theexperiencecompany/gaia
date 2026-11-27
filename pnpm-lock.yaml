@@ -350,6 +350,9 @@ importers:
       grammy:
         specifier: ^1.44.0
         version: 1.44.0(encoding@0.1.14)
+      image-size:
+        specifier: ^2.0.4
+        version: 2.1.0
     devDependencies:
       '@types/node':
         specifier: ^24.13.3
@@ -1181,9 +1184,6 @@ importers:
       hono:
         specifier: ^4.13.14
         version: 4.13.14
-      image-size:
-        specifier: ^2.0.4
-        version: 2.1.0
       p-retry:
         specifier: ^8.0.1
         version: 8.0.1

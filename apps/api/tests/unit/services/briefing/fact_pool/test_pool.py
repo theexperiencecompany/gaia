@@ -288,7 +288,7 @@ class TestThePoolAsTheComposerReadsIt:
         assert "overnight" not in block
 
         assert (
-            "1. [Gmail] waiting on you: Re: Series A term sheet | names Maya Chen"
+            "1. [Gmail] found by its scout: Re: Series A term sheet | names Maya Chen"
             " (the app does not say their part in it) | GAIA can only read Gmail: no offer on it"
         ) in block
         assert "3. [Google Calendar] calendar event: Board call" in block
@@ -441,6 +441,19 @@ class TestTheVoicesLine:
         line = item_line(2, item, CONTEXT.clock, Voiced(BriefFact(title="Rent")))
 
         assert line == "2. [GAIA] waiting on you: Rent"
+
+    @pytest.mark.regression
+    def test_a_scout_row_reads_as_the_composition_placed_it_to_the_voice(self) -> None:
+        """Regression: every scout row reached the composition as "waiting on you", whatever its stage."""
+        item = self._item(app="Gmail", signal=_MAYA, origin=CandidateOrigin.APP_SIGNAL)
+
+        told = item_line(1, item, CONTEXT.clock)
+        voiced = item_line(
+            1, item, CONTEXT.clock, Voiced(BriefFact(title="Maya", kind=ItemState.NOTE))
+        )
+
+        assert told.startswith("1. [Gmail] found by its scout: ")
+        assert voiced.startswith("1. [Gmail] note: Maya")
 
     @pytest.mark.parametrize("acts", [True, False], ids=["acts", "reads-only"])
     def test_whether_gaia_can_act_is_told_to_the_composition_never_the_voice(
@@ -714,11 +727,11 @@ class TestAnItemLine:
         folded = item.model_copy(update={"people": ["Ravi Rao", "Maya Chen"]})
 
         assert item_line(1, item, CONTEXT.clock) == (
-            "1. [GitHub] waiting on you: Fix login | reviewer: Ravi Rao"
+            "1. [GitHub] found by its scout: Fix login | reviewer: Ravi Rao"
             " | GAIA can only read GitHub: no offer on it"
         )
         assert item_line(1, folded, CONTEXT.clock) == (
-            "1. [GitHub] waiting on you: Fix login | names Ravi Rao, Maya Chen"
+            "1. [GitHub] found by its scout: Fix login | names Ravi Rao, Maya Chen"
             " (the app does not say their part in it) | GAIA can only read GitHub: no offer on it"
         )
 
@@ -826,6 +839,8 @@ class TestAnEmptyPool:
             " by whoever its state names; in progress: GAIA is working on it; open: GAIA's work"
             " that is not being worked on now, its line says where it stands; waiting on you:"
             " needs the user; failed: broke and needs the user; note: news that needs nothing;"
+            " found by its scout: a row from one of the user's apps, its line says how the app"
+            " shows it, and that app's criteria decide whether it needs the user;"
             " on their list, undated: an undated todo of their own, never news and never the"
             " lead. An item marked already shown, still open was already shown, unchanged: not"
             " news, so it never leads)"
@@ -840,7 +855,7 @@ class TestAnEmptyPool:
         lines = pool_block(pool).split("\n")
 
         assert lines[1:4] == [
-            "1. [Gmail] waiting on you: Re: Series A term sheet | names Maya Chen"
+            "1. [Gmail] found by its scout: Re: Series A term sheet | names Maya Chen"
             " (the app does not say their part in it) | GAIA can only read Gmail: no offer on it",
             "2. [Stripe] waiting on you: "
             + reads.items[2].title

@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from functools import cache
@@ -8,7 +8,11 @@ import time
 from typing import Any, Literal, TypedDict, TypeVar, cast
 from urllib.parse import urlparse
 
-from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
+from langchain_core.callbacks import (
+    AsyncCallbackHandler,
+    BaseCallbackHandler,
+    UsageMetadataCallbackHandler,
+)
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
@@ -40,6 +44,7 @@ from app.agents.llm.exceptions import (
     LLM_FALLBACK_EXCEPTIONS,
     LLM_RETRYABLE_EXCEPTIONS,
     LLMNotConfiguredError,
+    LLMStreamStallError,
     MalformedStructuredOutputError,
 )
 from app.agents.llm.failure_fields import FailedCallFields, failed_call_fields
@@ -53,6 +58,7 @@ from app.agents.llm.metrics import (
     observe_llm_fallback,
 )
 from app.agents.llm.schema_caps import without_size_caps
+from app.agents.llm.transcript import provider_input
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
 from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
@@ -70,6 +76,8 @@ from app.constants.llm import (
     FELL_BACK_METADATA_KEY,
     HELPER_MAX_OUTPUT_TOKENS,
     HIL_JUDGE_FALLBACK_MODEL_NAMES,
+    LLM_CHUNK_IDLE_DEADLINE_SECONDS,
+    LLM_FIRST_CHUNK_DEADLINE_SECONDS,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_LABEL_METADATA_KEY,
     LLM_RETRY_MAX_ATTEMPTS,
@@ -165,10 +173,91 @@ def without_sdk_retry(llm: _LLMT) -> _LLMT:  # NOSONAR python:S3516
     return llm
 
 
-#: The retry set without the rate limits the call classifier names.
-_RETRYABLE_EXCEPT_RATE_LIMITS: tuple[type[BaseException], ...] = tuple(
-    error for error in LLM_RETRYABLE_EXCEPTIONS if not issubclass(error, RATE_LIMIT_ERRORS)
-)
+class _ConstructorKwargs(BaseModel):
+    """The one constructor argument of a serialized chat model the stall watch reads."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    streaming: bool | None = None
+
+
+class _SerializedChatModel(BaseModel):
+    """A chat model as LangChain serializes it into on_chat_model_start."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    kwargs: _ConstructorKwargs = _ConstructorKwargs()
+
+
+class _StallWatch(AsyncCallbackHandler):
+    """Hold a streaming model run to its first-chunk deadline, then each chunk to the idle one."""
+
+    def __init__(self, scope: asyncio.Timeout) -> None:
+        self._scope = scope
+
+    def _deadline_in(self, seconds: float | None) -> None:
+        when = None if seconds is None else asyncio.get_running_loop().time() + seconds
+        self._scope.reschedule(when)
+
+    async def on_chat_model_start(
+        self,
+        serialized: dict[str, object],
+        messages: list[list[BaseMessage]],  # noqa: ARG002 -- LangChain AsyncCallbackHandler contract
+        **_kwargs: object,
+    ) -> None:
+        """Start the first-chunk deadline when the run streams; a run that does not sends nothing until its end."""
+        if _SerializedChatModel.model_validate(serialized).kwargs.streaming is True:
+            self._deadline_in(LLM_FIRST_CHUNK_DEADLINE_SECONDS)
+
+    async def on_llm_new_token(
+        self,
+        token: str | Sequence[str | Mapping[str, object]],  # noqa: ARG002 -- LangChain AsyncCallbackHandler contract
+        **_kwargs: object,
+    ) -> None:
+        """Push the deadline out by the idle allowance on every chunk."""
+        self._deadline_in(LLM_CHUNK_IDLE_DEADLINE_SECONDS)
+
+    async def on_llm_end(self, response: LLMResult, **_kwargs: object) -> None:  # noqa: ARG002 -- LangChain AsyncCallbackHandler contract
+        """Lift the deadline once the run has answered."""
+        self._deadline_in(None)
+
+
+class _StallGuarded(Runnable[LanguageModelInput, object]):
+    """One model attempt that raises LLMStreamStallError when its stream goes silent past a deadline.
+
+    A plain Runnable, not a binding: it opens no run of its own, so traces and
+    stream events see the model exactly as before.
+    """
+
+    def __init__(self, bound: Runnable) -> None:
+        self.bound = bound
+
+    def invoke(
+        self,
+        input: LanguageModelInput,  # noqa: A002 -- Runnable.invoke contract
+        config: RunnableConfig | None = None,
+        **kwargs: object,
+    ) -> object:
+        """Run the attempt unguarded: a sync call cannot be cancelled mid-read."""
+        return self.bound.invoke(input, config=config, **kwargs)
+
+    async def ainvoke(
+        self,
+        input: LanguageModelInput,  # noqa: A002 -- Runnable.ainvoke contract
+        config: RunnableConfig | None = None,
+        **kwargs: object,
+    ) -> object:
+        """Run the attempt with the stall deadlines; a cancelled stalled stream also closes its connection."""
+        scope = asyncio.timeout(None)
+        try:
+            async with scope:
+                return await self.bound.ainvoke(
+                    input, config=_with_usage_handler(config, _StallWatch(scope)), **kwargs
+                )
+        except TimeoutError as error:
+            if not scope.expired():
+                raise
+            raise LLMStreamStallError from error
 
 
 def with_llm_retry(
@@ -176,17 +265,23 @@ def with_llm_retry(
     *,
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     retry_rate_limits: bool = True,
+    retry_stalls: bool = True,
 ) -> Runnable:
-    """Wrap runnable with the single, canonical LLM retry policy.
+    """Wrap runnable with the single, canonical LLM retry policy and the stream stall deadlines.
 
     Applied AFTER bind_tools so the RunnableRetry wrapper never has to expose
     bind_tools. max_attempts=1 disables retry for callers on a hard latency
-    budget; retry_rate_limits=False sends a rate limit straight to the fallback.
+    budget; retry_rate_limits=False sends a rate limit straight to the fallback,
+    retry_stalls=False a stalled stream.
     """
-    return runnable.with_retry(
-        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS
-        if retry_rate_limits
-        else _RETRYABLE_EXCEPT_RATE_LIMITS,
+    retryable = tuple(
+        error
+        for error in LLM_RETRYABLE_EXCEPTIONS
+        if (retry_rate_limits or not issubclass(error, RATE_LIMIT_ERRORS))
+        and (retry_stalls or not issubclass(error, LLMStreamStallError))
+    )
+    return _StallGuarded(runnable).with_retry(
+        retry_if_exception_type=retryable,
         stop_after_attempt=max_attempts,
         wait_exponential_jitter=True,
     )
@@ -1286,6 +1381,7 @@ async def ainvoke_llm(
     # through here but is already metered by LLMAccountingMiddleware, so it
     # passes meter_auxiliary=False — otherwise every graph call is booked twice.
     opts = options or LLMInvokeOptions()
+    messages = provider_input(messages)
     fallback = _allowed_fallback(fallback)
     config = _with_call_label(config, label)
     fallback_config = (
@@ -1310,6 +1406,8 @@ async def ainvoke_llm(
                         primary,
                         max_attempts=opts.max_attempts,
                         retry_rate_limits=_retries_rate_limits(provider, fallback),
+                        # A stall costs a whole deadline and tends to repeat; the fallback is faster.
+                        retry_stalls=fallback is None,
                     ).ainvoke(
                         messages,
                         config=_with_usage_handler(
@@ -1404,6 +1502,7 @@ def invoke_llm(
     async-only (see :class:LLMInvokeOptions).
     """
     opts = options or LLMInvokeOptions()
+    messages = provider_input(messages)
     fallback = _allowed_fallback(fallback)
     config = _with_call_label(config, label)
     provider = _call_provider(primary, config)

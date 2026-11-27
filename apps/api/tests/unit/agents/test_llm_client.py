@@ -21,10 +21,14 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from bson import ObjectId
 import httpx
-from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
+from langchain_core.callbacks import (
+    AsyncCallbackHandler,
+    BaseCallbackHandler,
+    UsageMetadataCallbackHandler,
+)
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, Generation, LLMResult
 from langchain_core.runnables import (
@@ -51,7 +55,7 @@ from pydantic import BaseModel, Field, SecretStr
 import pytest
 import tenacity
 
-from app.agents.llm import client as client_module
+from app.agents.llm import client as client_module, exceptions as llm_exceptions
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
     _MODEL_FIELD,
@@ -125,11 +129,30 @@ from app.services.llm_metering import LLMCallContext
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
-from tests.helpers import create_fake_llm, emitted_log_records
+from tests.helpers import (
+    SilentAfterStream,
+    create_fake_llm,
+    emitted_log_records,
+    sse_response,
+    workers_ai_over,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retry at once: the backoff is tenacity's, and real sleeps only slow these tests down."""
+    monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+
+
+def _handlers(config: RunnableConfig | None) -> list[BaseCallbackHandler]:
+    """Return the callback handlers a model attempt was handed, under the retry run's manager or as a list."""
+    callbacks = (config or {}).get("callbacks") or []
+    return list(callbacks) if isinstance(callbacks, list) else list(callbacks.handlers)
+
 
 # The identity every auxiliary one-shot now states about itself. These tests are
 # about what gets BOOKED, not about the ledger row, so they share one minimal
@@ -927,11 +950,9 @@ def _llm_call_counts(provider: str) -> dict[str, float]:
 class TestAinvokeLlm:
     @staticmethod
     def _runnable(side_effect: Any = None, result: Any = None) -> NonCallableMagicMock:
-        # with_llm_retry calls runnable.with_retry(...) -> return self, so the mock
-        # .ainvoke is what actually runs. NonCallable because real Runnables aren't
-        # callable — ainvoke_llm treats a callable fallback as a lazy factory.
+        # NonCallable because real Runnables aren't callable — ainvoke_llm treats a
+        # callable fallback as a lazy factory.
         runnable = NonCallableMagicMock()
-        runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(side_effect=side_effect, return_value=result)
         return runnable
 
@@ -1016,7 +1037,6 @@ class TestAinvokeLlm:
 
     async def test_a_call_with_no_lane_counts_for_the_provider_its_client_talks_to(self) -> None:
         primary = NonCallableMagicMock(spec=ChatOpenRouter)
-        primary.with_retry = MagicMock(return_value=primary)
         primary.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
         labels = {"provider": "openrouter", "outcome": "ok"}
         before = self._count("gaia_llm_call_total", **labels)
@@ -1060,13 +1080,15 @@ class TestAinvokeLlm:
     @patch("app.agents.llm.client.log")
     async def test_falls_back_to_default_on_provider_error(self, mock_log: MagicMock) -> None:
         primary = self._runnable(side_effect=ConnectionError("provider down"))
-        fallback = self._runnable(result=AIMessage(content="fallback-ok"))
+        fallback = self._runnable(
+            side_effect=[ConnectionError("blip"), AIMessage(content="fallback-ok")]
+        )
 
         result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
 
         assert result.content == "fallback-ok"
-        # The fallback path is retry-wrapped too.
-        fallback.with_retry.assert_called_once()
+        # The fallback path is retried too.
+        assert fallback.ainvoke.await_count == 2
 
     @pytest.mark.regression
     @patch("app.agents.llm.client.log")
@@ -1142,7 +1164,8 @@ class TestAinvokeLlm:
     async def test_attaches_usage_handler_by_default(self) -> None:
         primary = self._runnable(result=AIMessage(content="ok"))
         await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
-        assert primary.ainvoke.call_args.kwargs["config"]["callbacks"]
+        handlers = _handlers(primary.ainvoke.call_args.kwargs["config"])
+        assert any(isinstance(handler, UsageMetadataCallbackHandler) for handler in handlers)
 
     async def test_graph_calls_skip_auxiliary_metering(self) -> None:
         # The agent graph is metered by LLMAccountingMiddleware; attaching the
@@ -1154,7 +1177,8 @@ class TestAinvokeLlm:
             config=RunnableConfig(),
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
-        assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
+        handlers = _handlers(primary.ainvoke.call_args.kwargs["config"])
+        assert not any(isinstance(handler, UsageMetadataCallbackHandler) for handler in handlers)
 
     async def test_an_auxiliary_call_is_metered_with_the_runs_own_context(self) -> None:
         """The ledger row for a one-shot helper must name the conversation it ran for, not just a label with no link back to the turn."""
@@ -1230,7 +1254,6 @@ class TestOneInvocationPerCall:
     @staticmethod
     def _cold_primary() -> NonCallableMagicMock:
         runnable = NonCallableMagicMock()
-        runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(
             return_value=AIMessage(
                 content="cold",
@@ -1263,6 +1286,80 @@ class TestOneInvocationPerCall:
         assert result.content == "cold"
 
 
+class TestEveryProviderIsSentAToolValidTranscript:
+    """A thread whose tool result drifted from its call still reaches every provider in a valid shape."""
+
+    @staticmethod
+    def _strict_provider(sent: list[list[AnyMessage]]) -> RunnableLambda:
+        """Reject, like OpenAI and Anthropic, a tool call not answered in the messages right after it."""
+
+        def check(messages: list[AnyMessage]) -> AIMessage:
+            sent.append(messages)
+            for index, message in enumerate(messages):
+                if isinstance(message, ToolMessage):
+                    before = messages[index - 1] if index else None
+                    if not isinstance(before, AIMessage | ToolMessage):
+                        raise ValueError(f"tool result {message.tool_call_id} follows no tool call")
+                if not isinstance(message, AIMessage) or not message.tool_calls:
+                    continue
+                answers = []
+                for follower in messages[index + 1 :]:
+                    if not isinstance(follower, ToolMessage):
+                        break
+                    answers.append(follower.tool_call_id)
+                calls = [call["id"] for call in message.tool_calls]
+                if answers != calls:
+                    raise ValueError(f"tool_call_ids did not have response messages: {calls}")
+            return AIMessage(content="ok")
+
+        return RunnableLambda(check)
+
+    @staticmethod
+    def _drifted_thread() -> list[AnyMessage]:
+        """Build the executor thread of the 2026-11-26 failure: a backfilled result after later turns."""
+        call = {"id": "call_e260", "name": "web_search", "args": {"q": "x"}}
+        return [
+            HumanMessage(content="research"),
+            AIMessage(content="", tool_calls=[call]),
+            HumanMessage(content="add a todo"),
+            AIMessage(content="todo added"),
+            HumanMessage(content="and now?"),
+            ToolMessage(content="[did not finish]", tool_call_id="call_e260", status="error"),
+        ]
+
+    @pytest.mark.regression
+    async def test_the_fallback_after_a_rate_limit_is_sent_each_result_beside_its_call(
+        self,
+    ) -> None:
+        sent: list[list[AnyMessage]] = []
+        primary = NonCallableMagicMock()
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.ainvoke = AsyncMock(side_effect=ConnectionError("429 from Workers AI"))
+
+        reply = await ainvoke_llm(
+            primary, self._drifted_thread(), fallback=self._strict_provider(sent)
+        )
+
+        assert reply.content == "ok"
+        assert [type(m).__name__ for m in sent[0]] == [
+            "HumanMessage",
+            "AIMessage",
+            "ToolMessage",
+            "HumanMessage",
+            "AIMessage",
+            "HumanMessage",
+        ]
+
+    @pytest.mark.regression
+    def test_the_sync_call_is_sent_each_result_beside_its_call(self) -> None:
+        sent: list[list[AnyMessage]] = []
+
+        reply = invoke_llm(self._strict_provider(sent), self._drifted_thread())
+
+        assert reply.content == "ok"
+        assert isinstance(sent[0][2], ToolMessage)
+
+
 class TestFallbackHandover:
     """What the fallback is handed when the primary fails: sticky session, messages, metered config, and a stamp marking it fell back."""
 
@@ -1276,7 +1373,6 @@ class TestFallbackHandover:
         """
         runnable = NonCallableMagicMock(spec=RunnableBinding)
         runnable.bound = ChatOpenRouter(model="m", api_key=SecretStr("k"))
-        runnable.with_retry = MagicMock(return_value=runnable)
         runnable.bind = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(return_value=result)
         return runnable
@@ -1298,13 +1394,13 @@ class TestFallbackHandover:
         # aux request must keep its own sticky session on the fallback too — the
         # conversation's key would re-pin its provider from a background call.
         assert fallback.bind.call_args.kwargs == {"session_id": "conv-1-aux"}
-        assert fallback.ainvoke.call_args.args[0] is messages
+        assert fallback.ainvoke.call_args.args[0] == messages
         forwarded = fallback.ainvoke.call_args.kwargs["config"]
         assert forwarded["configurable"]["session_id"] == "conv-1"
         # The auxiliary meter rides along on the fallback attempt too — its
         # tokens are as real as the primary's.
         assert any(
-            isinstance(handler, UsageMetadataCallbackHandler) for handler in forwarded["callbacks"]
+            isinstance(handler, UsageMetadataCallbackHandler) for handler in _handlers(forwarded)
         )
 
     @patch("app.agents.llm.client.log")
@@ -1513,7 +1609,6 @@ class TestFallbackHandover:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Regression for #1947 review: the retry wrapper hid the fallback's client, so both read unknown."""
-        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
         monkeypatch.setattr(
             ChatOpenRouter, "ainvoke", AsyncMock(side_effect=ConnectionError("also down"))
         )
@@ -1600,9 +1695,7 @@ class TestFallbackHandover:
         async def _burn_tokens_then_fail(
             _messages: Any, config: RunnableConfig | None = None
         ) -> AIMessage:
-            callbacks = (config or {}).get("callbacks") or []
-            assert isinstance(callbacks, list)
-            for handler in callbacks:
+            for handler in _handlers(config):
                 if isinstance(handler, UsageMetadataCallbackHandler):
                     handler.usage_metadata = {
                         "m": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
@@ -1813,13 +1906,11 @@ class TestMemoryLaneProviderSelection:
         mock_structured_tool: MagicMock,
     ) -> None:
         failing = NonCallableMagicMock()
-        failing.with_retry = MagicMock(return_value=failing)
         failing.bind = MagicMock(return_value=failing)
         failing.ainvoke = AsyncMock(side_effect=ConnectionError("aux down"))
         mock_structured_tool.return_value = failing
 
         gemini = NonCallableMagicMock()
-        gemini.with_retry = MagicMock(return_value=gemini)
         gemini.ainvoke = AsyncMock(return_value=_Extracted(fact="from-gemini"))
         mock_memory_llm.return_value.with_structured_output.return_value = gemini
 
@@ -2209,7 +2300,6 @@ class TestRecordAuxiliaryUsage:
         """A fallback that drops the handler makes exactly the calls that changed provider unattributable; both invoke sites must attach it."""
 
         failing = NonCallableMagicMock()
-        failing.with_retry = MagicMock(return_value=failing)
         failing.ainvoke = AsyncMock(side_effect=ConnectionError("primary down"))
 
         with (
@@ -2413,15 +2503,12 @@ class TestAuxiliaryMeteringWiring:
         """Build a runnable that reports token usage via the UsageMetadataCallbackHandler attached to its config, like a real provider."""
 
         async def _ainvoke(_messages: Any, config: RunnableConfig | None = None) -> AIMessage:
-            callbacks = (config or {}).get("callbacks") or []
-            assert isinstance(callbacks, list)
-            for handler in callbacks:
+            for handler in _handlers(config):
                 if isinstance(handler, UsageMetadataCallbackHandler):
                     handler.usage_metadata = {"gemini": usage}
             return AIMessage(content="ok")
 
         runnable = NonCallableMagicMock()
-        runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(side_effect=_ainvoke)
         return runnable
 
@@ -3359,7 +3446,6 @@ class TestTheSyncFallback:
     @staticmethod
     def _failing_primary() -> NonCallableMagicMock:
         runnable = NonCallableMagicMock()
-        runnable.with_retry = MagicMock(return_value=runnable)
         runnable.invoke = MagicMock(side_effect=ConnectionError("provider down"))
         return runnable
 
@@ -3442,7 +3528,6 @@ class TestTheSyncFallback:
 
     def test_a_call_with_no_lane_counts_for_the_provider_its_client_talks_to(self) -> None:
         primary = NonCallableMagicMock(spec=ChatOpenRouter)
-        primary.with_retry = MagicMock(return_value=primary)
         primary.invoke = MagicMock(return_value=AIMessage(content="ok"))
         before = _llm_call_counts("openrouter")
 
@@ -3498,10 +3583,6 @@ class TestAWorkersAiRateLimitSkipsTheRetries:
 
     _REQUEST = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
     _ON_WORKERS_AI = RunnableConfig(configurable={"provider": "cloudflare"})
-
-    @pytest.fixture(autouse=True)
-    def _no_backoff(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
 
     @classmethod
     def _rate_limited(cls) -> RateLimitError:
@@ -3614,7 +3695,6 @@ class TestTheInvokeTimeoutIsEnforced:
             return AIMessage(content="too late")
 
         runnable = NonCallableMagicMock()
-        runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(side_effect=_never_answers)
         return runnable
 
@@ -3693,10 +3773,7 @@ class TestAReadTimeoutMidStreamIsRetriedThenFallsBack:
         return llm, requests_served
 
     @pytest.mark.regression
-    async def test_the_next_attempt_answers_after_a_mid_stream_read_timeout(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+    async def test_the_next_attempt_answers_after_a_mid_stream_read_timeout(self) -> None:
         whole_reply = httpx.ByteStream(_stream_frame("Hello", finish="stop") + b"data: [DONE]\n\n")
         llm, requests_served = self._openrouter([_ReadTimeoutMidStream(), whole_reply])
 
@@ -3746,6 +3823,159 @@ class TestAReadTimeoutMidStreamIsRetriedThenFallsBack:
         assert not isinstance(error, LLM_FALLBACK_EXCEPTIONS)
 
 
+def _completion_body(content: str) -> dict[str, object]:
+    return {
+        "id": "gen-1",
+        "object": "chat.completion",
+        "created": 1,
+        "model": "@cf/test/model",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+
+class TestAStalledStreamFailsFastToTheFallback:
+    """Workers AI held comms calls 236 s with no first token, then sent a 408; the fallback then answered in 3 s.
+
+    Drives the real streaming ChatWorkersAI over an httpx mock transport. The
+    deadlines are shortened; the outer ceiling is left far above them, so a
+    call that waits for it fails the elapsed-time assertion.
+    """
+
+    _DEADLINE = 0.2
+    _CEILING = 5.0
+    _ON_WORKERS_AI = RunnableConfig(configurable={"provider": "cloudflare"})
+
+    @pytest.fixture(autouse=True)
+    def _short_deadlines(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # raising=False: the regression proof runs these tests on a base without the deadlines.
+        monkeypatch.setattr(
+            client_module, "LLM_FIRST_CHUNK_DEADLINE_SECONDS", self._DEADLINE, raising=False
+        )
+        monkeypatch.setattr(
+            client_module, "LLM_CHUNK_IDLE_DEADLINE_SECONDS", self._DEADLINE, raising=False
+        )
+
+    async def _ask(self, llm: Runnable, **kwargs: Any) -> tuple[Any, float]:
+        started = time.monotonic()
+        reply = await ainvoke_llm(
+            llm,
+            [HumanMessage(content="hi")],
+            config=self._ON_WORKERS_AI,
+            options=LLMInvokeOptions(timeout=self._CEILING, meter_auxiliary=False),
+            **kwargs,
+        )
+        return reply, time.monotonic() - started
+
+    @pytest.mark.regression
+    async def test_a_stream_with_no_first_chunk_falls_back_within_the_deadline(self) -> None:
+        llm, requests_served = workers_ai_over([sse_response(SilentAfterStream())])
+        labels = {"provider": "cloudflare", "outcome": "failed"}
+        before = REGISTRY.get_sample_value("gaia_llm_call_total", labels) or 0.0
+
+        with emitted_log_records() as records:
+            reply, elapsed = await self._ask(
+                llm, fallback=RunnableLambda(lambda _: AIMessage(content="fallback-ok"))
+            )
+
+        assert reply.content == "fallback-ok"
+        assert elapsed < self._DEADLINE * 5
+        assert requests_served[0] == 1
+        assert REGISTRY.get_sample_value("gaia_llm_call_total", labels) == before + 1
+        (downgrade,) = [r for r in records if "falling back" in r["message"]]
+        assert downgrade["extra"]["error_type"] == "LLMStreamStallError"
+        assert downgrade["extra"]["error_family"] == "timeout"
+
+    @pytest.mark.regression
+    async def test_a_stream_that_goes_silent_mid_reply_falls_back_within_the_deadline(
+        self,
+    ) -> None:
+        llm, _ = workers_ai_over([sse_response(SilentAfterStream(_stream_frame("Hel")))])
+
+        reply, elapsed = await self._ask(
+            llm, fallback=RunnableLambda(lambda _: AIMessage(content="fallback-ok"))
+        )
+
+        assert reply.content == "fallback-ok"
+        assert elapsed < self._DEADLINE * 5
+
+    async def test_a_stall_with_no_fallback_is_retried_then_raised(self) -> None:
+        llm, requests_served = workers_ai_over(
+            [sse_response(SilentAfterStream()) for _ in range(LLM_RETRY_MAX_ATTEMPTS)]
+        )
+
+        with pytest.raises(llm_exceptions.LLMStreamStallError):
+            await self._ask(llm)
+
+        assert requests_served[0] == LLM_RETRY_MAX_ATTEMPTS
+
+    async def test_a_slow_steady_stream_outlasting_the_first_deadline_still_answers(
+        self,
+    ) -> None:
+        frames = [_stream_frame(part) for part in ("He", "l", "l", "o")]
+        steady = SilentAfterStream(
+            *frames,
+            _stream_frame("", finish="stop"),
+            b"data: [DONE]\n\n",
+            pause=self._DEADLINE / 2,
+        )
+        llm, _ = workers_ai_over([sse_response(steady)])
+
+        reply, elapsed = await self._ask(llm)
+
+        assert reply.content == "Hello"
+        assert elapsed > self._DEADLINE
+
+    async def test_an_unstreamed_call_is_not_held_to_the_chunk_deadline(self) -> None:
+        reply_body = httpx.Response(200, json=_completion_body("whole"))
+        llm, _ = workers_ai_over([reply_body], streaming=False, delay=self._DEADLINE * 2)
+
+        reply, _ = await self._ask(llm)
+
+        assert reply.content == "whole"
+
+    async def test_the_retry_wrapper_retries_a_stall_unless_told_not_to(self) -> None:
+        """The fallback's own retries take the default: with no lane left, retrying is all it has."""
+        llm, requests_served = workers_ai_over(
+            [sse_response(SilentAfterStream()) for _ in range(LLM_RETRY_MAX_ATTEMPTS)]
+        )
+
+        with pytest.raises(llm_exceptions.LLMStreamStallError):
+            await with_llm_retry(llm).ainvoke([HumanMessage(content="hi")])
+
+        assert requests_served[0] == LLM_RETRY_MAX_ATTEMPTS
+
+    @pytest.mark.parametrize("asynchronous", [True, False])
+    async def test_an_attempt_reaches_the_model_with_its_config_and_arguments(
+        self, *, asynchronous: bool
+    ) -> None:
+        model = NonCallableMagicMock()
+        model.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
+        model.invoke = MagicMock(return_value=AIMessage(content="ok"))
+        config = RunnableConfig(configurable={"thread_id": "t-1"})
+
+        if asynchronous:
+            await with_llm_retry(model).ainvoke("hi", config=config, stop=["END"])
+            sent = model.ainvoke.call_args
+        else:
+            with_llm_retry(model).invoke("hi", config=config, stop=["END"])
+            sent = model.invoke.call_args
+
+        assert sent.kwargs["config"]["configurable"] == {"thread_id": "t-1"}
+        assert sent.kwargs["stop"] == ["END"]
+
+    def test_a_stall_is_a_timeout_that_is_retried_or_downgraded(self) -> None:
+        stall = llm_exceptions.LLMStreamStallError("silent")
+
+        assert isinstance(stall, LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(stall, LLM_FALLBACK_EXCEPTIONS)
+
+
 class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
     """Binding OpenRouter's sticky session_id onto a Google client raises ValidationError before the request even leaves the process.
 
@@ -3766,7 +3996,6 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
 
         runnable = NonCallableMagicMock(spec=RunnableBinding)
         runnable.bound = create_fake_llm(["ok"])
-        runnable.with_retry = MagicMock(return_value=runnable)
         runnable.bind = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(return_value=result)
         return runnable
@@ -4139,7 +4368,6 @@ class TestFailedCallsReachTheLedger:
     @staticmethod
     def _runnable(side_effect: Any) -> NonCallableMagicMock:
         runnable = NonCallableMagicMock()
-        runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(side_effect=side_effect)
         return runnable
 
@@ -4215,7 +4443,6 @@ class TestFailedCallsReachTheLedger:
         """The fallback answering IS the call succeeding; an error row here would double-count a turn the user got a reply for."""
         primary = self._runnable(ConnectionError("provider down"))
         fallback = NonCallableMagicMock()
-        fallback.with_retry = MagicMock(return_value=fallback)
         fallback.ainvoke = AsyncMock(return_value=AIMessage(content="rescued"))
         fallback.bind = MagicMock(return_value=fallback)
 

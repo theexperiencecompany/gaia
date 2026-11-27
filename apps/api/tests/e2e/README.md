@@ -5,7 +5,7 @@ Full-stack scenario tests that drive a real compiled LangGraph graph from a user
 Each test file represents a distinct user scenario:
 
 - **`test_create_todo_flow`** — The agent receives a task, calls `plan_tasks`, and the `todos` channel in state is populated correctly.
-- **`test_send_email_flow`** — A dangling tool call (email send interrupted mid-flight) is cleaned up by `filter_messages_node` before the model is re-invoked.
+- **`test_send_email_flow`** — A dangling tool call (email send interrupted mid-flight) is answered as unfinished by the provider transcript (`app/agents/llm/transcript.py`) before the model is re-invoked.
 - **`test_multi_tool_scenario`** — Multiple sequential tool calls within a single turn all execute and produce ToolMessages.
 - **`test_workflow_execution`** — A workflow definition is compiled and executed through the agent graph.
 - **`test_tool_visibility`** — The chat stream's frame contract, scenario by scenario: the nested `tool_calls_data` envelope, the `tool_call_id` join, the node gate, dedup, suppression rules, cancellation.

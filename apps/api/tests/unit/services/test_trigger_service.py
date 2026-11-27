@@ -1833,9 +1833,15 @@ class TestCalendarTriggerHandler:
 
         result = await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_created", config)
         assert result == ["cal_tid_1"]
+        trigger_config = mock_composio.composio.triggers.create.call_args.kwargs["trigger_config"]
+        assert trigger_config == {"calendarId": "primary"}
 
+    @pytest.mark.regression
     @patch("app.services.triggers.base.get_composio_service")
-    async def test_register_event_starting_soon_success(self, mock_get_composio):
+    async def test_register_event_starting_soon_sends_the_lead_as_composios_fire_threshold(
+        self, mock_get_composio
+    ):
+        """Regression: the lead went to countdown_window_minutes, a look-ahead, so Composio fired at its 10-minute default."""
         mock_result = MagicMock()
         mock_result.trigger_id = "soon_tid_1"
         mock_composio = MagicMock()
@@ -1845,7 +1851,7 @@ class TestCalendarTriggerHandler:
         handler = CalendarTriggerHandler()
         data = CalendarEventStartingSoonConfig(
             calendar_ids=["primary"],
-            minutes_before_start=15,
+            minutes_before_start=60,
             include_all_day=True,
         )
         config = _make_trigger_config("calendar_event_starting_soon", trigger_data=data)
@@ -1854,11 +1860,14 @@ class TestCalendarTriggerHandler:
             USER_ID, WORKFLOW_ID, "calendar_event_starting_soon", config
         )
         assert result == ["soon_tid_1"]
-        # Verify composio config includes countdown window and include_all_day
         call_kwargs = mock_composio.composio.triggers.create.call_args
-        trigger_config = call_kwargs.kwargs.get("trigger_config", {})
-        assert trigger_config.get("countdown_window_minutes") == 15
-        assert trigger_config.get("include_all_day") is True
+        # Composio's EventStartingSoonConfig field names, read from its triggers_types API (2026-11-27)
+        assert call_kwargs.kwargs["trigger_config"] == {
+            "calendarId": "primary",
+            "minutesBeforeStart": 60,
+            "countdownWindowMinutes": 60,
+            "includeAllDay": True,
+        }
 
     @patch("app.services.triggers.base.get_composio_service")
     async def test_register_multiple_calendars(self, mock_get_composio):

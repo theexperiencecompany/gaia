@@ -33,7 +33,7 @@ from app.agents.core.graph_manager import (
     GraphUnavailableError,
 )
 from app.agents.core.held_replies import HeldReplies
-from app.agents.core.interruption import close_open_tool_calls, record_interruption
+from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, dev_option
 from app.agents.llm.reasoning import extract_reasoning_delta
@@ -467,7 +467,6 @@ async def execute_subagent_stream(
         else ctx.integration_id or ctx.agent_name or "unknown"
     )
     graph_config = cast(RunnableConfig, run_config)
-    await close_open_tool_calls(ctx.subagent_graph, graph_config)
     cancelled = False
     stopped_by_executor = False
     segment_start = time.perf_counter()
@@ -522,8 +521,6 @@ async def execute_subagent_stream(
                 await _consume_stream_event(run, stream_mode, payload)
         if cancelled:
             await record_interruption(ctx.subagent_graph, graph_config)
-        elif stopped_by_executor:
-            await close_open_tool_calls(ctx.subagent_graph, graph_config)
     except Exception:
         observe_subagent_run(time.perf_counter() - segment_start, subagent_id=label, status="error")
         raise

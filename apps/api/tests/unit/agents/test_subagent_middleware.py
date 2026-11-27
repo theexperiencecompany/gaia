@@ -203,7 +203,6 @@ class TestSetters:
     def test_set_llm(self):
         mw = _make_middleware()
         mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mw.set_llm(mock_llm)
         assert mw._llm is mock_llm
 

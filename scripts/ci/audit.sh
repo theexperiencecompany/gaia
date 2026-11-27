@@ -20,6 +20,9 @@
 #   secrets --lane L   Pinned gitleaks over every commit this change adds,
 #                      merged-in branches included: base-rev..HEAD on a PR and
 #                      a merge group, the pushed range on a push.
+#   semgrep --lane L   The pinned semgrep image over apps/api/app with the vendored
+#                      rule pack, CI's and local's one command; fails on a
+#                      finding and on a scan that saw zero files.
 #
 # Both audits fail on every advisory at or above their level, on a PR as on
 # master, as trivy does: a CVE in what master already ships blocks the next
@@ -48,12 +51,17 @@
 #                     SECRETS_ROOT (tests; defaults to the repo root);
 #                     needs a fetch-depth: 0 checkout. Exit: 0 clean; 1 a
 #                     finding (its verdict written from the SARIF) or a failed scan.
+#   semgrep           SEMGREP_ROOT (tests; defaults to the repo root), RUNNER_TEMP;
+#                     needs docker. Exit: 0 clean; 1 a finding (its verdict written
+#                     from the SARIF), zero files scanned, or a failed scan.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
 # shellcheck source=scripts/ci/lib/pinned-release.sh
 source "$(dirname "$0")/lib/pinned-release.sh"
+# shellcheck source=scripts/ci/lib/service-images.sh
+source "$(dirname "$0")/lib/service-images.sh"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -464,8 +472,57 @@ cmd_secrets() {
   esac
 }
 
+# The scan CI gates on: the vendored rule pack over the API's Python, with the engine
+# SEMGREP_IMAGE pins. The image has no ENTRYPOINT, so the command spells `semgrep`.
+SEMGREP_RULES=tools/semgrep/p-python.yaml
+SEMGREP_TARGET=apps/api/app
+
+# A whole-directory scan, not diff-scoped: a security check that only looks at
+# touched files stops noticing the rest. Semgrep scans the files git tracks, so
+# the checkout and its git dir are mounted at their own paths: a worktree's .git
+# is a file naming the main repo's git dir, and without it git lists nothing and
+# semgrep passes over zero files. Zero files scanned is therefore a failure.
+cmd_semgrep() {
+  local lane=""
+  if [[ "${1:-}" == "--lane" ]]; then
+    lane="${2:?semgrep --lane needs a lane id}"
+  fi
+  [ -n "$lane" ] || ci_die "semgrep: --lane <job>/<check> is required"
+  command -v docker >/dev/null || ci_die "semgrep: docker is not installed; it runs the pinned image $SEMGREP_IMAGE"
+
+  local root="${SEMGREP_ROOT:-$REPO_ROOT}" common work status=0 scanned
+  root="$(git -C "$root" rev-parse --show-toplevel)"
+  common="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)"
+  work="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/semgrep.XXXXXX")"
+  # shellcheck disable=SC2064 # expand now: work is local to this function
+  trap "rm -rf '$work'" EXIT
+  local mounts=(-v "$root:$root")
+  [[ "$common" == "$root"/* ]] || mounts+=(-v "$common:$common:ro")
+
+  ci_group "semgrep ($SEMGREP_RULES over $SEMGREP_TARGET)"
+  docker run --rm "${mounts[@]}" -v "$work:/out" -w "$root" \
+    --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="$root" \
+    "$SEMGREP_IMAGE" semgrep scan --config "$SEMGREP_RULES" "$SEMGREP_TARGET" \
+    --error --metrics=off --sarif-output=/out/semgrep.sarif --json-output=/out/semgrep.json \
+    || status=$?
+  ci_endgroup
+
+  [ -f "$work/semgrep.json" ] || ci_die "semgrep: the scan itself failed (exit $status, no report written)"
+  scanned="$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))["paths"]["scanned"]))' "$work/semgrep.json")"
+  [ "$scanned" -gt 0 ] || ci_die "semgrep: scanned 0 files under $SEMGREP_TARGET, so it checked nothing; git could not list the tree"
+  case "$status" in
+    0) ci_ok "semgrep: OK ($scanned files clean)" ;;
+    1)
+      python3 "$REPO_ROOT/scripts/ci/verdict.py" sarif --lane "$lane" "$work/semgrep.sarif"
+      ci_die "semgrep: findings in $SEMGREP_TARGET (above)"
+      ;;
+    *) ci_die "semgrep: the scan itself failed (exit $status)" ;;
+  esac
+}
+
 usage() {
-  sed -n '2,22p' "$0" >&2
+  sed -n '2,25p' "$0" >&2
 }
 
 main() {
@@ -480,6 +537,7 @@ main() {
     evlog)            cmd_evlog "$@" ;;
     uv-lock)          cmd_uv_lock "$@" ;;
     secrets)          cmd_secrets "$@" ;;
+    semgrep)          cmd_semgrep "$@" ;;
     *)
       echo "audit.sh: unknown subcommand '${sub}'" >&2
       usage

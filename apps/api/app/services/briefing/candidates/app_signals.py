@@ -1,6 +1,7 @@
 """App signals as candidates: what the scouts found in the user's connected apps."""
 
 from collections.abc import Sequence
+from datetime import datetime
 import math
 
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
@@ -13,9 +14,9 @@ from app.utils.timezone import as_utc
 
 def _detail(item: RememberedSignal, clock: UserClock) -> str:
     signal = item.signal
-    parts = [f"{signal.kind}"]
+    parts = [signal.kind]
     if signal.state:
-        parts.append(f"state: {signal.state}")
+        parts.append(f"{signal.app} shows it as {signal.state}")
     if signal.why:
         parts.append(f"why: {signal.why}")
     parts.append(memory_note(item, clock))
@@ -30,10 +31,31 @@ def _rank(item: RememberedSignal) -> tuple[bool, float]:
     return (signal.importance is not SignalImportance.HIGH, -recency)
 
 
+def _passed_over(item: RememberedSignal, last_brief: datetime | None) -> bool:
+    """Whether the last stored brief weighed this undated row, left it out, and nothing changed since.
+
+    last_brief is when the last stored brief was made: a row first read after it, by a run that
+    never went out, was never weighed, and before any brief nothing was.
+    """
+    memory, signal = item.memory, item.signal
+    if last_brief is None or memory is None or memory.times_shown:
+        return False
+    if memory.last_state != signal.state:
+        return False
+    first, updated, seen = (
+        as_utc(memory.first_seen),
+        as_utc(signal.updated_at),
+        as_utc(memory.last_seen),
+    )
+    weighed = first is not None and first < last_brief
+    edited_since = updated is not None and seen is not None and updated > seen
+    return weighed and signal.due_at is None and not edited_since
+
+
 def app_signal_candidates(
-    remembered: Sequence[RememberedSignal], clock: UserClock
+    remembered: Sequence[RememberedSignal], clock: UserClock, last_brief: datetime | None
 ) -> list[BriefCandidate]:
-    """Return one candidate per signal, important then most recently moved first, memory in its detail."""
+    """Return one candidate per signal not passed over before, important then most recently moved first."""
     return [
         BriefCandidate(
             origin=CandidateOrigin.APP_SIGNAL,
@@ -55,4 +77,5 @@ def app_signal_candidates(
             moved=item.previous_state is not None,
         )
         for item in sorted(remembered, key=_rank)
+        if not _passed_over(item, last_brief)
     ]
