@@ -45,12 +45,14 @@ def boot_violations(source: str) -> list[str]:
         for call in calls
         if _called_name(call) in HAND_BOOTSTRAP
     ]
-    if any(_called_name(call) == "boot_process" for call in calls):
-        return found
+    boots = [call.lineno for call in calls if _called_name(call) == "boot_process"]
+    first_boot = min(boots, default=None)
     return found + [
-        f"line {call.lineno}: providers.{_called_name(call)}() without boot_process()"
+        f"line {call.lineno}: providers.{_called_name(call)}() "
+        + ("without boot_process()" if first_boot is None else "before boot_process()")
         for call in calls
         if _is_registry_call(call, REGISTRY_CALLS)
+        and (first_boot is None or call.lineno < first_boot)
     ]
 
 
@@ -95,6 +97,12 @@ def test_the_script_trees_are_found() -> None:
             ["line 2: providers.aget() without boot_process()"],
         ),
         ("boot_process('main_app')\nproviders.get('x')", []),
+        (
+            "async def main():\n"
+            "    await providers.aget('chromadb_constructor')\n"
+            "    boot_process('main_app')",
+            ["line 2: providers.aget() before boot_process()"],
+        ),
         ("other.register(x)\nsettings.get('x')", []),
     ],
 )
