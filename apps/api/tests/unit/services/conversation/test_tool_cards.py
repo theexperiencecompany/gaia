@@ -571,3 +571,14 @@ def test_a_cut_seeds_output_keeps_the_length_its_tool_returned() -> None:
     cards = [stored] * (summarization.MAX_ENTRY_TEXT_CHARS // MAX_OUTPUT_CHARS + 1)
     *_, last = fold_cards([], seed=cards).tool_data
     assert last["data"] == {"tool_call_id": "c1", "output": "", "output_original_length": 9_000_000}
+
+
+def test_thinking_past_a_spent_budget_leaves_no_empty_thinking_step() -> None:
+    calls_in_budget = summarization.MAX_CARD_TEXT_CHARS // MAX_OUTPUT_CHARS
+    payloads = [
+        *_subagent_calls(calls_in_budget, "o" * MAX_OUTPUT_CHARS),
+        reasoning("a late thought", subagent_id="s1"),
+    ]
+    (shown,) = fold_cards(payloads).tool_data
+    calls = cast(list[dict[str, object]], cast(dict[str, object], shown["data"])["tool_calls"])
+    assert [call["tool_call_id"] for call in calls] == [f"c{i}" for i in range(calls_in_budget)]

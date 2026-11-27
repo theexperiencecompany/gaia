@@ -21,7 +21,9 @@ from app.constants.scouts import SIGNAL_MEMORY_RETENTION
 from app.constants.waits import WAIT_TTL_SECONDS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.approval_ledger import LIVE_ROW_FILTER, LIVE_ROW_INDEX_NAME
+from app.db.repositories.conversation_entries import OUTPUTS_DROPPED_FIELD
 from app.db.repositories.conversation_migration_guard import RENAMED_ENTRY_FIELDS
+from app.db.repositories.conversation_output_retention import HOLDS_CARDS, OUTPUTS_TO_DROP_INDEX
 from app.db.repositories.conversation_sweep import SWEEP_DUE_FILTER, SWEEP_INDEX_NAME
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.link_reports import REPORTER_UNIQUE_INDEX
@@ -390,6 +392,11 @@ CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
     (
         [("user_id", 1), ("at", 1)],
         {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
+    ),
+    # the tool output retention sweep: entries with cards, unswept (missing marker) by age
+    (
+        [(OUTPUTS_DROPPED_FIELD, 1), ("at", 1)],
+        {"name": OUTPUTS_TO_DROP_INDEX, "partialFilterExpression": HOLDS_CARDS},
     ),
     # the boot check: an entry still in the old message shape, which only those carry a type
     (

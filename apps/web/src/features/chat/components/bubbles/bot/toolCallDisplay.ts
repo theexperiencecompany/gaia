@@ -93,7 +93,10 @@ export function deriveToolCallDisplay(call: ToolCallEntry): ToolCallDisplay {
     !!call.inputs &&
     typeof call.inputs === "object" &&
     Object.keys(call.inputs).length > 0;
-  const hasOutput = !!call.output && call.output.trim().length > 0;
+  // A cut output still has its note to show, even when the server kept none of it.
+  const hasOutput =
+    (!!call.output && call.output.trim().length > 0) ||
+    call.output_original_length != null;
   return {
     skillLabel,
     primaryLabel,
