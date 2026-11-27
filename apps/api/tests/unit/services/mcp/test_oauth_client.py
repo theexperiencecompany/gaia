@@ -6,7 +6,7 @@ from mcp.shared.auth import OAuthMetadata
 import pytest
 
 from app.config.settings import settings
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.mcp_config import DCRClientRegistration, MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.oauth_client import OAuthClient, resolve_oauth_client
 
@@ -29,7 +29,7 @@ def _discovery(*, metadata_document: bool) -> OAuthDiscovery:
     )
 
 
-def _store(registration: dict[str, str] | None = None) -> AsyncMock:
+def _store(registration: DCRClientRegistration | None = None) -> AsyncMock:
     store = AsyncMock(spec=MCPTokenStore)
     store.get_dcr_client.return_value = registration
     return store
@@ -47,7 +47,7 @@ def _public_api_base(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.unit
 class TestResolveOAuthClient:
     async def test_configured_credentials_win_without_reading_the_registration(self) -> None:
-        store = _store({"client_id": "dcr-id"})
+        store = _store(DCRClientRegistration(client_id="dcr-id"))
 
         client = await resolve_oauth_client(
             store,
@@ -60,7 +60,7 @@ class TestResolveOAuthClient:
         store.get_dcr_client.assert_not_awaited()
 
     async def test_a_stored_registration_beats_the_metadata_document(self) -> None:
-        store = _store({"client_id": "dcr-id", "client_secret": "dcr-secret"})
+        store = _store(DCRClientRegistration(client_id="dcr-id", client_secret="dcr-secret"))
 
         client = await resolve_oauth_client(
             store, INTEGRATION_ID, _config(), _discovery(metadata_document=True)

@@ -53,7 +53,12 @@ from app.models.integration_models import (
     StoredIntegrationTool,
     UserIntegrationDocument,
 )
-from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
+from app.models.mcp_config import (
+    DCRClientRegistration,
+    MCPConfig,
+    OAuthDiscovery,
+    OidcTokenResponse,
+)
 from app.services.mcp import mcp_client, mcp_oauth, server_routing, tool_naming
 from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
@@ -383,10 +388,36 @@ class TestMCPClientBuildConfig:
         auth = config["mcpServers"][INTEGRATION_ID]["auth"]
         assert isinstance(auth, StoredOAuthTokenAuth)
 
+        client.token_store.get_bearer_token.assert_awaited_once_with(INTEGRATION_ID)
+
         client.token_store.get_oauth_token = AsyncMock(return_value="later_tok")
         request = httpx.Request("POST", "https://mcp.example.com/mcp")
         await anext(auth.async_auth_flow(request))
         assert request.headers["Authorization"] == "Bearer later_tok"
+        client.token_store.get_oauth_token.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_a_session_refreshes_the_token_the_server_rejected_and_resends(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config(requires_auth=True)
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        client.token_store.get_oauth_token = AsyncMock(return_value="oauth_tok")
+        client.token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        config = await client._build_config(INTEGRATION_ID, mcp_config)
+        auth = config["mcpServers"][INTEGRATION_ID]["auth"]
+        assert isinstance(auth, StoredOAuthTokenAuth)
+        flow = auth.async_auth_flow(httpx.Request("POST", "https://mcp.example.com/mcp"))
+        sent = await anext(flow)
+
+        async def refresh(*_: object) -> bool:
+            client.token_store.get_oauth_token.return_value = "fresh_tok"
+            return True
+
+        client._try_refresh_token = AsyncMock(side_effect=refresh)
+        resent = await flow.asend(httpx.Response(401, request=sent))
+
+        assert resent.headers["Authorization"] == "Bearer fresh_tok"
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        client.token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_build_config_raises_when_auth_required_no_token(self):
         client = MCPClient(user_id=USER_ID)
@@ -463,6 +494,11 @@ class TestMCPClientBuildConfig:
 
         assert token == "new_tok"
         client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        assert client.token_store.get_oauth_token.await_args_list == [
+            call(INTEGRATION_ID),
+            call(INTEGRATION_ID),
+        ]
+        client.token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
 
 
 class TestMCPClientConnect:
@@ -1756,7 +1792,7 @@ class TestMCPTokenStoreDCRClient:
         )
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.get_dcr_client(INTEGRATION_ID)
-        assert result == {"client_id": "dcr_123", "client_secret": "sec"}
+        assert result == DCRClientRegistration(client_id="dcr_123", client_secret="sec")
 
     async def test_get_dcr_client_none(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -2032,6 +2068,41 @@ class TestTryRefreshToken:
         )
         assert result is False
         token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_a_metadata_document_client_refreshes_as_its_document_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "HOST", "https://api.gaia.test")
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_dcr_client = AsyncMock(return_value=None)
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"access_token": "new_access", "expires_in": 3600}
+
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(),
+                _make_oauth_discovery(
+                    metadata_overrides={"client_id_metadata_document_supported": True}
+                ),
+            )
+
+        assert result is True
+        posted = mock_client.post.await_args.kwargs
+        assert posted["data"]["client_id"] == (
+            "https://api.gaia.test/api/v1/oauth/client-metadata.json"
+        )
+        assert "Authorization" not in posted["headers"]
 
     async def test_refresh_http_error(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -2147,7 +2218,7 @@ class TestTryRefreshToken:
         token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+            return_value=DCRClientRegistration(client_id="dcr_cid", client_secret="dcr_sec")
         )
         token_store.store_oauth_tokens = AsyncMock()
 
@@ -2200,6 +2271,36 @@ class TestTryRefreshToken:
 
 
 class TestRevokeTokens:
+    async def test_a_metadata_document_client_revokes_as_its_document_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "HOST", "https://api.gaia.test")
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_oauth_token = AsyncMock(return_value=None)
+        token_store.get_dcr_client = AsyncMock(return_value=None)
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={
+                "revocation_endpoint": "https://auth.example.com/revoke",
+                "client_id_metadata_document_supported": True,
+            }
+        )
+
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock()
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            await revoke_tokens(token_store, INTEGRATION_ID, _make_mcp_config(), oauth_config)
+
+        posted = mock_client.post.await_args.kwargs
+        assert posted["data"] == {
+            "token": "refresh_tok",
+            "token_type_hint": "refresh_token",
+            "client_id": "https://api.gaia.test/api/v1/oauth/client-metadata.json",
+        }
+
     async def test_revokes_both_tokens(self):
         token_store = AsyncMock(spec=MCPTokenStore)
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
@@ -2226,7 +2327,7 @@ class TestRevokeTokens:
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_oauth_token = AsyncMock(return_value=None)
         token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+            return_value=DCRClientRegistration(client_id="dcr_cid", client_secret="dcr_sec")
         )
 
         oauth_config = _make_oauth_discovery(
@@ -4042,7 +4143,9 @@ class TestMCPClientBuildOauthAuthUrl:
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "dcr_id"})
+            client.token_store.get_dcr_client = AsyncMock(
+                return_value=DCRClientRegistration(client_id="dcr_id")
+            )
             client.token_store.create_oauth_state = AsyncMock(return_value="state")
 
             url = await build_oauth_auth_url(

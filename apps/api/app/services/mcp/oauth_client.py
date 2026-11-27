@@ -55,8 +55,8 @@ async def resolve_oauth_client(
         return OAuthClient(configured_id, configured_secret)
 
     registration = await token_store.get_dcr_client(integration_id)
-    if registration and (registered_id := registration.get("client_id")):
-        return OAuthClient(registered_id, registration.get("client_secret"))
+    if registration:
+        return OAuthClient(registration.client_id, registration.client_secret)
 
     api_base = get_api_base_url()
     if oauth_config.as_metadata.client_id_metadata_document_supported and not is_localhost_url(

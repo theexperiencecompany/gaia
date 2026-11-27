@@ -14,7 +14,7 @@ import secrets
 from typing import cast
 
 from cryptography.fernet import Fernet
-from pydantic import TypeAdapter, ValidationError
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.config.settings import settings
@@ -38,8 +38,6 @@ from app.models.mcp_config import (
 )
 from app.utils.mcp_oauth_utils import TokenIntrospectionResponse, introspect_token as do_introspect
 from shared.py.wide_events import log
-
-_DCR_CLIENT_REGISTRATION: TypeAdapter[DCRClientRegistration] = TypeAdapter(DCRClientRegistration)
 
 
 class OAuthStateStoreError(RuntimeError):
@@ -452,7 +450,7 @@ class MCPTokenStore:
             try:
                 # Written by store_dcr_client from an RFC 7591 registration
                 # response; only the credential fields are ever read back.
-                return _DCR_CLIENT_REGISTRATION.validate_json(cred.client_registration)
+                return DCRClientRegistration.model_validate_json(cred.client_registration)
             except ValidationError:
                 return None
         return None

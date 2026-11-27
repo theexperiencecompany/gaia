@@ -7,6 +7,7 @@ current token, and a 401 asks the owner to refresh the rejected one and retries 
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 
 import httpx
+from typing_extensions import override
 
 TokenSource = Callable[[str | None], Awaitable[str | None]]
 
@@ -17,11 +18,13 @@ class StoredOAuthTokenAuth(httpx.Auth):
     def __init__(self, token_source: TokenSource) -> None:
         self._token_source = token_source
 
+    @override
     def sync_auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response]:
         raise RuntimeError(
             f"MCP OAuth to {request.url.host} needs an async client; the token store is async only"
         )
 
+    @override
     async def async_auth_flow(
         self, request: httpx.Request
     ) -> AsyncGenerator[httpx.Request, httpx.Response]:
