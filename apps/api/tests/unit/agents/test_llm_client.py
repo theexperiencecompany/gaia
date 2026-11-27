@@ -55,7 +55,7 @@ from pydantic import BaseModel, Field, SecretStr
 import pytest
 import tenacity
 
-from app.agents.llm import client as client_module
+from app.agents.llm import client as client_module, exceptions as llm_exceptions
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
     _MODEL_FIELD,
@@ -89,7 +89,6 @@ from app.agents.llm.exceptions import (
     LLM_FALLBACK_EXCEPTIONS,
     LLM_RETRYABLE_EXCEPTIONS,
     LLMNotConfiguredError,
-    LLMStreamStallError,
     MalformedStructuredOutputError,
 )
 from app.agents.llm.types import LLMProvider, ProviderLLM
@@ -130,7 +129,13 @@ from app.services.llm_metering import LLMCallContext
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
-from tests.helpers import create_fake_llm, emitted_log_records
+from tests.helpers import (
+    SilentAfterStream,
+    create_fake_llm,
+    emitted_log_records,
+    sse_response,
+    workers_ai_over,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -3744,21 +3749,6 @@ class TestAReadTimeoutMidStreamIsRetriedThenFallsBack:
         assert not isinstance(error, LLM_FALLBACK_EXCEPTIONS)
 
 
-class _SilentAfter(httpx.AsyncByteStream):
-    """A streamed reply that sends its frames, each after a pause, then holds the socket open sending nothing."""
-
-    def __init__(self, *frames: bytes, pause: float = 0.0) -> None:
-        self._frames = frames
-        self._pause = pause
-
-    async def __aiter__(self) -> AsyncIterator[bytes]:
-        for frame in self._frames:
-            await asyncio.sleep(self._pause)
-            yield frame
-        await asyncio.Event().wait()
-        yield b""
-
-
 def _completion_body(content: str) -> dict[str, object]:
     return {
         "id": "gen-1",
@@ -3789,33 +3779,13 @@ class TestAStalledStreamFailsFastToTheFallback:
 
     @pytest.fixture(autouse=True)
     def _short_deadlines(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(client_module, "LLM_FIRST_CHUNK_DEADLINE_SECONDS", self._DEADLINE)
-        monkeypatch.setattr(client_module, "LLM_CHUNK_IDLE_DEADLINE_SECONDS", self._DEADLINE)
-
-    @staticmethod
-    def _workers_ai(
-        replies: list[httpx.Response], *, streaming: bool = True, delay: float = 0.0
-    ) -> tuple[ChatWorkersAI, list[int]]:
-        requests_served = [0]
-
-        async def _reply(_request: httpx.Request) -> httpx.Response:
-            requests_served[0] += 1
-            await asyncio.sleep(delay)
-            return replies.pop(0)
-
-        llm = ChatWorkersAI(
-            model="@cf/test/model",
-            api_key=SecretStr("k"),
-            base_url="https://api.cloudflare.com/client/v4/accounts/a/ai/v1",
-            streaming=streaming,
-            max_retries=0,
-            http_async_client=httpx.AsyncClient(transport=httpx.MockTransport(_reply)),
+        # raising=False: the regression proof runs these tests on a base without the deadlines.
+        monkeypatch.setattr(
+            client_module, "LLM_FIRST_CHUNK_DEADLINE_SECONDS", self._DEADLINE, raising=False
         )
-        return llm, requests_served
-
-    @staticmethod
-    def _sse(stream: httpx.AsyncByteStream) -> httpx.Response:
-        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=stream)
+        monkeypatch.setattr(
+            client_module, "LLM_CHUNK_IDLE_DEADLINE_SECONDS", self._DEADLINE, raising=False
+        )
 
     async def _ask(self, llm: Runnable, **kwargs: Any) -> tuple[Any, float]:
         started = time.monotonic()
@@ -3830,7 +3800,7 @@ class TestAStalledStreamFailsFastToTheFallback:
 
     @pytest.mark.regression
     async def test_a_stream_with_no_first_chunk_falls_back_within_the_deadline(self) -> None:
-        llm, requests_served = self._workers_ai([self._sse(_SilentAfter())])
+        llm, requests_served = workers_ai_over([sse_response(SilentAfterStream())])
         labels = {"provider": "cloudflare", "outcome": "failed"}
         before = REGISTRY.get_sample_value("gaia_llm_call_total", labels) or 0.0
 
@@ -3851,7 +3821,7 @@ class TestAStalledStreamFailsFastToTheFallback:
     async def test_a_stream_that_goes_silent_mid_reply_falls_back_within_the_deadline(
         self,
     ) -> None:
-        llm, _ = self._workers_ai([self._sse(_SilentAfter(_stream_frame("Hel")))])
+        llm, _ = workers_ai_over([sse_response(SilentAfterStream(_stream_frame("Hel")))])
 
         reply, elapsed = await self._ask(
             llm, fallback=RunnableLambda(lambda _: AIMessage(content="fallback-ok"))
@@ -3861,11 +3831,11 @@ class TestAStalledStreamFailsFastToTheFallback:
         assert elapsed < self._DEADLINE * 5
 
     async def test_a_stall_with_no_fallback_is_retried_then_raised(self) -> None:
-        llm, requests_served = self._workers_ai(
-            [self._sse(_SilentAfter()) for _ in range(LLM_RETRY_MAX_ATTEMPTS)]
+        llm, requests_served = workers_ai_over(
+            [sse_response(SilentAfterStream()) for _ in range(LLM_RETRY_MAX_ATTEMPTS)]
         )
 
-        with pytest.raises(LLMStreamStallError):
+        with pytest.raises(llm_exceptions.LLMStreamStallError):
             await self._ask(llm)
 
         assert requests_served[0] == LLM_RETRY_MAX_ATTEMPTS
@@ -3874,13 +3844,13 @@ class TestAStalledStreamFailsFastToTheFallback:
         self,
     ) -> None:
         frames = [_stream_frame(part) for part in ("He", "l", "l", "o")]
-        steady = _SilentAfter(
+        steady = SilentAfterStream(
             *frames,
             _stream_frame("", finish="stop"),
             b"data: [DONE]\n\n",
             pause=self._DEADLINE / 2,
         )
-        llm, _ = self._workers_ai([self._sse(steady)])
+        llm, _ = workers_ai_over([sse_response(steady)])
 
         reply, elapsed = await self._ask(llm)
 
@@ -3889,7 +3859,7 @@ class TestAStalledStreamFailsFastToTheFallback:
 
     async def test_an_unstreamed_call_is_not_held_to_the_chunk_deadline(self) -> None:
         reply_body = httpx.Response(200, json=_completion_body("whole"))
-        llm, _ = self._workers_ai([reply_body], streaming=False, delay=self._DEADLINE * 2)
+        llm, _ = workers_ai_over([reply_body], streaming=False, delay=self._DEADLINE * 2)
 
         reply, _ = await self._ask(llm)
 
@@ -3897,11 +3867,11 @@ class TestAStalledStreamFailsFastToTheFallback:
 
     async def test_the_retry_wrapper_retries_a_stall_unless_told_not_to(self) -> None:
         """The fallback's own retries take the default: with no lane left, retrying is all it has."""
-        llm, requests_served = self._workers_ai(
-            [self._sse(_SilentAfter()) for _ in range(LLM_RETRY_MAX_ATTEMPTS)]
+        llm, requests_served = workers_ai_over(
+            [sse_response(SilentAfterStream()) for _ in range(LLM_RETRY_MAX_ATTEMPTS)]
         )
 
-        with pytest.raises(LLMStreamStallError):
+        with pytest.raises(llm_exceptions.LLMStreamStallError):
             await with_llm_retry(llm).ainvoke([HumanMessage(content="hi")])
 
         assert requests_served[0] == LLM_RETRY_MAX_ATTEMPTS
@@ -3926,7 +3896,7 @@ class TestAStalledStreamFailsFastToTheFallback:
         assert sent.kwargs["stop"] == ["END"]
 
     def test_a_stall_is_a_timeout_that_is_retried_or_downgraded(self) -> None:
-        stall = LLMStreamStallError("silent")
+        stall = llm_exceptions.LLMStreamStallError("silent")
 
         assert isinstance(stall, LLM_RETRYABLE_EXCEPTIONS)
         assert isinstance(stall, LLM_FALLBACK_EXCEPTIONS)

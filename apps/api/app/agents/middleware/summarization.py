@@ -42,7 +42,7 @@ from app.agents.context.slots import (
     slot_of,
 )
 from app.agents.core.delegation_window import running_turn_start
-from app.agents.llm.client import SILENT_LLM_CONFIG
+from app.agents.llm.client import SILENT_LLM_CONFIG, with_llm_retry
 from app.agents.middleware.runtime_adapter import GaiaAgentState
 from app.constants.log_tags import LogTag
 from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
@@ -259,8 +259,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         """
         prompt = self.summary_prompt.format(messages=_render_folded(folded))
         try:
-            response = await self.model.ainvoke(
-                prompt, config={"metadata": {"lc_source": SUMMARY_SOURCE}}
+            # One attempt, as before; the wrapper adds the stream stall deadlines.
+            response = cast(
+                "AIMessage",
+                await with_llm_retry(self.model, max_attempts=1).ainvoke(
+                    prompt, config={"metadata": {"lc_source": SUMMARY_SOURCE}}
+                ),
             )
         except Exception as e:
             log.error(

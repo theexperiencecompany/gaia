@@ -36,6 +36,7 @@ from bson import ObjectId
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+import httpx
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain.tools import ToolRuntime
 from langchain_core.language_models import ModelProfile
@@ -46,7 +47,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 from loguru import logger as loguru_logger
 from motor.motor_asyncio import AsyncIOMotorCollection
 from prometheus_client import REGISTRY, CollectorRegistry
-from pydantic import Field
+from pydantic import Field, SecretStr
 from redis.asyncio.client import PubSub
 import respx
 from starlette.exceptions import HTTPException
@@ -57,6 +58,7 @@ import time_machine
 import uvicorn
 from workos.session import SessionModule
 
+from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.rate_limits import RateLimitConfig
 from app.config.settings import settings
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
@@ -552,6 +554,48 @@ def create_fake_llm_with_tool_calls(
         else:
             messages.append(AIMessage(content=item))
     return BindableToolsFakeModel(responses=messages)
+
+
+class SilentAfterStream(httpx.AsyncByteStream):
+    """A streamed reply that sends its frames, each after a pause, then holds the socket open sending nothing."""
+
+    def __init__(self, *frames: bytes, pause: float = 0.0) -> None:
+        self._frames = frames
+        self._pause = pause
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for frame in self._frames:
+            await asyncio.sleep(self._pause)
+            yield frame
+        await asyncio.Event().wait()
+        yield b""
+
+
+def sse_response(stream: httpx.AsyncByteStream) -> httpx.Response:
+    """Wrap a byte stream as a 200 text/event-stream reply."""
+    return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=stream)
+
+
+def workers_ai_over(
+    replies: list[httpx.Response], *, streaming: bool = True, delay: float = 0.0
+) -> tuple[ChatWorkersAI, list[int]]:
+    """Build a real ChatWorkersAI whose requests get replies in order, after delay; also return the request count."""
+    requests_served = [0]
+
+    async def _reply(_request: httpx.Request) -> httpx.Response:
+        requests_served[0] += 1
+        await asyncio.sleep(delay)
+        return replies.pop(0)
+
+    llm = ChatWorkersAI(
+        model="@cf/test/model",
+        api_key=SecretStr("k"),
+        base_url="https://api.cloudflare.com/client/v4/accounts/a/ai/v1",
+        streaming=streaming,
+        max_retries=0,
+        http_async_client=httpx.AsyncClient(transport=httpx.MockTransport(_reply)),
+    )
+    return llm, requests_served
 
 
 class PassthroughFakeLLM:
