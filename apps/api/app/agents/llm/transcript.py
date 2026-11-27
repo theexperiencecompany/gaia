@@ -20,6 +20,7 @@ from langchain_core.messages import (
     ToolMessage,
     convert_to_messages,
 )
+from langchain_core.prompt_values import ChatPromptValue
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -88,7 +89,9 @@ def provider_transcript(messages: Sequence[AnyMessage]) -> list[AnyMessage]:
 
 
 def provider_input(model_input: LanguageModelInput) -> LanguageModelInput:
-    """Return a message-list input as provider_transcript shapes it; a prompt string or value has no tool use."""
+    """Return a message list or chat prompt as provider_transcript shapes it; a plain prompt has no tool use."""
+    if isinstance(model_input, ChatPromptValue):
+        model_input = model_input.to_messages()
     if isinstance(model_input, str) or not isinstance(model_input, Sequence):
         return model_input
     return provider_transcript(cast("list[AnyMessage]", convert_to_messages(model_input)))

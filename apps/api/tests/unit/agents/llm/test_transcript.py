@@ -3,7 +3,7 @@
 from typing import Any
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_core.prompt_values import StringPromptValue
+from langchain_core.prompt_values import ChatPromptValue, StringPromptValue
 import pytest
 
 from app.agents.llm.transcript import UNFINISHED_TOOL_RESULT, provider_input, provider_transcript
@@ -243,6 +243,14 @@ class TestProviderInput:
 
         assert isinstance(shaped, list)
         assert isinstance(shaped[0], HumanMessage)
+
+    def test_a_chat_prompt_is_shaped(self) -> None:
+        prompt = ChatPromptValue(messages=[_calling("a"), HumanMessage(content="?")])
+
+        shaped = provider_input(prompt)
+
+        assert isinstance(shaped, list)
+        assert _shape(shaped) == [("AIMessage", None), ("ToolMessage", "a"), ("HumanMessage", None)]
 
     def test_a_prompt_string_passes_through(self) -> None:
         assert provider_input("summarise this") == "summarise this"
