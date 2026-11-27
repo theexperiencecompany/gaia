@@ -161,6 +161,10 @@ ENTRY_RENAMES_MIGRATION_SCRIPT = "scripts.migrate_approval_vocabulary"
 
 # The tool_data card a session artifact rides on: written by the coding tools, read off the reply.
 ARTIFACT_CARD = "artifact_data"
+# The tool_data card a tool call, or the thinking between calls, shows on.
+TOOL_CALLS_CARD = "tool_calls_data"
+# The tool_data card take_screenshot shows the captured screen on.
+SCREENSHOT_CARD = "screenshot_data"
 
 # No real reply opens with this many empty bubbles; past it a reply that is still
 # only breaks is a runaway (3,998 of them, ~100 s, in production) and is stopped.

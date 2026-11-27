@@ -664,6 +664,7 @@ class TestSearchUsers:
             },
             "created_at": None,
             "location": None,
+            "url": None,
         }
         assert streamed[1] == {
             "id": "u2",
@@ -675,6 +676,7 @@ class TestSearchUsers:
             "public_metrics": {},
             "created_at": None,
             "location": None,
+            "url": None,
         }
 
     def test_no_matches_streams_nothing_extra(self, tools, writer) -> None:

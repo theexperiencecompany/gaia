@@ -4,6 +4,9 @@ import { ScrollShadow } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
 import type {
   ProjectResponse,
+  TodoCardAction,
+  TodoCardData,
+  TodoCounts,
   TodoResponse,
   TodoStats,
 } from "@shared/api/generated";
@@ -11,15 +14,10 @@ import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import TodoItem from "@/features/todo/components/TodoItem";
 import { useTodoStore } from "@/stores/todoStore";
-import type { TodoAction } from "@/types/features/todoToolTypes";
 import type { Project, Todo, TodoUpdate } from "@/types/features/todoTypes";
 
 interface TodoSectionProps {
-  todos?: TodoResponse[];
-  projects?: ProjectResponse[];
-  stats?: TodoStats;
-  action?: TodoAction;
-  message?: string;
+  card: TodoCardData;
 }
 
 // TodoItem still takes the hand-written shared Project, not ProjectResponse.
@@ -37,7 +35,13 @@ function toCanonicalProject(p: ProjectResponse): Project {
   };
 }
 
-function TodoStatsView({ stats }: { stats: TodoStats }) {
+function TodoStatsView({
+  stats,
+  counts,
+}: {
+  stats: TodoStats;
+  counts: TodoCounts | null;
+}) {
   return (
     <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
       <div className="mb-3 text-sm">Task Overview</div>
@@ -68,6 +72,22 @@ function TodoStatsView({ stats }: { stats: TodoStats }) {
             <p className="text-xs text-zinc-500">Overdue</p>
           </div>
         )}
+        {counts && counts.today > 0 && (
+          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+            <p className="text-xl font-semibold text-blue-500">
+              {counts.today}
+            </p>
+            <p className="text-xs text-zinc-500">Today</p>
+          </div>
+        )}
+        {counts && counts.upcoming > 0 && (
+          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+            <p className="text-xl font-semibold text-purple-500">
+              {counts.upcoming}
+            </p>
+            <p className="text-xs text-zinc-500">Soon</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -75,9 +95,11 @@ function TodoStatsView({ stats }: { stats: TodoStats }) {
 
 function TodoProjectsView({
   projects,
+  completion,
   onOpenProject,
 }: {
   projects: ProjectResponse[];
+  completion: TodoCardData["project_completion"];
   onOpenProject: (projectId: string) => void;
 }) {
   return (
@@ -106,6 +128,12 @@ function TodoProjectsView({
               {project.todo_count !== undefined && (
                 <span>{project.todo_count} tasks</span>
               )}
+              {completion?.[project.id] !== undefined && (
+                <>
+                  <span className="h-1 w-1 rounded-full bg-zinc-500" />
+                  <span>{completion[project.id]}%</span>
+                </>
+              )}
             </div>
           </button>
         ))}
@@ -114,20 +142,15 @@ function TodoProjectsView({
   );
 }
 
-export default function TodoSection({
-  todos,
-  projects,
-  stats,
-  action = "list",
-  message,
-}: TodoSectionProps) {
+export default function TodoSection({ card }: TodoSectionProps) {
+  const { todos, projects, stats, action, message } = card;
   const router = useRouter();
   const updateTodo = useTodoStore((s) => s.updateTodo);
   const user = useCurrentUser();
 
   // Statistics View
   if (action === "stats" && stats) {
-    return <TodoStatsView stats={stats} />;
+    return <TodoStatsView stats={stats} counts={card.counts} />;
   }
 
   // Projects View
@@ -135,6 +158,7 @@ export default function TodoSection({
     return (
       <TodoProjectsView
         projects={projects}
+        completion={card.project_completion}
         onOpenProject={(projectId) =>
           router.push(`/todos/project/${projectId}`)
         }
@@ -183,7 +207,7 @@ function TodoSectionMessage({
   action,
   message,
 }: {
-  action: TodoAction;
+  action: TodoCardAction;
   message: string;
 }) {
   const isDeleteAction = action === "delete";
@@ -207,7 +231,7 @@ function TodoSectionList({
   onOpenTodo,
 }: {
   todos: TodoResponse[];
-  projects: ProjectResponse[] | undefined;
+  projects: ProjectResponse[] | null;
   timezone: string | undefined;
   onUpdateTodo: (todoId: string, updates: TodoUpdate) => void;
   onOpenTodo: (todo: Todo) => void;

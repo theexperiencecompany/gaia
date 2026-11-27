@@ -55,6 +55,18 @@ async def test_a_plan_is_streamed_and_starts_on_its_first_task() -> None:
     )
 
 
+async def test_a_plan_from_a_source_with_no_display_name_streams_no_integration_name() -> None:
+    plan_tasks = create_todo_tools()[0]
+    assert isinstance(plan_tasks, StructuredTool) and plan_tasks.coroutine is not None
+    writer = MagicMock()
+    with patch(WRITER, return_value=writer):
+        await plan_tasks.coroutine(tasks=[{"content": "Draft"}], tool_call_id="call-1")
+
+    (frame,) = writer.call_args.args
+    assert "integration_name" not in frame["todo_progress"]
+    assert frame["todo_progress"]["source"] == "executor"
+
+
 async def test_an_empty_plan_says_it_starts_on_nothing() -> None:
     update, _ = await _plan([])
 

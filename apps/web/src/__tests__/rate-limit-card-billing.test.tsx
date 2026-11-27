@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The rate-limit card sells upgrades only where the instance bills; a self-host instance sells nothing. */
 
-import type { RateLimitData } from "@shared/chat";
+import type { RateLimitCardData } from "@shared/api/generated";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -17,7 +17,7 @@ const LIMITED = {
   feature: "deep_research",
   plan_required: "pro",
   current_plan: "free",
-} as RateLimitData;
+} as RateLimitCardData;
 
 describe("useRateLimitCard", () => {
   it("offers the upgrade where the instance bills", () => {
@@ -42,7 +42,7 @@ describe("useRateLimitCard", () => {
       useRateLimitCard({
         feature: "chat",
         current_plan: "pro",
-      } as RateLimitData),
+      } as RateLimitCardData),
     );
 
     expect(result.current.showFooter).toBe(false);

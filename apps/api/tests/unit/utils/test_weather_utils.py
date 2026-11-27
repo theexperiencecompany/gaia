@@ -16,6 +16,7 @@ from app.models.integrations.weather import (
     ResolvedLocation,
     WeatherReport,
 )
+from app.models.tool_card_registry import tool_card_data
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.weather_utils import (
     fetch_weather_data,
@@ -86,7 +87,7 @@ def _make_current_weather(
     data: dict[str, Any] = {
         "name": name,
         "main": {"temp": temp, "humidity": 72},
-        "weather": [{"main": "Clouds", "description": "overcast", "icon": "04d"}],
+        "weather": [{"id": 804, "main": "Clouds", "description": "overcast", "icon": "04d"}],
     }
     if include_sys:
         data["sys"] = {
@@ -622,7 +623,9 @@ class TestPrepareWeatherData:
         ):
             report = await prepare_weather_data(51.5, -0.12, location_info, FAKE_API_KEY)
         assert isinstance(report, WeatherReport)
-        return report.model_dump(exclude_unset=True)
+        card = tool_card_data("weather_data", report)
+        assert isinstance(card, dict)
+        return card
 
     async def test_with_sys_and_country(self) -> None:
         loc = _resolved("London", "GB", "England")
@@ -702,10 +705,13 @@ class TestPrepareWeatherData:
         result = await self._call(
             current_weather=current, location_info=_resolved(None, None, None)
         )
-        assert "name" not in result
+        assert result["name"] is None
 
     async def test_card_payload_is_the_provider_response_plus_forecast_and_location(self) -> None:
+        """Keys the card does not declare pass through; a declared key OpenWeatherMap left out is null."""
         current = _make_current_weather(name="London", country="GB", temp=15.0)
+        current["base"] = "stations"
+        current["main"]["temp_kf"] = 0
         forecast = _make_forecast_data(
             [_make_forecast_item("2024-01-15", "12:00:00", 10.0, 50, ("Clear", "clear", "01d"))]
         )
@@ -713,7 +719,29 @@ class TestPrepareWeatherData:
             _resolved("London", "GB", None), current_weather=current, forecast_data=forecast
         )
         assert result == {
-            **current,
+            "coord": None,
+            "weather": current["weather"],
+            "main": {
+                "temp": 15.0,
+                "feels_like": None,
+                "temp_min": None,
+                "temp_max": None,
+                "pressure": None,
+                "humidity": 72,
+                "sea_level": None,
+                "grnd_level": None,
+                "temp_kf": 0,
+            },
+            "visibility": None,
+            "wind": None,
+            "clouds": None,
+            "dt": None,
+            "timezone": None,
+            "id": None,
+            "name": "London",
+            "cod": None,
+            "sys": current["sys"],
+            "base": "stations",
             "forecast": [
                 {
                     "date": "2024-01-15",

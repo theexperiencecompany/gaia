@@ -1,12 +1,24 @@
-import type { ArtifactRegistryEntry } from "@shared/api/generated";
+import type {
+  ArtifactDataCard,
+  ArtifactFileEvent,
+  ArtifactRegistryEntry,
+} from "@shared/api/generated";
 
-export type { ImageData } from "@shared/api/generated";
 export type {
-  CodeData,
-  GoogleDocsData,
+  ImageData,
   WorkflowCreatedData,
   WorkflowDraftData,
-} from "@shared/chat";
+} from "@shared/api/generated";
+export type { CodeData, GoogleDocsData } from "@shared/chat";
+
+/** Inline contents only artifact_data cards stored before the artifact registry carry. */
+export interface LegacyArtifactEventFields {
+  body?: string;
+}
+
+/** One artifact_data card: a file written or removed, as the timeline groups them. */
+export type ArtifactEvent = ArtifactDataCard["data"] &
+  LegacyArtifactEventFields;
 
 /** A stored registry entry as the client holds it: stamped with its conversation. */
 export const fromRegistryEntries = (
@@ -22,20 +34,10 @@ export const fromRegistryEntries = (
     body: entry.body,
   }));
 
-export interface ArtifactData {
-  /** Conversation id the artifact belongs to (used to build fetch URLs). */
-  session_id: string;
-  /** "upsert" adds or refreshes a card; "remove" drops it. */
-  event?: "upsert" | "remove";
-  /** Path relative to the session's artifacts/ (or the upload name). */
-  path: string;
-  size_bytes: number;
-  mtime?: number;
-  content_type?: string | null;
-  /**
-   * UTF-8 file contents inlined when small + textual. When present, the
-   * preview renders instantly without a follow-up fetch and survives reload
-   * via the persisted conversation. Absent for large or binary files.
-   */
-  body?: string;
-}
+/** A file the conversation holds: a registry entry or a live file event, stamped with its conversation. */
+export type ArtifactData = Pick<
+  ArtifactFileEvent,
+  "session_id" | "path" | "size_bytes" | "content_type"
+> &
+  Partial<Pick<ArtifactFileEvent, "event" | "mtime">> &
+  Partial<Pick<ArtifactRegistryEntry, "body">>;

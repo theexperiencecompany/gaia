@@ -6,13 +6,22 @@
 // ---------------------------------------------------------------------------
 
 import type {
+  CalendarEventDisplay,
+  CalendarListCard,
+  ContactCard,
+  EmailListItem,
+  EmailThreadCard,
+  EmailThreadItem,
   GoogleCalendarEventDateTime,
+  McpAppData,
   SearchResultItem,
-  ToolDataEntry,
+  TodoProgressCard,
+  TodoProgressItem,
+  TodoProgressSnapshot,
+  ToolCardEnvelope,
   ToolProgress,
-  TriggerConfig,
-  TriggerType,
-  WorkflowDelivery,
+  WorkflowCreatedData,
+  WorkflowDraftData,
 } from "../api/generated";
 import type { ArtifactCardData } from "../artifacts/types";
 
@@ -20,8 +29,10 @@ export type {
   RecurrenceData,
   RecurrenceRule,
   ReplyToMessageData,
-  ToolDataEntry,
 } from "../api/generated";
+
+/** A card of any tool name, as apps/mobile builds and reads it; the web reads the generated per-tool ToolDataEntry. */
+export type ToolDataEntry = ToolCardEnvelope;
 
 export interface ApiFileData {
   fileId: string;
@@ -53,6 +64,7 @@ export interface GroupedConversations {
 // Weather
 // ---------------------------------------------------------------------------
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface WeatherData {
   coord?: { lon: number; lat: number };
   weather?: Array<{
@@ -125,19 +137,11 @@ export type WebResult = SearchResultItem & {
   snippet?: string;
 };
 
-export interface NewsResult {
-  title?: string;
-  url: string;
-  content?: string;
-  score?: number;
-  raw_content?: string;
-  favicon?: string;
-  published_date?: string;
-  source?: string;
-}
+export type NewsResult = SearchResultItem;
 
 export type ImageResult = string;
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface SearchResults {
   web?: WebResult[];
   images?: ImageResult[];
@@ -183,6 +187,7 @@ export interface DeepResearchResults {
 // Email / Mail
 // ---------------------------------------------------------------------------
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface EmailComposeData {
   to: string[];
   subject: string;
@@ -196,6 +201,7 @@ export interface EmailComposeData {
   attachments?: Array<{ name: string; mimetype: string }>;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface EmailSentData {
   to?: string[];
   subject?: string;
@@ -207,52 +213,25 @@ export interface EmailSentData {
   recipients?: string[];
 }
 
-export interface EmailFetchData {
-  from: string;
-  subject: string;
-  time: string;
-  thread_id?: string;
-  id: string;
+/** One fetched email; the optional keys only cards stored before the typed payload carry. */
+export type EmailFetchData = EmailListItem & {
   from_name?: string;
   snippet?: string;
   date?: string;
   is_unread?: boolean;
-}
+};
 
-export interface EmailThreadMessage {
-  id?: string;
-  from?: string;
-  from_name?: string;
-  subject?: string;
-  time?: string;
-  snippet?: string;
-  body?: string;
-  date?: string;
-  content?: { text: string; html: string };
-}
+export type EmailThreadMessage = EmailThreadItem;
 
-export interface EmailThreadData {
-  thread_id?: string;
-  subject?: string;
-  messages?: EmailThreadMessage[];
-  messages_count?: number;
-}
+export type EmailThreadData = EmailThreadCard;
 
-export interface ContactData {
-  name?: string;
-  email?: string;
-  phone?: string;
-  resource_name?: string;
-}
+export type ContactData = ContactCard;
 
-export interface PeopleSearchData {
-  name?: string;
-  email?: string;
-  phone?: string;
+/** One person found; organization and role only cards stored before the typed payload carry. */
+export type PeopleSearchData = ContactCard & {
   organization?: string;
   role?: string;
-  resource_name?: string;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Calendar
@@ -294,25 +273,15 @@ export interface CalendarEditOptions {
   timezone?: string;
 }
 
-export interface CalendarFetchData {
-  summary: string;
-  start_time: string;
-  end_time: string;
-  calendar_name: string;
-  background_color: string;
-}
+export type CalendarFetchData = CalendarEventDisplay;
 
-export interface CalendarListFetchData {
-  name: string;
-  id: string;
-  description: string;
-  backgroundColor?: string;
-}
+export type CalendarListFetchData = CalendarListCard;
 
 // ---------------------------------------------------------------------------
 // Reddit
 // ---------------------------------------------------------------------------
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface RedditPostData {
   id?: string;
   title?: string;
@@ -329,6 +298,7 @@ export interface RedditPostData {
   link_flair_text?: string;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface RedditCommentData {
   id?: string;
   author?: string;
@@ -339,6 +309,7 @@ export interface RedditCommentData {
   is_submitter?: boolean;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface RedditSearchData {
   id?: string;
   title?: string;
@@ -352,6 +323,7 @@ export interface RedditSearchData {
   selftext?: string;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface RedditPostCreatedData {
   id?: string;
   url?: string;
@@ -359,12 +331,14 @@ export interface RedditPostCreatedData {
   permalink?: string;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface RedditCommentCreatedData {
   id?: string;
   message?: string;
   permalink?: string;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export type RedditData =
   | { type: "search"; posts: RedditSearchData[] }
   | { type: "post"; post: RedditPostData }
@@ -376,6 +350,7 @@ export type RedditData =
 // Twitter / X
 // ---------------------------------------------------------------------------
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface TwitterUserData {
   id: string;
   username: string;
@@ -394,6 +369,7 @@ export interface TwitterUserData {
   url?: string;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface TwitterTweetData {
   id: string;
   text: string;
@@ -410,6 +386,7 @@ export interface TwitterTweetData {
   conversation_id?: string;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface TwitterSearchData {
   tweets: TwitterTweetData[];
   result_count: number;
@@ -420,28 +397,12 @@ export interface TwitterSearchData {
 // Todos (agent task planning)
 // ---------------------------------------------------------------------------
 
-export type TodoProgressStatus =
-  | "pending"
-  | "in_progress"
-  | "completed"
-  | "cancelled";
+export type TodoProgressStatus = TodoProgressItem["status"];
 
-export interface TodoProgressItem {
-  id: string;
-  content: string;
-  status: TodoProgressStatus;
-}
-
-/** One todo_progress snapshot, as todo_tools.py emits it for a single source agent. */
-export interface TodoProgressSnapshot {
-  todos: TodoProgressItem[];
-  source: string;
-  /** The source's display name (e.g. a custom MCP integration's); absent on older persisted messages. */
-  integration_name?: string;
-}
+export type { TodoProgressItem, TodoProgressSnapshot };
 
 /** Accumulated todo_progress data on a message, keyed by source agent; each source replaces its own slice. */
-export type TodoProgressData = Record<string, TodoProgressSnapshot>;
+export type TodoProgressData = TodoProgressCard["data"];
 
 // ---------------------------------------------------------------------------
 // Todo tool data (user's personal todos)
@@ -498,6 +459,7 @@ export interface TodoToolStats {
   upcoming: number;
 }
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface TodoToolData {
   todos?: TodoItem[];
   projects?: TodoProject[];
@@ -577,43 +539,13 @@ export interface GoogleDocsData {
 // Workflows
 // ---------------------------------------------------------------------------
 
-/** The workflow_draft card, as WorkflowDraftPayload in services/workflow/subagent_output.py builds it. */
-export interface WorkflowDraftData {
-  suggested_title: string;
-  /** Short description for display in cards/UI (1-2 sentences) */
-  suggested_description: string;
-  /** Detailed prompt/instructions for the workflow execution */
-  prompt: string;
-  trigger_type: Extract<TriggerType, "manual" | "schedule" | "integration">;
-  /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */
-  trigger_slug?: string | null;
-  cron_expression?: string | null;
-  /** Integrations the workflow depends on, the trigger's included; carried through to create. */
-  integration_ids?: string[] | null;
-  /** Chosen by the agent from the user's words; absent on drafts saved before delivery modes. */
-  delivery?: WorkflowDelivery;
-  /** Which events are worth a run, as GAIA drafted it; null when every event is */
-  runs_only_when?: string | null;
-  /** Sent back on create, so the chat that drafted it picks back up once it is set up */
-  draft_id?: string;
-}
-
-/** The workflow_created card, as WorkflowCreatedPayload in utils/workflow_utils.py builds it. */
-export interface WorkflowCreatedData {
-  id: string;
-  title: string;
-  description: string;
-  trigger_config: Pick<
-    TriggerConfig,
-    "type" | "cron_expression" | "trigger_name" | "enabled" | "timezone"
-  >;
-  activated: boolean;
-}
+export type { WorkflowCreatedData, WorkflowDraftData };
 
 // ---------------------------------------------------------------------------
 // Artifacts
 // ---------------------------------------------------------------------------
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface ArtifactData {
   path: string;
   filename: string;
@@ -650,6 +582,7 @@ export interface SharedMemoryData {
 // Rate limit
 // ---------------------------------------------------------------------------
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface RateLimitData {
   feature: string;
   plan_required?: string;
@@ -666,20 +599,7 @@ export interface RateLimitData {
 // MCP App
 // ---------------------------------------------------------------------------
 
-export interface MCPAppData {
-  tool_call_id: string;
-  tool_name: string;
-  server_url: string;
-  resource_uri: string;
-  html_content: string;
-  csp?: {
-    connectDomains?: string[];
-    resourceDomains?: string[];
-  };
-  permissions?: string[];
-  tool_result?: unknown;
-  tool_arguments?: Record<string, unknown>;
-}
+export type MCPAppData = McpAppData;
 
 // ---------------------------------------------------------------------------
 // Tool calls data (progress entries)

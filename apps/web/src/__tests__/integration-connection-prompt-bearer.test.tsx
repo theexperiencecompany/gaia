@@ -51,8 +51,12 @@ function renderCard(id: string) {
     <IntegrationConnectionPrompt
       integration_connection_required={{
         integration_id: id,
+        integration_name: "Custom",
         message: "Connect it",
         expired: false,
+        add_account: false,
+        connected_accounts: [],
+        reconnect_account: null,
       }}
     />,
   );
@@ -120,9 +124,8 @@ describe("IntegrationConnectionPrompt — inline token entry", () => {
   it("shows a loading header (from the streamed name) until the catalog resolves", () => {
     integrations = [];
     renderCard("custom-bearer");
-    // no catalog entry yet; the streamed integration_name is not set here, so it
-    // falls back — the point is it renders instead of returning nothing.
-    expect(screen.getByText("Integration")).toBeDefined();
+    // No catalog entry yet: the header shows the streamed integration_name.
+    expect(screen.getByText("Custom")).toBeDefined();
   });
 });
 
@@ -147,10 +150,12 @@ describe("IntegrationConnectionPrompt — adding another account", () => {
       <IntegrationConnectionPrompt
         integration_connection_required={{
           integration_id: "gmail",
+          integration_name: "Gmail",
           message: "Add another Gmail account.",
           expired: false,
           add_account: true,
           connected_accounts: ["Work", "me@gmail.com"],
+          reconnect_account: null,
         }}
       />,
     );
@@ -185,9 +190,11 @@ describe("IntegrationConnectionPrompt — adding another account", () => {
       <IntegrationConnectionPrompt
         integration_connection_required={{
           integration_id: "gmail",
+          integration_name: "Gmail",
           message: "Your Gmail account work@acme.com lost its connection.",
           expired: true,
           add_account: false,
+          connected_accounts: [],
           reconnect_account: { id: "ca_work", name: "work@acme.com" },
         }}
       />,

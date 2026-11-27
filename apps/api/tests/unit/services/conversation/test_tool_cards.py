@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
+from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME, TOOL_CALLS_CARD
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
 from app.constants.summarization import MAX_OUTPUT_CHARS
@@ -30,7 +30,6 @@ from app.services.conversation.tool_cards import (
     MCP_APP_CARD,
     REASONING_STEP,
     TODO_PROGRESS_CARD,
-    TOOL_CALLS_CARD,
     FoldedCards,
     coalesced_thinking,
     fold_cards,

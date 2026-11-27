@@ -16,6 +16,15 @@ from app.constants.todos import (
 from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_user_id
+from app.models.todo_card_models import (
+    ProjectCounts,
+    RecentlyCompletedBucket,
+    SummaryStats,
+    TodoBucket,
+    TodoCardAction,
+    TodoCardData,
+    TodosSummary,
+)
 from app.models.todo_models import (
     Priority,
     ProjectCreate,
@@ -31,6 +40,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.models.tool_card_registry import tool_card
 from app.services.todos.errors import TodoNotFoundError
 from app.services.todos.todo_bulk_service import (
     bulk_complete_todos as bulk_complete_service,
@@ -47,11 +57,13 @@ from app.services.todos.todo_service import (
     get_todo as get_todo_service,
     get_todos_by_date_range,
     get_todos_by_label as get_todos_by_label_service,
+    project_completion,
     search_todos as search_todos_service,
     semantic_search_todos as semantic_search_todos_service,
     todo_responses,
     update_project as update_project_service,
     update_todo as update_todo_service,
+    user_todo_counts,
 )
 from app.templates.docstrings.todo_tool_docs import (
     ADD_CHECKLIST_ITEM,
@@ -87,52 +99,9 @@ from shared.py.wide_events import log
 SerializedModel: TypeAlias = dict[str, Any]
 
 
-class _TodoBucket(TypedDict):
-    """One count + capped-preview bucket of the todos summary payload."""
-
-    count: int
-    todos: list[SerializedModel]
-    has_more: bool
-
-
-class _SummaryStats(TypedDict):
-    """Productivity counters of the todos summary payload."""
-
-    total: int
-    completed: int
-    pending: int
-    completed_today: int
-    overdue: int
-    completion_rate: float
-
-
-class _RecentlyCompletedBucket(TypedDict):
-    """The recently-completed bucket — capped like ``_TodoBucket`` but with no
-    ``has_more`` flag (the summary card never offers to expand it)."""
-
-    count: int
-    todos: list[SerializedModel]
-
-
-class _ProjectCounts(TypedDict):
-    """Per-project task tallies of the todos summary payload."""
-
-    total: int
-    completed: int
-    pending: int
-
-
-class TodosSummary(TypedDict):
-    """The ``get_todos_summary`` payload — streamed as ``todo_data.summary``."""
-
-    today: _TodoBucket
-    overdue: _TodoBucket
-    upcoming_week: _TodoBucket
-    high_priority: _TodoBucket
-    recently_completed: _RecentlyCompletedBucket
-    next_deadline: SerializedModel | None
-    stats: _SummaryStats
-    by_project: dict[str, _ProjectCounts]
+def _show(card: TodoCardData) -> None:
+    """Stream the todo_data card to the chat."""
+    current_stream_writer()(tool_card("todo_data", card))
 
 
 # Tool return shapes are plain TypedDicts, not models: LangChain stringifies
@@ -200,7 +169,7 @@ class LabelListResult(TypedDict):
 class TodosSummaryResult(TypedDict):
     """``get_todos_summary`` — the whole snapshot in one call."""
 
-    summary: TodosSummary | None
+    summary: SerializedModel | None
     error: str | None
 
 
@@ -247,16 +216,11 @@ async def create_todo(
         result = await TodoService.create_todo(todo_data, user_id)
         todo_dict = result.model_dump(mode="json")
 
-        # Prepare response data
-        response_data = {
-            "todos": [todo_dict],
-            "action": "create",
-            "message": f"Created task: {title}",
-        }
-
-        # Stream the created todo to the frontend
-        writer = current_stream_writer()
-        writer({"todo_data": response_data})
+        _show(
+            TodoCardData(
+                todos=[result], action=TodoCardAction.CREATE, message=f"Created task: {title}"
+            )
+        )
 
         return {"todo": todo_dict, "error": None}
 
@@ -307,15 +271,12 @@ async def list_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the todo data to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": todos_data,
-                    "action": "list",
-                    "message": f"Found {len(results)} task{'s' if len(results) != 1 else ''}",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=results,
+                action=TodoCardAction.LIST,
+                message=f"Found {len(results)} task{'s' if len(results) != 1 else ''}",
+            )
         )
 
         return {"todos": todos_data, "count": len(results), "error": None}
@@ -398,15 +359,12 @@ async def update_todo(
         todo_dict = result.model_dump(mode="json")
 
         # Stream the updated todo to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": f"Updated task: {result.title}",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=[result],
+                action=TodoCardAction.UPDATE,
+                message=f"Updated task: {result.title}",
+            )
         )
 
         return {"todo": todo_dict, "error": None}
@@ -444,15 +402,7 @@ async def delete_todo(
         await delete_todo_service(todo_id, user_id)
 
         # Stream the deletion confirmation to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "action": "delete",
-                    "message": f"Deleted task: {todo_title}",
-                }
-            }
-        )
+        _show(TodoCardData(action=TodoCardAction.DELETE, message=f"Deleted task: {todo_title}"))
 
         return {"success": True, "error": None}
 
@@ -486,15 +436,12 @@ async def search_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the search results to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": todos_data,
-                    "action": "search",
-                    "message": f"Found {len(results)} task{'s' if len(results) != 1 else ''} matching '{query}'",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=results,
+                action=TodoCardAction.SEARCH,
+                message=f"Found {len(results)} task{'s' if len(results) != 1 else ''} matching '{query}'",
+            )
         )
 
         return {"todos": todos_data, "count": len(results), "error": None}
@@ -540,15 +487,12 @@ async def semantic_search_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the semantic search results to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": todos_data,
-                    "action": "search",
-                    "message": f"Found {len(results)} task{'s' if len(results) != 1 else ''} using AI search for '{query}'",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=results,
+                action=TodoCardAction.SEARCH,
+                message=f"Found {len(results)} task{'s' if len(results) != 1 else ''} using AI search for '{query}'",
+            )
         )
 
         return {
@@ -577,23 +521,21 @@ async def get_todo_statistics(config: RunnableConfig) -> TodoStatsResult:
         log.set(tool={"name": "get_todo_statistics", "action": "stats"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting todo statistics")
 
-        stats = (
-            await todo_repository.compute_stats(user_id=user_id, window=_day_window(config))
-        ).model_dump(mode="json")
-
-        # Stream the stats to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "stats": stats,
-                    "action": "stats",
-                    "message": "Here's your task overview",
-                }
-            }
+        window = _day_window(config)
+        stats, counts = await asyncio.gather(
+            todo_repository.compute_stats(user_id=user_id, window=window),
+            user_todo_counts(user_id, window),
+        )
+        _show(
+            TodoCardData(
+                stats=stats,
+                counts=counts,
+                action=TodoCardAction.STATS,
+                message="Here's your task overview",
+            )
         )
 
-        return {"stats": stats, "error": None}
+        return {"stats": stats.model_dump(mode="json"), "error": None}
 
     except Exception as e:
         error_msg = f"Error getting todo statistics: {e!s}"
@@ -618,15 +560,12 @@ async def get_today_todos(config: RunnableConfig) -> TodoListResult:
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream today's todos to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": todos_data,
-                    "action": "list",
-                    "message": f"Found {len(results)} task{'s' if len(results) != 1 else ''} due today",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=results,
+                action=TodoCardAction.LIST,
+                message=f"Found {len(results)} task{'s' if len(results) != 1 else ''} due today",
+            )
         )
 
         return {
@@ -661,15 +600,12 @@ async def get_upcoming_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream upcoming todos to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": todos_data,
-                    "action": "list",
-                    "message": f"Found {len(results)} upcoming task{'s' if len(results) != 1 else ''} in the next {days} days",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=results,
+                action=TodoCardAction.LIST,
+                message=f"Found {len(results)} upcoming task{'s' if len(results) != 1 else ''} in the next {days} days",
+            )
         )
 
         return {
@@ -713,15 +649,10 @@ async def create_project(
         project_dict = result.model_dump(mode="json")
 
         # Stream the created project to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "projects": [project_dict],
-                    "action": "create",
-                    "message": f"Created project: {name}",
-                }
-            }
+        _show(
+            TodoCardData(
+                projects=[result], action=TodoCardAction.CREATE, message=f"Created project: {name}"
+            )
         )
 
         return {"project": project_dict, "error": None}
@@ -745,19 +676,19 @@ async def list_projects(config: RunnableConfig) -> ProjectListResult:
         log.set(tool={"name": "list_projects", "action": "list"})
         log.info(f"{LogTag.TOOL} Todo Tool: Listing all projects")
 
-        results = await get_all_projects_service(user_id)
+        results, stats = await asyncio.gather(
+            get_all_projects_service(user_id),
+            todo_repository.compute_stats(user_id=user_id, window=_day_window(config)),
+        )
         projects_data = [project.model_dump(mode="json") for project in results]
 
-        # Stream the projects to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "projects": projects_data,
-                    "action": "list",
-                    "message": f"You have {len(results)} project{'s' if len(results) != 1 else ''}",
-                }
-            }
+        _show(
+            TodoCardData(
+                projects=results,
+                project_completion=project_completion(stats),
+                action=TodoCardAction.LIST,
+                message=f"You have {len(results)} project{'s' if len(results) != 1 else ''}",
+            )
         )
 
         return {"projects": projects_data, "count": len(results), "error": None}
@@ -792,15 +723,12 @@ async def update_project(
         project_dict = result.model_dump(mode="json")
 
         # Stream the updated project to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "projects": [project_dict],
-                    "action": "update",
-                    "message": f"Updated project: {result.name}",
-                }
-            }
+        _show(
+            TodoCardData(
+                projects=[result],
+                action=TodoCardAction.UPDATE,
+                message=f"Updated project: {result.name}",
+            )
         )
 
         return {"project": project_dict, "error": None}
@@ -836,14 +764,8 @@ async def delete_project(
         await delete_project_service(project_id, user_id)
 
         # Stream the deletion confirmation to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "action": "delete",
-                    "message": f"Deleted project: {project_name}",
-                }
-            }
+        _show(
+            TodoCardData(action=TodoCardAction.DELETE, message=f"Deleted project: {project_name}")
         )
 
         return {"success": True, "error": None}
@@ -875,15 +797,12 @@ async def get_todos_by_label(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the labeled todos to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": todos_data,
-                    "action": "list",
-                    "message": f"Found {len(results)} task{'s' if len(results) != 1 else ''} with label '{label}'",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=results,
+                action=TodoCardAction.LIST,
+                message=f"Found {len(results)} task{'s' if len(results) != 1 else ''} with label '{label}'",
+            )
         )
 
         return {
@@ -942,15 +861,12 @@ async def bulk_complete_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the bulk completed todos to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": todos_data,
-                    "action": "update",
-                    "message": f"Completed {len(results)} task{'s' if len(results) != 1 else ''}",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=results,
+                action=TodoCardAction.UPDATE,
+                message=f"Completed {len(results)} task{'s' if len(results) != 1 else ''}",
+            )
         )
 
         return {
@@ -995,15 +911,12 @@ async def bulk_move_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the bulk moved todos to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": todos_data,
-                    "action": "update",
-                    "message": f"Moved {len(results)} task{'s' if len(results) != 1 else ''} to project",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=results,
+                action=TodoCardAction.UPDATE,
+                message=f"Moved {len(results)} task{'s' if len(results) != 1 else ''} to project",
+            )
         )
 
         return {
@@ -1040,14 +953,11 @@ async def bulk_delete_todos(
         deleted = len(result.success)
 
         # Stream the bulk deletion confirmation to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "action": "delete",
-                    "message": f"Deleted {deleted} task{'s' if deleted != 1 else ''}",
-                }
-            }
+        _show(
+            TodoCardData(
+                action=TodoCardAction.DELETE,
+                message=f"Deleted {deleted} task{'s' if deleted != 1 else ''}",
+            )
         )
 
         if result.failed:
@@ -1094,15 +1004,12 @@ async def add_checklist_item(
         todo_dict = result.model_dump(mode="json")
 
         # Stream the updated todo with its new checklist item to the frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": f"Added checklist item '{title}' to {result.title}",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=[result],
+                action=TodoCardAction.UPDATE,
+                message=f"Added checklist item '{title}' to {result.title}",
+            )
         )
 
         return {"todo": todo_dict, "error": None}
@@ -1159,15 +1066,12 @@ async def update_checklist_item(
         todo_dict = result.model_dump(mode="json")
 
         # Stream the updated todo with its edited checklist item to the frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": f"Updated checklist item in {result.title}",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=[result],
+                action=TodoCardAction.UPDATE,
+                message=f"Updated checklist item in {result.title}",
+            )
         )
 
         return {"todo": todo_dict, "error": None}
@@ -1214,15 +1118,12 @@ async def delete_checklist_item(
         todo_dict = result.model_dump(mode="json")
 
         # Stream the updated todo without the removed checklist item to the frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": f"Removed checklist item from {result.title}",
-                }
-            }
+        _show(
+            TodoCardData(
+                todos=[result],
+                action=TodoCardAction.UPDATE,
+                message=f"Removed checklist item from {result.title}",
+            )
         )
 
         return {"todo": todo_dict, "error": None}
@@ -1249,24 +1150,24 @@ def _preview(window: TodoDayWindow, *, completed: bool) -> TodoSearchParams:
     )
 
 
-def _bucket(page: TodoListResponse) -> _TodoBucket:
+def _bucket(page: TodoListResponse) -> TodoBucket:
     """A preview of one bucket, with the count over all of its todos."""
-    return {
-        "count": page.meta.total,
-        "todos": [t.model_dump(mode="json") for t in page.data],
-        "has_more": page.meta.total > len(page.data),
-    }
+    return TodoBucket(
+        count=page.meta.total, todos=page.data, has_more=page.meta.total > len(page.data)
+    )
 
 
 def _project_breakdown(
     stats: TodoStats, projects: list[ProjectResponse]
-) -> dict[str, _ProjectCounts]:
+) -> dict[str, ProjectCounts]:
     """Per-project totals from the stats over every todo, keyed by project name."""
-    breakdown: dict[str, _ProjectCounts] = {}
+    breakdown: dict[str, ProjectCounts] = {}
     for project in projects:
         total = stats.by_project.get(project.id, 0)
         pending = stats.pending_by_project.get(project.id, 0)
-        breakdown[project.name] = {"total": total, "completed": total - pending, "pending": pending}
+        breakdown[project.name] = ProjectCounts(
+            total=total, completed=total - pending, pending=pending
+        )
     return breakdown
 
 
@@ -1317,40 +1218,35 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
         )
         next_deadline = (await todo_responses(user_id, [next_due]))[0] if next_due else None
 
-        summary: TodosSummary = {
-            "today": _bucket(today),
-            "overdue": _bucket(overdue),
-            "upcoming_week": _bucket(upcoming),
-            "high_priority": _bucket(high_priority),
-            "recently_completed": _RecentlyCompletedBucket(
-                count=completed_today.meta.total,
-                todos=[t.model_dump(mode="json") for t in completed_today.data],
+        summary = TodosSummary(
+            today=_bucket(today),
+            overdue=_bucket(overdue),
+            upcoming_week=_bucket(upcoming),
+            high_priority=_bucket(high_priority),
+            recently_completed=RecentlyCompletedBucket(
+                count=completed_today.meta.total, todos=completed_today.data
             ),
-            "next_deadline": next_deadline.model_dump(mode="json") if next_deadline else None,
-            "stats": {
-                "total": stats.total,
-                "completed": stats.completed,
-                "pending": stats.pending,
-                "completed_today": completed_today.meta.total,
-                "overdue": stats.overdue,
-                "completion_rate": stats.completion_rate,
-            },
-            "by_project": _project_breakdown(stats, projects),
-        }
-
-        # Stream to frontend
-        writer = current_stream_writer()
-        writer(
-            {
-                "todo_data": {
-                    "summary": summary,
-                    "action": "summary",
-                    "message": f"Here's your productivity snapshot: {today.meta.total} tasks today, {stats.overdue} overdue, {stats.completion_rate}% completion rate",
-                }
-            }
+            next_deadline=next_deadline,
+            stats=SummaryStats(
+                total=stats.total,
+                completed=stats.completed,
+                pending=stats.pending,
+                completed_today=completed_today.meta.total,
+                overdue=stats.overdue,
+                completion_rate=stats.completion_rate,
+            ),
+            by_project=_project_breakdown(stats, projects),
         )
 
-        return {"summary": summary, "error": None}
+        _show(
+            TodoCardData(
+                summary=summary,
+                action=TodoCardAction.SUMMARY,
+                message=f"Here's your productivity snapshot: {today.meta.total} tasks today, {stats.overdue} overdue, {stats.completion_rate}% completion rate",
+            )
+        )
+
+        return {"summary": summary.model_dump(mode="json"), "error": None}
 
     except Exception as e:
         error_msg = f"Error getting todos summary: {e!s}"

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from app.constants.chat import ARTIFACT_CARD
 from app.db.repositories.conversations import conversation_repository
 from app.models.artifact_models import ArtifactCard, ArtifactRegistryEntry
+from app.models.tool_card_registry import tool_card_data
 from app.services.artifact_events import remove_event, upsert_event
 from app.services.storage import ArtifactInfo, JuiceFSUnavailable, list_artifacts
 from shared.py.conversation_wire import ToolDataEntry
@@ -53,7 +54,8 @@ async def reconcile_artifacts(
     if kept != list(registry.values()):
         await conversation_repository.set_artifacts(conversation_id, user_id=user_id, entries=kept)
     return tuple(
-        ToolDataEntry(tool_name=ARTIFACT_CARD, data=dict(event)) for event in [*added, *removed]
+        ToolDataEntry(tool_name=ARTIFACT_CARD, data=tool_card_data(ARTIFACT_CARD, event))
+        for event in [*added, *removed]
     )
 
 

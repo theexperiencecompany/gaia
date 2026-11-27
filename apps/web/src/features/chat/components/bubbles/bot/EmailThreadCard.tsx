@@ -1,4 +1,5 @@
 import { Accordion, Chip, ScrollShadow } from "@heroui/react";
+import type { EmailThreadItem } from "@shared/api/generated";
 import { FIXED_LOCALE, formatInboxTime, YESTERDAY } from "@shared/utils";
 import { useCallback } from "react";
 import { accordionVariants } from "@/components/shared/accordionVariants";
@@ -18,11 +19,14 @@ function formatTime(time: string | null): string {
 
 function EmailBodyRenderer({
   body,
-  content,
+  content: messageContent,
 }: {
   body: string;
-  content?: { text: string; html: string };
+  content: EmailThreadItem["content"];
 }) {
+  // A plain-string content carries no html/text parts; the body renders instead.
+  const content =
+    typeof messageContent === "string" ? undefined : messageContent;
   const htmlContent = content?.html || content?.text || body;
 
   const sanitizedHtml = sanitizeEmailHtml(htmlContent);
@@ -91,7 +95,7 @@ export default function EmailThreadCard({
                 <div className="space-y-3">
                   {(emailThreadData.messages ?? []).map((message) => {
                     const { name: senderName, email: senderEmail } = parseEmail(
-                      message.from,
+                      message.from ?? undefined,
                     );
 
                     return (

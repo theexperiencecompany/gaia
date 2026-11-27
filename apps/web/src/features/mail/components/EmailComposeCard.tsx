@@ -44,6 +44,10 @@ import type {
   EmailComposeData,
 } from "@/types/features/mailTypes";
 
+// The card's cc/bcc arrive as a list, or as one address when the agent passed a single string.
+const addressList = (addresses: string[] | string | null): string[] =>
+  typeof addresses === "string" ? [addresses] : (addresses ?? []);
+
 // Email validation schema
 const emailComposeSchema = z.object({
   to: z
@@ -205,8 +209,8 @@ function ComposeFields({
 }: {
   recipients: RecipientMap;
   onEditField: (field: RecipientField) => void;
-  subject: string;
-  body: string;
+  subject: string | null;
+  body: string | null;
   attachments?: EmailAttachmentMeta[];
   isLocked: boolean;
   onEdit: () => void;
@@ -245,7 +249,7 @@ function ComposeFields({
       </div>
       <Separator className="my-1.5 bg-zinc-700" />
 
-      <EmailBodyPreview html={body} isLocked={isLocked} onEdit={onEdit} />
+      <EmailBodyPreview html={body ?? ""} isLocked={isLocked} onEdit={onEdit} />
 
       {attachments && attachments.length > 0 && (
         <AttachmentsRow attachments={attachments} />
@@ -307,8 +311,8 @@ function EditEmailModal({
   // Seeded from the current data at mount; the parent remounts this modal
   // (keyed by an edit session counter) each time it opens.
   const [draft, setDraft] = useState({
-    subject: initialData.subject,
-    body: initialData.body,
+    subject: initialData.subject ?? "",
+    body: initialData.body ?? "",
   });
 
   return (
@@ -557,22 +561,22 @@ export default function EmailComposeCard({
 
   const recipientSelection = useRecipientSelection({
     to: emailData.to,
-    cc: emailData.cc,
-    bcc: emailData.bcc,
+    cc: addressList(emailData.cc),
+    bcc: addressList(emailData.bcc),
     isSettled: isLocked,
   });
   const { recipients } = recipientSelection;
 
-  const validateForm = (data: { subject: string; body: string }) => {
+  const validateForm = (data: Pick<EmailComposeData, "subject" | "body">) => {
     try {
-      emailComposeSchema.parse({
+      const valid = emailComposeSchema.parse({
         to: recipients.to,
         subject: data.subject,
         body: data.body,
       });
 
       setErrors({});
-      return true;
+      return valid;
     } catch (error) {
       if (error instanceof z.ZodError) {
         const newErrors: Record<string, string> = {};
@@ -583,7 +587,7 @@ export default function EmailComposeCard({
         });
         setErrors(newErrors);
       }
-      return false;
+      return null;
     }
   };
 
@@ -593,7 +597,11 @@ export default function EmailComposeCard({
       return;
     }
 
-    if (!validateForm({ subject: editData.subject, body: editData.body })) {
+    const valid = validateForm({
+      subject: editData.subject,
+      body: editData.body,
+    });
+    if (!valid) {
       toast.error("Please fix the validation errors");
       return;
     }
@@ -614,12 +622,12 @@ export default function EmailComposeCard({
         // Send email directly (existing logic)
         await mailApi.sendEmail({
           to: recipients.to.join(", "),
-          subject: editData.subject,
-          body: editData.body,
+          subject: valid.subject,
+          body: valid.body,
           cc: recipients.cc.length > 0 ? recipients.cc.join(", ") : undefined,
           bcc:
             recipients.bcc.length > 0 ? recipients.bcc.join(", ") : undefined,
-          thread_id: emailData.thread_id,
+          thread_id: emailData.thread_id ?? undefined,
         });
       }
     } catch (error) {

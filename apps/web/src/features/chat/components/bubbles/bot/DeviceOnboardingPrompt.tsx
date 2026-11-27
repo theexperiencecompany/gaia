@@ -7,6 +7,7 @@ import {
   CommandLineIcon,
   ComputerIcon,
 } from "@icons";
+import type { DeviceOnboardingCard } from "@shared/api/generated";
 import { type ReactNode, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { inputVariants } from "@/components/shared/controlVariants";
@@ -20,7 +21,6 @@ import {
   thisDeviceLabel,
   useDesktopPlatform,
 } from "@/features/devices/hooks/useDesktopPlatform";
-import type { DeviceOnboardingRequiredData } from "@/features/devices/types";
 import {
   normalizePairingCode,
   toApiPairingCode,
@@ -30,7 +30,7 @@ const PACKAGE_MANAGERS = ["npm", "pnpm", "bun"] as const;
 type PackageManager = (typeof PACKAGE_MANAGERS)[number];
 
 interface DeviceOnboardingPromptProps {
-  device_onboarding_required: DeviceOnboardingRequiredData;
+  device_onboarding_required: DeviceOnboardingCard;
 }
 
 function StepCard({
@@ -114,7 +114,7 @@ function CliOnboardingSteps({
   data,
   startIndex,
 }: {
-  data: DeviceOnboardingRequiredData;
+  data: DeviceOnboardingCard;
   startIndex: number;
 }) {
   const { install_commands, docs_url, pair_command, up_command } = data;

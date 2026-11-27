@@ -61,18 +61,18 @@ class TestOpeningBubble:
         tool = composed.connect_tool_data()
         options = composed.connect_options
         assert tool["tool_name"] == CONNECT_OPTIONS_TOOL_NAME == "connect_options"
-        assert tool["data"] == {"options": options}
-        assert [o["label"] for o in options] == [
+        assert tool["data"] == {"options": [o.model_dump(mode="json") for o in options]}
+        assert [o.label for o in options] == [
             "Connect Gmail",
             "Connect Calendar",
             "All integrations",
         ]
-        assert [o["href"] for o in options] == [
+        assert [o.href for o in options] == [
             connect_link(GMAIL_INTEGRATION_ID),
             connect_link(CALENDAR_INTEGRATION_ID),
             INTEGRATIONS_PATH,
         ]
-        assert [o.get("integration_id") for o in options] == [
+        assert [o.integration_id for o in options] == [
             GMAIL_INTEGRATION_ID,
             CALENDAR_INTEGRATION_ID,
             None,
@@ -192,7 +192,7 @@ class TestLanguage:
         assert composed.opening[2].startswith("Zwei Dinge, die sich jetzt lohnen.\n- Gmail:")
         assert composed.question == "Womit fangen wir an?"
         assert composed.follow_ups == ["Investoren finden", "Etwas anderes"]
-        assert [o["label"] for o in composed.connect_options] == [
+        assert [o.label for o in composed.connect_options] == [
             "Gmail verbinden",
             "Kalender verbinden",
             "Alle Integrationen",

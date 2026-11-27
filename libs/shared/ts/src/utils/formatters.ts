@@ -129,7 +129,7 @@ export function extractUrls(text: string): string[] {
  * of a plan value that arrives as raw backend data — never hand-roll the
  * capitalization inline.
  */
-export function formatPlanName(plan?: string): string {
+export function formatPlanName(plan?: string | null): string {
   if (!plan) return "Pro";
   return plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase();
 }

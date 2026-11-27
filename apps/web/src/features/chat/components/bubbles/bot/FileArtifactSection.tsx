@@ -18,10 +18,13 @@ import { ShareLinkSettingsModal } from "@/features/short-links/components/ShareL
 import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
 import { useShareLink } from "@/features/short-links/hooks/useShareLink";
 import { useConversationArtifacts } from "@/stores/chatStore";
-import type { ArtifactData } from "@/types/features/toolDataTypes";
+import type {
+  ArtifactData,
+  ArtifactEvent,
+} from "@/types/features/toolDataTypes";
 
 interface FileArtifactSectionProps {
-  artifact_data: ArtifactData | ArtifactData[];
+  artifact_data: ArtifactEvent[];
 }
 
 const EXT_CONTENT_TYPE: Record<string, string> = {
@@ -57,12 +60,11 @@ function resolveContentType(artifact: ArtifactData, filename: string): string {
  * references; full data (size, inline body) lives in `artifactMap`. The `?? a`
  * fallback keeps legacy full-data messages rendering before any registry sync. */
 function normalize(
-  input: ArtifactData | ArtifactData[],
+  events: ArtifactEvent[],
   artifactMap: Record<string, ArtifactData>,
 ): ArtifactData[] {
-  const list = Array.isArray(input) ? input : [input];
   const byPath = new Map<string, ArtifactData>();
-  for (const a of list) {
+  for (const a of events) {
     if (!a?.session_id || !a.path) continue;
     if (a.event === "remove") {
       byPath.delete(a.path);

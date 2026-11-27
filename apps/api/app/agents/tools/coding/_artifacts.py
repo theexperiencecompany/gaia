@@ -13,6 +13,7 @@ from app.agents.tools.coding._context import safe_emit
 from app.agents.workspace.paths import MountRole, detect_content_type, session_artifacts
 from app.constants.chat import ARTIFACT_CARD
 from app.models.short_link_models import ShortLinkTargetType, WorkspaceFileTarget
+from app.models.tool_card_registry import tool_card
 from app.services.artifact_events import upsert_event
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.links.service import attach_link
@@ -42,7 +43,7 @@ async def publish_artifact(
         else None
     )
     short_url = build_url(link.slug) if link else None
-    safe_emit({ARTIFACT_CARD: dict(upsert_event(conv_id, artifact, short_url=short_url))})
+    safe_emit(tool_card(ARTIFACT_CARD, upsert_event(conv_id, artifact, short_url=short_url)))
     return link_placeholder(link.target) if link else None
 
 

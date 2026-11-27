@@ -22,8 +22,10 @@ from app.models.todo_models import (
     BulkOperationResponse,
     PaginationMeta,
     Priority,
+    ProjectResponse,
     SearchMode,
     SubTask,
+    TodoCounts,
     TodoDayWindow,
     TodoLabelCount,
     TodoListResponse,
@@ -81,8 +83,8 @@ def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
 _IST_TODAY_START = datetime(2026, 6, 14, 18, 30, tzinfo=UTC)
 
 
-def _make_todo_response(**overrides: Any) -> MagicMock:
-    """Create a mock TodoResponse with model_dump support."""
+def _make_todo_response(**overrides: Any) -> TodoResponse:
+    """Create a TodoResponse."""
     defaults = {
         "id": "todo-1",
         "user_id": FAKE_USER_ID,
@@ -102,15 +104,11 @@ def _make_todo_response(**overrides: Any) -> MagicMock:
         "updated_at": datetime.now(UTC),
     }
     defaults.update(overrides)
-    mock = MagicMock()
-    for key, val in defaults.items():
-        setattr(mock, key, val)
-    mock.model_dump.return_value = defaults
-    return mock
+    return TodoResponse.model_validate(defaults)
 
 
-def _make_project_response(**overrides: Any) -> MagicMock:
-    """Create a mock ProjectResponse."""
+def _make_project_response(**overrides: Any) -> ProjectResponse:
+    """Create a ProjectResponse."""
     defaults = {
         "id": "proj-1",
         "user_id": FAKE_USER_ID,
@@ -121,11 +119,13 @@ def _make_project_response(**overrides: Any) -> MagicMock:
         "updated_at": datetime.now(UTC).isoformat(),
     }
     defaults.update(overrides)
-    mock = MagicMock()
-    for key, val in defaults.items():
-        setattr(mock, key, val)
-    mock.model_dump.return_value = defaults
-    return mock
+    return ProjectResponse.model_validate(defaults)
+
+
+def _card(**fields: object) -> dict[str, object]:
+    """Return the todo_data card the tool streams: every field it does not set arrives as null."""
+    unset = ("todos", "projects", "project_completion", "stats", "counts", "summary")
+    return {**dict.fromkeys(unset), **fields}
 
 
 def _writer_mock() -> MagicMock:
@@ -315,32 +315,6 @@ class TestCreateTodo:
 
         assert result["error"] is None
         assert result["todo"]["priority"] == Priority.HIGH
-
-    @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
-    async def test_workflow_included_in_response(
-        self,
-        mock_service: AsyncMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        writer = _writer_mock()
-        mock_writer_factory.return_value = writer
-        todo = _make_todo_response(title="Task with workflow")
-        todo_dict = todo.model_dump()
-        todo_dict["workflow"] = {"steps": ["step1"]}
-        todo.model_dump.return_value = todo_dict
-        mock_service.return_value = todo
-
-        from app.agents.tools.todo_tool import create_todo
-
-        result = await create_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
-            config=_make_config(),
-            title="Task with workflow",
-        )
-
-        assert result["error"] is None
-        # Writer should be called with workflow data
-        writer.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -676,14 +650,18 @@ class TestGetTodoStatistics:
 
     @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.user_todo_counts", new_callable=AsyncMock)
     @patch(f"{MODULE}.todo_repository.compute_stats", new_callable=AsyncMock)
     async def test_happy_path(
         self,
         mock_service: AsyncMock,
+        mock_counts: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
         mock_service.return_value = TodoStats(total=10, completed=5, pending=5)
+        mock_counts.return_value = TodoCounts(inbox=1, today=2, upcoming=3, completed=5, overdue=4)
 
         from app.agents.tools.todo_tool import get_todo_statistics
 
@@ -692,6 +670,16 @@ class TestGetTodoStatistics:
         assert result["error"] is None
         assert result["stats"]["total"] == 10
         mock_service.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_IST_WINDOW)
+        mock_counts.assert_awaited_once_with(FAKE_USER_ID, _IST_WINDOW)
+        card = writer.call_args.args[0]["todo_data"]
+        assert card["stats"]["total"] == 10
+        assert card["counts"] == {
+            "inbox": 1,
+            "today": 2,
+            "upcoming": 3,
+            "completed": 5,
+            "overdue": 4,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -832,14 +820,20 @@ class TestListProjects:
     """Tests for the list_projects tool."""
 
     @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.todo_repository.compute_stats", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
         mock_service: AsyncMock,
+        mock_stats: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
         mock_service.return_value = [_make_project_response()]
+        mock_stats.return_value = TodoStats(
+            by_project={"proj-1": 4, "proj-2": 3}, pending_by_project={"proj-1": 1, "proj-2": 3}
+        )
 
         from app.agents.tools.todo_tool import list_projects
 
@@ -847,6 +841,9 @@ class TestListProjects:
 
         assert result["error"] is None
         assert result["count"] == 1
+        card = writer.call_args.args[0]["todo_data"]
+        assert card["projects"][0]["id"] == "proj-1"
+        assert card["project_completion"] == {"proj-1": 75, "proj-2": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -1114,7 +1111,7 @@ class TestBulkDeleteTodos:
 
         assert result == {"success": True, "error": None}
         writer.assert_called_once_with(
-            {"todo_data": {"action": "delete", "message": "Deleted 2 tasks"}}
+            {"todo_data": _card(action="delete", message="Deleted 2 tasks")}
         )
 
     @patch(f"{MODULE}.current_stream_writer")
@@ -1171,16 +1168,16 @@ class TestAddChecklistItem:
                 config=_make_config(), todo_id="todo-1", title="Buy milk"
             )
 
-        todo_dict = updated.model_dump.return_value
+        todo_dict = updated.model_dump(mode="json")
         assert result == {"todo": todo_dict, "error": None}
         assert event["tool"] == {"name": "add_checklist_item", "action": "create"}
         writer.assert_called_once_with(
             {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": "Added checklist item 'Buy milk' to Groceries",
-                }
+                "todo_data": _card(
+                    todos=[todo_dict],
+                    action="update",
+                    message="Added checklist item 'Buy milk' to Groceries",
+                )
             }
         )
         todo_id, update_data, user_id = mock_update.await_args.args
@@ -1234,16 +1231,16 @@ class TestUpdateChecklistItem:
                 completed=True,
             )
 
-        todo_dict = updated.model_dump.return_value
+        todo_dict = updated.model_dump(mode="json")
         assert result == {"todo": todo_dict, "error": None}
         assert event["tool"] == {"name": "update_checklist_item", "action": "update"}
         writer.assert_called_once_with(
             {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": "Updated checklist item in Groceries",
-                }
+                "todo_data": _card(
+                    todos=[todo_dict],
+                    action="update",
+                    message="Updated checklist item in Groceries",
+                )
             }
         )
         mock_update.assert_awaited_once_with(
@@ -1312,16 +1309,16 @@ class TestDeleteChecklistItem:
                 config=_make_config(), todo_id="todo-1", item_id="sub-1"
             )
 
-        todo_dict = updated.model_dump.return_value
+        todo_dict = updated.model_dump(mode="json")
         assert result == {"todo": todo_dict, "error": None}
         assert event["tool"] == {"name": "delete_checklist_item", "action": "delete"}
         writer.assert_called_once_with(
             {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": "Removed checklist item from Groceries",
-                }
+                "todo_data": _card(
+                    todos=[todo_dict],
+                    action="update",
+                    message="Removed checklist item from Groceries",
+                )
             }
         )
         mock_update.assert_awaited_once_with(
@@ -1436,7 +1433,7 @@ class TestGetTodosSummary:
         }
         assert result == {"summary": expected, "error": None}
         writer.assert_called_once_with(
-            {"todo_data": {"summary": expected, "action": "summary", "message": ANY}}
+            {"todo_data": _card(summary=expected, action="summary", message=ANY)}
         )
         assert sorted(pages.served) == ["completed", "high", "overdue", "today", "upcoming"]
         mock_repo.compute_stats.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_IST_WINDOW)
@@ -1547,7 +1544,7 @@ _FAR = "6ae10081d5575101b9faaaaa"
 _NOTE_TAIL = "Copy todo ids exactly as list_todos returns them."
 
 
-def _users_todos() -> list[MagicMock]:
+def _users_todos() -> list[TodoResponse]:
     """Return the run user's todos, the shorter id and the far one listed before every near one."""
     return [
         _make_todo_response(id="todo-1", title="short id"),
@@ -1659,7 +1656,7 @@ class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
         mock_bulk.assert_awaited_once_with([_SIBLING, _MISCOPIED, unrelated], FAKE_USER_ID)
         mock_list.assert_awaited_once_with(FAKE_USER_ID, limit=100)
         writer.assert_called_once_with(
-            {"todo_data": {"action": "delete", "message": "Deleted 1 task"}}
+            {"todo_data": _card(action="delete", message="Deleted 1 task")}
         )
         assert event["tool"] == {"name": "bulk_delete_todos", "action": "bulk_delete"}
         assert event["warnings"] == [

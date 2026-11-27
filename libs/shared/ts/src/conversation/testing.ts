@@ -1,4 +1,5 @@
 import type { UserItem } from "../api/generated";
+import { ToolTimelineSchema } from "./entries";
 import founderFrames from "./fixtures/c41f18c5.frames.json";
 import { parseConversationEvent } from "./frames";
 import type {
@@ -68,7 +69,7 @@ export const groupedTimeline = (
 ): Extract<ScreenItem, { kind: "reply" }>["timeline"] => {
   const [first] = cards;
   if (!first) return NO_TIMELINE;
-  return {
+  return ToolTimelineSchema.parse({
     steps: [],
     cards: [
       {
@@ -82,7 +83,7 @@ export const groupedTimeline = (
       },
     ],
     progress: null,
-  };
+  });
 };
 
 /** A reply item of one bubble, or of the bubbles given; outcome null while it is still being written. */

@@ -172,12 +172,12 @@ class TestListTodos:
     async def test_counts_bucket_on_the_callers_home_timezone(self, client: AsyncClient) -> None:
         with (
             patch(
-                f"{TODOS_ENDPOINT}.project_repository.get_default_inbox",
+                "app.services.todos.todo_service.project_repository.get_default_inbox",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
             patch(
-                f"{TODOS_ENDPOINT}.todo_repository.compute_counts",
+                "app.services.todos.todo_service.todo_repository.compute_counts",
                 new_callable=AsyncMock,
                 return_value=TodoCounts(today=2),
             ) as compute_counts,

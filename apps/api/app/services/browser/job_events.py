@@ -15,11 +15,9 @@ from app.constants.browser import (
     BROWSER_JOB_EVENTS_MAXLEN,
     BROWSER_JOB_EVENTS_PREFIX,
     BROWSER_JOB_FEED_WAIT_MS,
-    BROWSER_TASK_EVENT,
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.schemas.browser import BrowserCardSnapshot
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 from shared.py.wide_events import log
 
@@ -78,8 +76,3 @@ def _decode(entry_id: str, raw: str | None) -> dict[str, object] | None:
         log.error(f"{LogTag.BROWSER} Dropping non-object browser job frame", entry_id=entry_id)
         return None
     return payload
-
-
-def card_frame(snapshot: BrowserCardSnapshot) -> dict[str, object]:
-    """Return the frame that shows snapshot as the run's card, before the feed normalizes it."""
-    return {BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")}

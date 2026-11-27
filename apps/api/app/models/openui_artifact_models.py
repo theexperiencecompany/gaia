@@ -61,11 +61,15 @@ class ArtifactCard(ArtifactStreamHeader):
 
     status: ArtifactStatus
     #: The first draft so far, while status is streaming; a ready card's program is fetched by artifact_id.
-    program: str | None = None
+    program: str | None = Field(default=None, exclude_if=lambda program: program is None)
     #: The stored artifact, once status is ready.
-    artifact_id: str | None = None
+    artifact_id: str | None = Field(
+        default=None, exclude_if=lambda artifact_id: artifact_id is None
+    )
     #: Why it gave up, on a failure the tool caught.
-    reason: ArtifactFailureReason | None = None
+    reason: ArtifactFailureReason | None = Field(
+        default=None, exclude_if=lambda reason: reason is None
+    )
 
 
 class OpenUIArtifact(UserScopedDocument):
