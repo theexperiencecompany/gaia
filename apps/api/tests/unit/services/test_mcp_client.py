@@ -1845,9 +1845,11 @@ class TestOAuthGrantLock:
         monkeypatch.setattr(client.token_store, "grant_lock", grant_lock)
         with (
             patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh,
-            pytest.raises(OAuthGrantLockUnavailableError),
+            pytest.raises(OAuthGrantLockUnavailableError) as raised,
         ):
             await client._try_refresh_token(INTEGRATION_ID, _make_mcp_config())
+
+        assert str(raised.value) == f"OAuth grant lock for {INTEGRATION_ID} could not be taken"
 
         refresh.assert_not_awaited()
         grant_lock.assert_called_once_with(INTEGRATION_ID)

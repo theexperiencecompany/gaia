@@ -26,7 +26,6 @@ class OAuthGrantLockUnavailableError(Exception):
 
     def __init__(self, integration_id: str) -> None:
         super().__init__(f"OAuth grant lock for {integration_id} could not be taken")
-        self.integration_id = integration_id
 
 
 class DCRRegistrationError(ValueError):
