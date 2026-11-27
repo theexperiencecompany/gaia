@@ -4,14 +4,11 @@ from typing import cast
 
 import pytest
 
+from app.constants import summarization
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
-from app.constants.summarization import (
-    MAX_CARD_TEXT_CHARS,
-    MAX_ENTRY_TEXT_CHARS,
-    MAX_OUTPUT_CHARS,
-)
+from app.constants.summarization import MAX_OUTPUT_CHARS
 from app.models.conversation_frame_models import (
     ArtifactDeltaEvent,
     ImageEvent,
@@ -524,7 +521,7 @@ def _subagent_calls(count: int, text: str) -> list[StreamPayload]:
 @pytest.mark.regression
 def test_a_subagent_groups_calls_together_keep_at_most_one_cards_budget() -> None:
     full = MAX_OUTPUT_CHARS
-    calls_in_budget = MAX_CARD_TEXT_CHARS // full
+    calls_in_budget = summarization.MAX_CARD_TEXT_CHARS // full
     (shown,) = fold_cards(_subagent_calls(calls_in_budget + 2, "o" * full)).tool_data
     calls = cast(list[dict[str, object]], cast(dict[str, object], shown["data"])["tool_calls"])
     assert [call["output"] for call in calls[:calls_in_budget]] == ["o" * full] * calls_in_budget
@@ -536,7 +533,7 @@ def test_a_subagent_groups_calls_together_keep_at_most_one_cards_budget() -> Non
 @pytest.mark.regression
 def test_an_entrys_cards_together_keep_at_most_the_entry_budget() -> None:
     full = MAX_OUTPUT_CHARS
-    cards_in_budget = MAX_ENTRY_TEXT_CHARS // full
+    cards_in_budget = summarization.MAX_ENTRY_TEXT_CHARS // full
     payloads: list[StreamPayload] = []
     for index in range(cards_in_budget + 1):
         payloads.append(
@@ -545,7 +542,9 @@ def test_an_entrys_cards_together_keep_at_most_the_entry_budget() -> None:
         payloads.append(output(f"c{index}", "o" * full))
     shown = fold_cards(payloads).tool_data
     kept = [cast(dict[str, object], each["data"]) for each in shown]
-    assert sum(len(cast(str, call["output"])) for call in kept) == MAX_ENTRY_TEXT_CHARS
+    assert (
+        sum(len(cast(str, call["output"])) for call in kept) == summarization.MAX_ENTRY_TEXT_CHARS
+    )
     assert kept[-1] == {
         "tool_call_id": f"c{cards_in_budget}",
         "output": "",
@@ -569,6 +568,6 @@ def test_a_cut_seeds_output_keeps_the_length_its_tool_returned() -> None:
             "output_original_length": 9_000_000,
         },
     )
-    cards = [stored] * (MAX_ENTRY_TEXT_CHARS // MAX_OUTPUT_CHARS + 1)
+    cards = [stored] * (summarization.MAX_ENTRY_TEXT_CHARS // MAX_OUTPUT_CHARS + 1)
     *_, last = fold_cards([], seed=cards).tool_data
     assert last["data"] == {"tool_call_id": "c1", "output": "", "output_original_length": 9_000_000}
