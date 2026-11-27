@@ -3,8 +3,8 @@
 Exercises the production build_comms_graph; test_comms_agent_flow.py is the sibling covering
 streaming, edge cases and multi-turn accumulation over the same builder. External I/O (DB
 clients, LLM API calls, the memory service) is
-mocked so the LangGraph routing, the pre_model_hooks (filter_messages_node,
-manage_system_prompts_node), the end_graph_hooks (follow_up_actions_node) and tool registration
+mocked so the LangGraph routing, the pre_model_hooks (manage_system_prompts_node),
+the provider transcript, the end_graph_hooks (follow_up_actions_node) and tool registration
 all run for real.
 """
 
@@ -316,8 +316,10 @@ class TestRealCommsAgent:
             f"found {len(non_memory_system)}"
         )
 
-    async def test_filter_messages_node_removes_unanswered_tool_calls(self, comms_graph_simple):
-        """filter_messages_node must strip a dangling tool call before the LLM sees it."""
+    async def test_an_unanswered_tool_call_is_answered_before_the_llm_sees_it(
+        self, comms_graph_simple
+    ):
+        """A dangling tool call must reach the LLM answered as unfinished."""
         config = _thread_config()
 
         dangling_tool_call_id = "dangling_call_001"
@@ -335,7 +337,7 @@ class TestRealCommsAgent:
             ],
         )
 
-        # The graph should complete: filter_messages_node will strip the dangling
+        # The graph should complete: the provider transcript answers the dangling
         # tool call before passing messages to the model.
         result = await comms_graph_simple.ainvoke(
             {
@@ -347,11 +349,11 @@ class TestRealCommsAgent:
             config=config,
         )
 
-        # filter_messages_node strips dangling tool calls ephemerally, not from the
-        # checkpoint; reaching here without a LangChain unmatched-tool-call error proves it ran.
+        # The transcript answers dangling tool calls ephemerally, not in the checkpoint;
+        # reaching here without a LangChain unmatched-tool-call error proves it ran.
         ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
         assert len(ai_messages) >= 1, (
-            "Graph should have produced at least one AIMessage after stripping the dangling tool call"
+            "Graph should have produced at least one AIMessage after answering the dangling tool call"
         )
 
         # Verify the graph produced a NEW AIMessage (not just the dangling one).

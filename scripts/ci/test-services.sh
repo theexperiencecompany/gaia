@@ -16,6 +16,9 @@
 #                 USE_REAL_SERVICES=1 exported over whatever the caller had.
 #                 Wrap the real binary, never `mise …`: mise re-applies a
 #                 worktree's .env.worktree over the caller's env.
+#   ports         print every host port any lane can bind, one per line, in
+#                 either topology. wt_env.py reserves them so a worktree's dev
+#                 ports never land on a test lane's.
 #
 # The script decides for itself which topology it is on — callers never choose:
 #
@@ -132,20 +135,30 @@ lane_of() {
   echo "$lane"
 }
 
+# The host ports, in Postgres Redis Mongo Chroma RabbitMQ order, of the box's
+# shared set. Fixed: there is exactly one shared set, so the per-runner port
+# arithmetic has nothing to disambiguate here. High, non-standard host ports:
+# the home box runs its own Postgres/Redis/Mongo/RabbitMQ/Chroma alongside CI
+# (5432/6379/27017/5672/8000 are taken, and so are 15432/15673), and the
+# per-job CI containers use <base>+index*100 below 10000. Surveyed free on
+# 2026-08-28: 25432 16379 37017 18000 25673.
+shared_ports() {
+  echo "${GAIA_SHARED_POSTGRES_PORT:-25432}" "${GAIA_SHARED_REDIS_PORT:-16379}" \
+    "${GAIA_SHARED_MONGO_PORT:-37017}" "${GAIA_SHARED_CHROMA_PORT:-18000}" \
+    "${GAIA_SHARED_RABBITMQ_PORT:-25673}"
+}
+
+# The host ports, in the same order, of per-job lane $1: each canonical port
+# offset by lane*100, so concurrent lanes on one runner never collide.
+perjob_ports() {
+  local offset=$(($1 * 100))
+  echo $((5432 + offset)) $((6379 + offset)) $((27017 + offset)) $((8000 + offset)) $((5672 + offset))
+}
+
 # Names and host ports differ per topology; everything below reads these.
 set_topology() {
   if ci_on_the_box; then
-    # Fixed ports: there is exactly one shared set, so the per-runner port
-    # arithmetic has nothing to disambiguate here. High, non-standard host
-    # ports: the home box runs its own Postgres/Redis/Mongo/RabbitMQ/Chroma
-    # alongside CI (5432/6379/27017/5672/8000 are taken, and so are
-    # 15432/15673), and the per-job CI containers use <base>+index*100 below
-    # 10000. Surveyed free on 2026-08-28: 25432 16379 37017 18000 25673.
-    POSTGRES_PORT="${GAIA_SHARED_POSTGRES_PORT:-25432}"
-    REDIS_PORT="${GAIA_SHARED_REDIS_PORT:-16379}"
-    MONGO_PORT="${GAIA_SHARED_MONGO_PORT:-37017}"
-    CHROMA_PORT="${GAIA_SHARED_CHROMA_PORT:-18000}"
-    RABBITMQ_PORT="${GAIA_SHARED_RABBITMQ_PORT:-25673}"
+    read -r POSTGRES_PORT REDIS_PORT MONGO_PORT CHROMA_PORT RABBITMQ_PORT <<<"$(shared_ports)"
     PG_NAME="gaia-shared-postgres"
     REDIS_NAME="gaia-shared-redis"
     MONGO_NAME="gaia-shared-mongo"
@@ -157,14 +170,9 @@ set_topology() {
     # host port by index*100 and suffixes every container name; GitHub-hosted
     # runners have no RUNNER_INDEX, so they default to 0 and keep the
     # canonical ports.
-    local idx offset
+    local idx
     idx="${RUNNER_INDEX:-0}"
-    offset=$((idx * 100))
-    POSTGRES_PORT=$((5432 + offset))
-    REDIS_PORT=$((6379 + offset))
-    MONGO_PORT=$((27017 + offset))
-    CHROMA_PORT=$((8000 + offset))
-    RABBITMQ_PORT=$((5672 + offset))
+    read -r POSTGRES_PORT REDIS_PORT MONGO_PORT CHROMA_PORT RABBITMQ_PORT <<<"$(perjob_ports "$idx")"
     PG_NAME="gaia-test-postgres-${idx}"
     REDIS_NAME="gaia-test-redis-${idx}"
     MONGO_NAME="gaia-test-mongo-${idx}"
@@ -763,12 +771,21 @@ cmd_janitor() {
   ci_ok "test services: janitor reset ${swept} stale lane(s)"
 }
 
+cmd_ports() {
+  local lane
+  for ((lane = 0; lane <= MAX_LANE; lane++)); do
+    perjob_ports "$lane"
+  done | tr ' ' '\n'
+  shared_ports | tr ' ' '\n'
+}
+
 # ── dispatch ──────────────────────────────────────────────────────────────
 
 usage() {
   cat >&2 <<'USAGE'
 Usage: test-services.sh <up|prepare|reset|down|janitor> [lane]
        test-services.sh exec -- <command> [args…]
+       test-services.sh ports
 
   up            make the services exist and be ready (idempotent)
   prepare [r]   claim lane r's namespace, clean it, export its env contract
@@ -776,6 +793,7 @@ Usage: test-services.sh <up|prepare|reset|down|janitor> [lane]
   down          teardown for an `if: always()` step
   janitor       reset every lane whose env file is stale (the box only)
   exec -- cmd   run cmd against this lane's services (up + prepare first)
+  ports         every host port any lane can bind, one per line
 
 The topology (shared set on the box vs per-job containers) is decided from
 RUNNER_NAME (lib/runner-host.sh) and RUNNER_INDEX; callers do not choose.
@@ -792,6 +810,7 @@ main() {
     down)    cmd_down "$@" ;;
     janitor) cmd_janitor "$@" ;;
     exec)    cmd_exec "$@" ;;
+    ports)   cmd_ports ;;
     *)
       echo "test-services.sh: unknown subcommand '${sub}'" >&2
       usage

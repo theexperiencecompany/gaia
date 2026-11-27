@@ -1,30 +1,43 @@
-"""E2E test: tool-call routing and filter_messages_node in a live GAIA graph.
+"""E2E test: tool-call routing and the provider transcript in a live GAIA graph.
 
 This file does NOT cover email sending: the send_email tool below is a local stub standing in
 for "any tool". Real send-email coverage lives in tests/e2e/test_send_email_flow.py, which drives
 the Gmail path through the real HTTP route and app.services.mail.mail_service.
 
-Real here: filter_messages_node wired as a pre-model hook by
-app.override.langgraph_bigtool.create_agent, over the GAIA State schema rather than MessagesState.
-AI messages carrying dangling tool calls (no matching ToolMessage) are injected into graph state
-and the assertion is that the hook strips them before the next model call -- which is the only
-reason the fake LLM can answer turn 2 at all. Doubled: the LLM (FakeMessagesListChatModel), the
-store (InMemoryStore, no ChromaDB), the checkpointer (MemorySaver, no PostgreSQL), and the routed
-tool itself; the graph infrastructure is production code.
+Real here: app.override.langgraph_bigtool.create_agent over the GAIA State schema, and the model
+node's call through ainvoke_llm, which lays out each tool call and its results before the model
+sees them. Doubled: the LLM (a fake that rejects a request the way OpenAI does), the store
+(InMemoryStore, no ChromaDB), the checkpointer (MemorySaver, no PostgreSQL), and the routed tool
+itself; the graph infrastructure is production code.
 """
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from typing import Any
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.outputs import ChatResult
 from langchain_core.tools import tool
 import pytest
 
-from app.agents.core.nodes.filter_messages import filter_messages_node
-from tests.e2e.conftest import (
-    build_gaia_test_graph,
-    make_gaia_state,
-    make_mock_store,
-    make_node_config,
-)
+from app.agents.llm.transcript import UNFINISHED_TOOL_RESULT
+from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel, assert_tool_called
+
+
+class _OpenAIStrictFakeModel(BindableToolsFakeModel):
+    """Refuse, as OpenAI's chat API does, a tool call not answered in the messages right after it."""
+
+    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
+        for index, message in enumerate(messages):
+            if not isinstance(message, AIMessage) or not message.tool_calls:
+                continue
+            answered = []
+            for follower in messages[index + 1 :]:
+                if not isinstance(follower, ToolMessage):
+                    break
+                answered.append(follower.tool_call_id)
+            if answered != [call["id"] for call in message.tool_calls]:
+                raise ValueError("tool_call_ids did not have response messages")
+        return super()._generate(messages, *args, **kwargs)
 
 
 @tool
@@ -35,71 +48,69 @@ def send_email(to: str, subject: str, body: str) -> str:
 
 @pytest.mark.e2e
 class TestToolRoutingFlow:
-    """E2E tests verifying filter_messages_node is active in the GAIA graph.
+    """E2E tests verifying tool calls route, and reach the model in a provider-valid shape."""
 
-    The real value here is that filter_messages_node (production code) is
-    exercised as part of the graph run — not just unit-tested in isolation.
-    """
-
-    # Unit coverage lives in tests/unit/agents/nodes/test_filter_messages.py.
-
-    def test_filter_messages_node_removes_dangling_tool_calls(self):
-        """filter_messages_node must strip AI tool_calls with no ToolMessage response."""
-        ai_with_dangling_call = AIMessage(
-            content="I'll send that email",
-            tool_calls=[
-                {
-                    "id": "dangling_call_001",
-                    "name": "send_email",
-                    "args": {
-                        "to": "alice@example.com",
-                        "subject": "Meeting",
-                        "body": "Let's catch up.",
-                    },
-                }
-            ],
+    async def test_a_result_backfilled_after_later_turns_reaches_the_model_beside_its_call(
+        self, thread_config, in_memory_store, memory_saver
+    ):
+        """The 2026-11-26 executor thread: its backfilled result sat after two later turns."""
+        call = {"id": "call_e260", "name": "send_email", "args": {}, "type": "tool_call"}
+        fake_llm = _OpenAIStrictFakeModel(responses=[AIMessage(content="Here is where we are.")])
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry={"send_email": send_email},
+            checkpointer=memory_saver,
+            store=in_memory_store,
         )
-        state = make_gaia_state(messages=[ai_with_dangling_call])
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = filter_messages_node(state, config, store)
-
-        filtered_ai = result["messages"][0]
-        assert isinstance(filtered_ai, AIMessage)
-        assert len(filtered_ai.tool_calls) == 0, (
-            "filter_messages_node must remove tool calls with no ToolMessage response"
+        await graph.aupdate_state(
+            thread_config,
+            {
+                "messages": [
+                    HumanMessage(content="email carol"),
+                    AIMessage(content="", tool_calls=[call]),
+                    HumanMessage(content="add a todo"),
+                    AIMessage(content="todo added"),
+                    ToolMessage(content="interrupted", tool_call_id="call_e260", status="error"),
+                ]
+            },
+            as_node="tools",
         )
 
-    def test_filter_messages_node_preserves_answered_tool_calls(self):
-        """filter_messages_node must keep tool_calls that have a ToolMessage response."""
-        ai = AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "id": "answered_001",
-                    "name": "send_email",
-                    "args": {"to": "bob@example.com", "subject": "Hi", "body": "Hello"},
-                }
-            ],
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="and now?")]}, config=thread_config
         )
-        tool_response = ToolMessage(
-            content="Email delivered to bob@example.com re: Hi",
-            tool_call_id="answered_001",
+
+        assert result["messages"][-1].content == "Here is where we are."
+
+    async def test_an_unanswered_call_reaches_the_model_answered_as_unfinished(
+        self, thread_config, in_memory_store, memory_saver
+    ):
+        call = {"id": "call_open", "name": "send_email", "args": {}, "type": "tool_call"}
+        fake_llm = _OpenAIStrictFakeModel(responses=[AIMessage(content="It did not finish.")])
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry={"send_email": send_email},
+            checkpointer=memory_saver,
+            store=in_memory_store,
         )
-        state = make_gaia_state(messages=[ai, tool_response])
-        config = make_node_config()
-        store = make_mock_store()
 
-        result = filter_messages_node(state, config, store)
-
-        filtered_ai = result["messages"][0]
-        assert len(filtered_ai.tool_calls) == 1, (
-            "filter_messages_node must preserve tool_calls that have responses"
+        result = await graph.ainvoke(
+            {
+                "messages": [
+                    HumanMessage(content="email carol"),
+                    AIMessage(content="", tool_calls=[call]),
+                ]
+            },
+            config=thread_config,
         )
-        assert filtered_ai.tool_calls[0]["id"] == "answered_001"
 
-    async def test_graph_runs_filter_messages_as_pre_model_hook(
+        assert result["messages"][-1].content == "It did not finish."
+        assert not any(
+            isinstance(m, ToolMessage) and m.content == UNFINISHED_TOOL_RESULT
+            for m in result["messages"]
+        ), "the answer is the request's, never written into the thread"
+
+    async def test_graph_routes_a_tool_call_end_to_end(
         self, thread_config, in_memory_store, memory_saver
     ):
         """Build a real GAIA graph with create_agent and verify tool routing end-to-end."""
@@ -188,56 +199,3 @@ class TestToolRoutingFlow:
             "Expected at least a HumanMessage and an AIMessage in the result. "
             f"Got {len(result['messages'])} message(s)."
         )
-
-    async def test_multi_turn_conversation_filter_cleans_between_turns(self):
-        """filter_messages_node must clean unanswered tool calls across turns."""
-        dangling_ai = AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "id": "stale_001",
-                    "name": "send_email",
-                    "args": {},
-                }
-            ],
-        )
-        answered_ai = AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "id": "live_002",
-                    "name": "send_email",
-                    "args": {},
-                }
-            ],
-        )
-        live_response = ToolMessage(content="Email sent", tool_call_id="live_002")
-        state = make_gaia_state(messages=[dangling_ai, answered_ai, live_response])
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = filter_messages_node(state, config, store)
-
-        # dangling_ai (index 0) should have its tool_calls cleared
-        assert len(result["messages"][0].tool_calls) == 0
-        # answered_ai (index 1) should keep its tool_call
-        assert len(result["messages"][1].tool_calls) == 1
-        assert result["messages"][1].tool_calls[0]["id"] == "live_002"
-
-    async def test_filter_messages_preserves_ai_content_on_cleanup(self):
-        """filter_messages_node must preserve AI content even when tool_calls are removed."""
-        ai = AIMessage(
-            content="I will try to send an email for you",
-            tool_calls=[{"id": "no_response_tc", "name": "send_email", "args": {}}],
-        )
-        state = make_gaia_state(messages=[ai])
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = filter_messages_node(state, config, store)
-
-        filtered = result["messages"][0]
-        assert filtered.content == "I will try to send an email for you", (
-            "filter_messages_node must not modify message content when removing tool_calls"
-        )
-        assert len(filtered.tool_calls) == 0

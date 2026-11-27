@@ -16,7 +16,6 @@ import pytest
 from app.agents.core.background.executor_channel import drain_inbox_hook
 from app.agents.core.nodes.adapt_media import adapt_media_node
 from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
-from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.middleware.factory import SubagentStackOptions
 from app.agents.middleware.subagent import SubagentMiddleware
@@ -506,7 +505,6 @@ class TestBuildCommsGraph:
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
             assert pre_model_hooks == [
-                filter_messages_node,
                 drain_conversation_log_hook,
                 manage_system_prompts_node,
             ]
@@ -751,7 +749,6 @@ class TestBuildExecutorGraph:
             # The drain is what lets work handed over mid-run reach the executor
             # at all; the todo instructions live in its static prompt, not a hook.
             assert pre_model_hooks == [
-                filter_messages_node,
                 adapt_media_node,
                 drain_inbox_hook,
                 manage_system_prompts_node,

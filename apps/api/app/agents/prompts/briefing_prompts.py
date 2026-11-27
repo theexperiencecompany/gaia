@@ -170,6 +170,8 @@ NEVER LINK FACTS BY CAUSE: two facts side by side are not one blocking the other
 thing causes, blocks or frees another only where the line of a fact the sentence names says so.
 NEVER CLAIM HOW LONG: say how long something has stood, or that it is still or again so, only of
 a fact whose line dates it (its time, "already shown", an age such as "updated 4 days ago").
+NEVER GUESS A PRONOUN: a name does not tell you anyone's pronouns, so say the person's name
+again or "they", never "he" or "she" of someone the facts only name.
 """.strip()
 
 # How every brief's prose reads, past what its headline and lede are written from.

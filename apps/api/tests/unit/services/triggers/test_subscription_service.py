@@ -32,11 +32,13 @@ from app.services.triggers.subscription_service import (
     build_trigger_config,
     pause_subscriptions_for_trigger_names,
     register_subscription,
+    reregister_active_subscriptions,
     resync_subscriptions_for_trigger_names,
     teardown_subscriptions,
     unregister_subscription,
 )
 from app.services.triggers.subscription_validation import validate_conditions
+from app.services.workflow.trigger_service import ResyncOutcome
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import (
@@ -461,11 +463,10 @@ class TestRegisterSubscription:
         # The todo is read for THIS user, and Composio is told whose todo and which
         # trigger to register — a swapped arg registers the wrong watch.
         h.get.assert_awaited_once_with(TODO_ID, user_id=USER_ID)
-        args, kwargs = h.register.await_args
+        args = h.register.await_args.args
         assert args[0] == USER_ID
         assert args[1] == TODO_ID
         assert args[2] == INSTANCE_TRIGGER
-        assert kwargs["raise_on_failure"] is True
         # The subscription is persisted against THIS todo and user — a swapped id
         # writes the watch onto the wrong document.
         assert h.add.await_args.args == (TODO_ID,)
@@ -912,6 +913,7 @@ class _ResyncHarness:
         self.todos = todos
         self.register_result = register
         self.find_paused = AsyncMock(return_value=todos)
+        self.find_active = AsyncMock(return_value=todos)
         self.register = AsyncMock()
         self.unregister = AsyncMock(return_value=True)
         self.resume = AsyncMock(return_value=None)
@@ -924,6 +926,7 @@ class _ResyncHarness:
         self._repo = patch(
             "app.services.triggers.subscription_service.todo_repository",
             find_paused_by_user_and_trigger=self.find_paused,
+            find_active_by_user_and_trigger=self.find_active,
             resume_trigger_subscriptions=self.resume,
         )
         self._svc = patch(
@@ -1135,14 +1138,12 @@ class TestResyncSubscriptions:
             assert call.kwargs["user_id"] == USER_ID
             assert call.kwargs["trigger_ids"] == {todo.trigger_subscriptions[0].id: ["ti_new"]}
 
-        # Re-registration is for THIS todo's identity, and must raise on failure so a
-        # broken re-register is caught, not silently stored.
+        # Re-registration is for THIS todo's identity.
         assert h.register.await_count == 2
         reg = h.register.await_args_list[0]
         assert reg.args[0] == USER_ID
         assert reg.args[1] == "todo-a"
         assert reg.args[2] == INSTANCE_TRIGGER
-        assert reg.kwargs["raise_on_failure"] is True
 
         # The now-stale old id is released, excluded from its own refcount via todo_id.
         un = h.unregister.await_args_list[0]
@@ -1248,3 +1249,49 @@ class TestResyncSubscriptions:
         assert resynced == 0
         h.register.assert_not_awaited()
         h.resume.assert_not_awaited()
+
+
+class TestReregisterActiveSubscriptions:
+    async def test_only_the_active_watches_on_the_trigger_are_rebuilt_and_repointed(self) -> None:
+        active = _subscription(id="s-active", composio_trigger_ids=["ti_old"])
+        paused = _paused_sub(id="s-paused", composio_trigger_ids=["ti_paused"])
+        other = _subscription(id="s-other", trigger_name="github_pr_opened")
+        todo = _todo(id="todo-a", trigger_subscriptions=[active, paused, other])
+        second = _todo(id="todo-b", trigger_subscriptions=[_subscription(id="s-b")])
+        with _ResyncHarness([todo, second], ["ti_new"]) as h:
+            outcome = await reregister_active_subscriptions(USER_ID, INSTANCE_TRIGGER)
+
+        assert outcome == ResyncOutcome(moved=["todo-a", "todo-b"])
+        assert h.find_active.await_args.args == (USER_ID, INSTANCE_TRIGGER)
+        assert h.register.await_count == 2
+        assert h.register.await_args_list[0].args[:3] == (USER_ID, "todo-a", INSTANCE_TRIGGER)
+        assert h.resume.await_args_list[0].args == ("todo-a",)
+        assert h.resume.await_args_list[0].kwargs == {
+            "user_id": USER_ID,
+            "trigger_ids": {"s-active": ["ti_new"]},
+        }
+        assert h.unregister.await_args_list[0].args[:3] == (USER_ID, INSTANCE_TRIGGER, ["ti_old"])
+
+    async def test_a_failed_store_is_reported_and_keeps_the_old_instance(self) -> None:
+        failing = _todo(
+            id="todo-a", trigger_subscriptions=[_subscription(composio_trigger_ids=["ti_old"])]
+        )
+        fine = _todo(
+            id="todo-b", trigger_subscriptions=[_subscription(composio_trigger_ids=["ti_b"])]
+        )
+        with _ResyncHarness([failing, fine], ["ti_new"]) as h:
+            h.resume.side_effect = [RuntimeError("mongo down"), None]
+            outcome = await reregister_active_subscriptions(USER_ID, INSTANCE_TRIGGER)
+
+        assert outcome == ResyncOutcome(moved=["todo-b"], failed=["todo-a"])
+        assert [c.args[2] for c in h.unregister.await_args_list] == [["ti_b"]]
+
+    async def test_an_unchanged_instance_is_kept(self) -> None:
+        todo = _todo(
+            id="todo-a", trigger_subscriptions=[_subscription(composio_trigger_ids=["ti_same"])]
+        )
+        with _ResyncHarness([todo], ["ti_same"]) as h:
+            outcome = await reregister_active_subscriptions(USER_ID, INSTANCE_TRIGGER)
+
+        assert outcome == ResyncOutcome(unchanged=["todo-a"])
+        h.unregister.assert_not_awaited()

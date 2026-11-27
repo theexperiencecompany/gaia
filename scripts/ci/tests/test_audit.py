@@ -745,3 +745,120 @@ def test_evlog_takes_its_base_as_a_branch_a_remote_ref_or_a_commit(
 
     assert proc.returncode == 0, proc.stderr
     assert "no changed Python files to ratchet" in proc.stdout
+
+
+# --- semgrep ----------------------------------------------------------------
+
+
+def _semgrep(
+    tmp_path: Path, root: Path, *, scanned: int, exit_code: int = 0, lane: bool = True
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    """Run `audit.sh semgrep` against a docker stub; return the run and the docker argv."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    paths = {"scanned": [f"f{i}.py" for i in range(scanned)]}
+    (tmp_path / "report.json").write_text(json.dumps({"results": [], "paths": paths}))
+    (tmp_path / "report.sarif").write_text(json.dumps(SARIF_FINDING))
+    stub = bin_dir / "docker"
+    stub.write_text(
+        textwrap.dedent(f"""\
+        #!/usr/bin/env bash
+        printf '%s\\n' "$@" > {tmp_path}/docker-argv
+        out="$(printf '%s\\n' "$@" | sed -n 's|^\\(.*\\):/out$|\\1|p')"
+        cp {tmp_path}/report.json "$out/semgrep.json"
+        cp {tmp_path}/report.sarif "$out/semgrep.sarif"
+        exit {exit_code}
+        """)
+    )
+    stub.chmod(0o755)
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "semgrep", *(["--lane", "scan/semgrep"] if lane else [])],
+        env={
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "HOME": os.environ.get("HOME", "/tmp"),
+            "RUNNER_TEMP": str(tmp_path),
+            "GAIA_VERDICT_DIR": str(tmp_path / "verdicts"),
+            "SEMGREP_ROOT": str(root),
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    argv_file = tmp_path / "docker-argv"
+    return proc, argv_file.read_text().splitlines() if argv_file.exists() else []
+
+
+@pytest.fixture
+def semgrep_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+    return repo.resolve()
+
+
+def test_semgrep_runs_the_pinned_image_with_ci_rules_and_target(
+    tmp_path: Path, semgrep_repo: Path
+) -> None:
+    proc, argv = _semgrep(tmp_path, semgrep_repo, scanned=3)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "semgrep: OK (3 files clean)" in proc.stdout
+    image = next(a for a in argv if a.startswith("semgrep/semgrep:"))
+    assert re.fullmatch(r"semgrep/semgrep:[\d.]+@sha256:[0-9a-f]{64}", image)
+    assert argv[argv.index(image) + 1 :][:5] == [
+        "semgrep",
+        "scan",
+        "--config",
+        "tools/semgrep/p-python.yaml",
+        "apps/api/app",
+    ]
+    assert {"--error", "--metrics=off"} <= set(argv)
+
+
+def test_semgrep_that_scanned_zero_files_fails(tmp_path: Path, semgrep_repo: Path) -> None:
+    """Regression: from a worktree the image saw no git dir, scanned 0 files and exited 0."""
+    proc, _ = _semgrep(tmp_path, semgrep_repo, scanned=0)
+
+    assert proc.returncode == 1
+    assert "scanned 0 files" in proc.stderr
+
+
+def test_semgrep_in_a_worktree_mounts_the_main_git_dir_at_its_own_path(
+    tmp_path: Path, semgrep_repo: Path
+) -> None:
+    worktree = (tmp_path / "wt").resolve()
+    _git(semgrep_repo, "worktree", "add", "-q", str(worktree), "-b", "feature")
+
+    proc, argv = _semgrep(tmp_path, worktree, scanned=1)
+
+    assert proc.returncode == 0, proc.stderr
+    mounts = {argv[i + 1] for i, a in enumerate(argv) if a == "-v"}
+    git_dir = semgrep_repo / ".git"
+    assert {f"{worktree}:{worktree}", f"{git_dir}:{git_dir}:ro"} <= mounts
+    assert argv[argv.index("-w") + 1] == str(worktree)
+
+
+def test_semgrep_finding_fails_with_its_verdict(tmp_path: Path, semgrep_repo: Path) -> None:
+    proc, _ = _semgrep(tmp_path, semgrep_repo, scanned=2, exit_code=1)
+
+    assert proc.returncode == 1
+    doc = json.loads((tmp_path / "verdicts" / "scan" / "semgrep.json").read_text())
+    assert doc["status"] == "fail"
+    assert [(f["file"], f["line"]) for f in doc["findings"]] == [("scripts/ci/sim-stack.sh", 92)]
+
+
+def test_semgrep_scan_that_errors_is_never_a_pass(tmp_path: Path, semgrep_repo: Path) -> None:
+    proc, _ = _semgrep(tmp_path, semgrep_repo, scanned=2, exit_code=2)
+
+    assert proc.returncode == 1
+    assert "the scan itself failed (exit 2)" in proc.stderr
+
+
+def test_semgrep_requires_a_lane(tmp_path: Path, semgrep_repo: Path) -> None:
+    proc, argv = _semgrep(tmp_path, semgrep_repo, scanned=1, lane=False)
+
+    assert proc.returncode == 1
+    assert "--lane <job>/<check> is required" in proc.stderr
+    assert argv == []

@@ -450,6 +450,7 @@
       "cache": false,
       "inputs": [
         "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/tools/lints/docstring_coverage.py",
         "ciHarness",
         "{workspaceRoot}/apps/api/**/*.py",
         "{workspaceRoot}/apps/voice-agent/**/*.py",
@@ -469,7 +470,7 @@
     "interrogate": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash scripts/ci/changes.sh scoped --task ci:interrogate --py-source --full \"apps/api apps/voice-agent libs/shared/py\" -- uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml"
+        "command": "bash scripts/ci/changes.sh scoped --task ci:interrogate --py-source --full \"apps/api apps/voice-agent libs/shared/py\" -- uv run --frozen --no-build --isolated --only-group lint python tools/lints/docstring_coverage.py -c pyproject.toml"
       },
       "cache": false,
       "inputs": [
@@ -1136,7 +1137,11 @@
       }
     },
     "semgrep": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh semgrep --lane scan/semgrep"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/tools/semgrep/**/*",
         "ciHarness",
@@ -1150,7 +1155,6 @@
           "job": "scan",
           "check": "semgrep",
           "area": "security",
-          "runner": "action",
           "events": ["merge_group", "push", "workflow_dispatch"]
         }
       }

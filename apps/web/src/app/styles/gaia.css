@@ -478,6 +478,11 @@
   }
 
   /* components/shared/controlVariants.ts */
+  /* v2's bordered chip: its translucent hairline over whatever fill the variant
+     paints (v2's border-default read as the divider tint on every surface). */
+  .chip.gaia-chip-bordered {
+    border: 1px solid var(--separator);
+  }
   .chip.gaia-chip-selected {
     box-shadow:
       0 10px 15px -3px color-mix(in oklab, var(--chip-bg) 50%, transparent),
@@ -723,6 +728,18 @@
   /* separatorVariants({ surface: "raised" }): v2's zinc-700/50 divider on a zinc-800 card. */
   .separator.gaia-separator-raised {
     background-color: var(--gaia-separator-raised);
+  }
+
+  /* Chips: v2's default is a full-radius pill at weight 400 (v3 ships a 16px
+     radius and 500). The shape rules below still fix another radius. */
+  .chip {
+    border-radius: var(--gaia-radius-pill);
+    font-weight: var(--gaia-chip-weight);
+  }
+  /* v3 refines the lg chip to 500; restate v2's weight so the gaia rule above
+     does not leave that modifier dead. */
+  .chip--lg {
+    font-weight: var(--gaia-chip-weight);
   }
 
   .slider.gaia-slider-sm .slider__marks {

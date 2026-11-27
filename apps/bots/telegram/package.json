@@ -13,7 +13,8 @@
     "@gaia/shared": "workspace:*",
     "@grammyjs/runner": "^2.0.3",
     "@grammyjs/types": "^3.28.0",
-    "grammy": "^1.44.0"
+    "grammy": "^1.44.0",
+    "image-size": "^2.0.4"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

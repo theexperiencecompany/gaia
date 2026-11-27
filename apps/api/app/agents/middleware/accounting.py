@@ -478,6 +478,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             cached_tokens=cached_tokens,
             output_tokens=output_tokens,
             reasoning_tokens=reasoning_tokens,
+            duration_ms=invoke_ms,
             cost_usd=total_cost,
             # Whether this figure is what the provider charged or what our price
             # table guessed — the two disagree by more than 10x per upstream, so

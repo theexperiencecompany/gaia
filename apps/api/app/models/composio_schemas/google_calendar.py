@@ -6,7 +6,7 @@ Reference: node_modules/@composio/core/generated/googlecalendar.ts
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field
 
 
 class GoogleCalendarEventCreatedPayload(BaseModel):
@@ -47,3 +47,27 @@ class GoogleCalendarEventStartingSoonPayload(BaseModel):
         None, description="Event start time as UNIX epoch timestamp (UTC)"
     )
     summary: str | None = Field(None, description="Event title")
+
+
+class GoogleCalendarEventStartingSoonTriggerConfig(BaseModel):
+    """Trigger config for GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER at the toolkit version oauth_config pins.
+
+    That version (20260107_00) names the fields calendarId, minutes_before_start,
+    countdown_window_minutes and include_all_day; any other name is dropped for its default
+    (fire at 10, look ahead 60). minutes_before_start is when it fires; the look-ahead only
+    bounds which events a poll evaluates, so it matches the lead.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    calendar_id: str = Field(
+        serialization_alias="calendarId",
+        validation_alias=AliasChoices("calendar_id", "calendarId"),
+    )
+    minutes_before_start: int = Field(ge=1, le=1440)
+    include_all_day: bool
+
+    @computed_field
+    def countdown_window_minutes(self) -> int:
+        """Look exactly as far ahead as the lead, so no event inside it goes unevaluated."""
+        return self.minutes_before_start

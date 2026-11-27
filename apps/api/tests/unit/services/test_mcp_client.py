@@ -70,6 +70,7 @@ from app.services.mcp.mcp_errors import (
     DCRNotSupportedError,
     MCPAuthorizationRequiredError,
     MCPIntegrationNotFoundError,
+    McpToolResultError,
     StepUpAuthRequiredError,
     _extract_response_signal,
     is_terminal_auth_failure,
@@ -2864,6 +2865,32 @@ class TestAConvertedToolThatFails:
             "server down",
             "execute",
         )
+
+    async def test_an_error_result_reaches_a_tool_that_handles_its_own_errors_as_content(
+        self,
+    ) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(
+                content=[TextContent(type="text", text="HTTP 500")], isError=True
+            )
+        )
+
+        assert await self._tool(connector)._arun() == "HTTP 500"
+
+    async def test_an_error_result_is_raised_to_a_caller_that_handles_errors_itself(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(
+                content=[TextContent(type="text", text="HTTP 500")], isError=True
+            )
+        )
+        tool = self._tool(connector)
+        tool.handle_tool_error = False
+
+        with pytest.raises(McpToolResultError, match="^HTTP 500$") as raised:
+            await tool._arun()
+        assert raised.value.content == "HTTP 500"
 
     async def test_a_result_that_cannot_be_read_comes_back_as_a_formatted_error(self) -> None:
         connector = MagicMock()

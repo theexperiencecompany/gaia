@@ -357,7 +357,7 @@ class TestMalformedEvents:
 
         assert transcript.tool_names() == ["GMAIL_FETCH_MESSAGES"]
 
-    @pytest.mark.parametrize("node", ["filter_messages", "manage_system_prompts", "tools"])
+    @pytest.mark.parametrize("node", ["adapt_media", "manage_system_prompts", "tools"])
     async def test_only_the_agent_node_emits_cards(self, node: str):
         """Same stale-replay hazard as the comms stream: hooks re-emit historical AIMessages."""
         historical = AIMessage(

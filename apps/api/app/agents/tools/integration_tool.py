@@ -344,6 +344,10 @@ async def connect_integration(
             )
 
             if not integration:
+                custom = await _users_custom_server(integration_id, user_id)
+                if custom:
+                    results.append(await _connect_custom_server(custom, user_id, mode))
+                    continue
                 available = [i.id for i in all_integrations() if i.available]
                 results.append(
                     f"❌ '{integration_id}' not found. "
@@ -463,11 +467,24 @@ def _reject_custom_mcp_add(name: str) -> str | None:
     return None
 
 
-async def _reuse_existing_custom_server(existing: Integration, user_id: str) -> str:
-    """A server at this URL already exists — report it or hand off to reconnect."""
-    if await user_integration_repository.is_connected(user_id, existing.integration_id):
-        return f"✅ {existing.name} is already added and connected."
-    return await request_integration_connection(existing.integration_id, existing.name, user_id)
+async def _users_custom_server(integration_id: str, user_id: str) -> Integration | None:
+    """Return the custom MCP server the user added under this id, or None."""
+    if not await user_integration_repository.exists(user_id, integration_id):
+        return None
+    return await integration_repository.get_custom(integration_id)
+
+
+async def _connect_custom_server(integration: Integration, user_id: str, mode: ConnectMode) -> str:
+    """Start the sign-in for a custom server the user already added; reconnect always gets a link."""
+    if mode is ConnectMode.ADD_ACCOUNT:
+        return f"{integration.name} connects a single account; it cannot have several."
+    if mode is ConnectMode.CONNECT and await user_integration_repository.is_connected(
+        user_id, integration.integration_id
+    ):
+        return f"✅ {integration.name} is already added and connected."
+    return await request_integration_connection(
+        integration.integration_id, integration.name, user_id, mode=mode
+    )
 
 
 async def _create_and_report_custom_server(
@@ -553,7 +570,7 @@ async def add_custom_mcp_server(
         # Idempotency: reuse an existing server at the same URL rather than duplicating.
         existing = await integration_repository.find_custom_by_server_url(normalized_url, user_id)
         if existing:
-            return await _reuse_existing_custom_server(existing, user_id)
+            return await _connect_custom_server(existing, user_id, ConnectMode.CONNECT)
 
         # Probe and persist the exact user-provided URL: normalization is for
         # dedup only, and some servers distinguish /mcp from /mcp/.

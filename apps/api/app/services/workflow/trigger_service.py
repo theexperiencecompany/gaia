@@ -5,6 +5,8 @@ Provides high-level trigger operations that delegate to provider-specific handle
 Handles Composio trigger reference counting to prevent premature deletion.
 """
 
+from dataclasses import dataclass, field
+
 from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.repositories.todos import todo_repository
@@ -14,6 +16,21 @@ from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
+
+
+@dataclass
+class ResyncOutcome:
+    """What a re-registration sweep did to each owner: moved to new trigger ids, left as is, or failed."""
+
+    moved: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
+
+    def absorb(self, other: "ResyncOutcome") -> None:
+        """Add another sweep's owners to this one."""
+        self.moved += other.moved
+        self.unchanged += other.unchanged
+        self.failed += other.failed
 
 
 class TriggerService:
@@ -100,46 +117,26 @@ class TriggerService:
         owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-        raise_on_failure: bool = False,
     ) -> list[str]:
         """Register triggers for an owner (a workflow or a tracked todo).
 
         Returns the registered Composio trigger IDs (may be empty on success, e.g.
-        account-level Gmail has no per-workflow IDs). With raise_on_failure,
-        raises TriggerRegistrationError when the handler is missing or raises.
+        account-level Gmail has no per-workflow IDs). Raises TriggerRegistrationError
+        when the handler is missing or fails, so an empty result never stands for a failure.
         """
         handler = get_handler_by_name(trigger_name)
         if not handler:
-            error_msg = f"No handler found for trigger: {trigger_name}"
-            log.error(f"{LogTag.WORKFLOW} No handler found for trigger", trigger_name=trigger_name)
-            if raise_on_failure:
-                raise TriggerRegistrationError(error_msg, trigger_name)
-            return []
-
-        try:
-            # Pass TriggerConfig directly - handlers validate trigger_data type
-            trigger_ids = await handler.register(user_id, owner_id, trigger_name, trigger_config)
-            return trigger_ids
-        except TypeError as e:
-            # Re-raise TypeError for type validation failures
-            log.error(
-                f"{LogTag.WORKFLOW} Type validation error registering triggers",
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-                owner_id=owner_id,
+            raise TriggerRegistrationError(
+                f"No handler found for trigger: {trigger_name}", trigger_name
             )
-            raise
-        except TriggerRegistrationError:
-            # Re-raise our custom exception
+        try:
+            return await handler.register(user_id, owner_id, trigger_name, trigger_config)
+        except (TypeError, TriggerRegistrationError):
             raise
         except Exception as e:
-            error_msg = f"Error registering triggers: {type(e).__name__}: {e!s}"
-            log.error(f"{LogTag.WORKFLOW} Error registering triggers", error_type=type(e).__name__)
-            log.exception(f"{LogTag.WORKFLOW} Full traceback")
-            if raise_on_failure:
-                raise TriggerRegistrationError(error_msg, trigger_name) from e
-            return []
+            raise TriggerRegistrationError(
+                f"Error registering triggers: {type(e).__name__}: {e!s}", trigger_name
+            ) from e
 
     @staticmethod
     async def unregister_triggers(
@@ -202,15 +199,18 @@ class TriggerService:
             return False
 
     @staticmethod
-    async def resync_user_workflow_triggers(user_id: str, trigger_names: list[str]) -> None:
+    async def resync_user_workflow_triggers(
+        user_id: str, trigger_names: list[str]
+    ) -> ResyncOutcome:
         """Re-register a user's activated integration workflows after a (re)connect.
 
         Reconnecting creates a fresh Composio connected account, so triggers
         registered against the old one go permanently stale. Failures are
-        logged per workflow so one broken workflow can't block the rest.
+        logged and reported per workflow so one broken workflow can't block the rest.
         """
+        outcome = ResyncOutcome()
         if not trigger_names:
-            return
+            return outcome
         for workflow in await workflow_repository.find_active_integration_workflows(
             user_id, trigger_names
         ):
@@ -232,9 +232,11 @@ class TriggerService:
                     error_type=type(e).__name__,
                     user_id=user_id,
                 )
+                outcome.failed.append(workflow_id)
                 continue
             # Account-level triggers (e.g. gmail_new_message) return no ids — nothing to repoint.
             if not new_ids or set(new_ids) == set(old_ids):
+                outcome.unchanged.append(workflow_id)
                 continue
             await workflow_repository.set_composio_trigger_ids(workflow_id, new_ids)
             stale_ids = [i for i in old_ids if i not in new_ids]
@@ -249,3 +251,5 @@ class TriggerService:
                 old_ids=old_ids,
                 new_ids=new_ids,
             )
+            outcome.moved.append(workflow_id)
+        return outcome

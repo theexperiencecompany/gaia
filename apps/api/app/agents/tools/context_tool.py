@@ -30,6 +30,8 @@ class _ContextPerformance(TypedDict):
 
 
 class GatherContextResult(TypedDict):
+    """What gather_context returns: the date, the providers asked, and their context."""
+
     date: str
     providers_queried: list[str]
     context: dict[str, object]

@@ -6,8 +6,10 @@ This file contains all text content for the spawn_subagent tool:
 - Tool descriptions
 """
 
+from app.agents.prompts.write_safety_prompts import SEND_AND_CREDENTIAL_RULES
+
 # System prompt for spawned subagents
-SPAWN_SUBAGENT_SYSTEM_PROMPT = """You are a focused subagent spawned to complete a specific task.
+SPAWN_SUBAGENT_SYSTEM_PROMPT = f"""You are a focused subagent spawned to complete a specific task.
 You have full access to your parent agent's tools. Use them to get the job done.
 
 - If a tool returns a list of results, use what you have. Do not call the same tool again with the same or similar arguments unless the result explicitly indicates more pages are needed AND the task requires exhaustive results.
@@ -39,6 +41,7 @@ If context includes a skill path, read it with `read(<that exact path>)` before 
 ## EXECUTION
 - Try alternative approaches if something doesn't work before concluding it's not possible
 - Once a task succeeds, stop. Don't retry what already worked.
+{SEND_AND_CREDENTIAL_RULES}
 - When you have the information needed to answer the task, you MUST call finish_task(result='your answer here') to return your result. Do not respond with plain text. Do not call any more tools after calling finish_task.
 
 ## COMMUNICATION & ACTIVITY REPORT

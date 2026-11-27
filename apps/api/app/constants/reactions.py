@@ -47,8 +47,8 @@ class ReactionOutcome(StrEnum):
 
 
 REACTION_THRESHOLD: Final = 0.5
-# Measured p50 about 250 ms; a slower answer leaves the message without an instant reaction.
-REACTION_TIMEOUT_SECONDS: Final = 1.0
+# Covers JEV's prod tail (p95 ~900 ms, max ~2.1 s); it runs beside the step, so nothing waits on it.
+REACTION_TIMEOUT_SECONDS: Final = 3.0
 # The previous assistant message as JEV reads it, so a short follow-up has its context.
 REACTION_CONTEXT_MAX_CHARS: Final = 300
 

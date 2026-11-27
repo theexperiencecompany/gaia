@@ -3,7 +3,7 @@
 Requires PostgreSQL running at localhost:5432 with database gaia_test.
 
 The LLM is replaced with BindableToolsFakeModel to avoid external API calls; graph compilation,
-state management, the pre-model hooks (filter_messages_node, manage_system_prompts_node), the
+state management, the pre-model hook (manage_system_prompts_node), the provider transcript, the
 production build_comms_graph and CheckpointerManager, and PostgreSQL checkpointing itself all run
 for real, so deleting any of them fails these tests immediately.
 """
@@ -31,7 +31,6 @@ from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.nodes import pre_model_hooks as pre_model_hooks_module
-from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.constants.general import FINISH_TASK_NAME
@@ -54,7 +53,7 @@ POSTGRES_TEST_URL = os.environ.get(
 
 # The hooks build_comms_graph declares, in run order. manage_system_prompts_node
 # runs last so the request it builds is the one the model sees.
-COMMS_PRE_MODEL_HOOKS = ["filter_messages_node", "manage_system_prompts_node"]
+COMMS_PRE_MODEL_HOOKS = ["manage_system_prompts_node"]
 COMMS_END_GRAPH_HOOKS = ["follow_up_actions_node", "memory_node"]
 COMMS_HOOKS = COMMS_PRE_MODEL_HOOKS + COMMS_END_GRAPH_HOOKS
 
@@ -363,7 +362,6 @@ class TestMultiTurnConversation:
         from langgraph.store.memory import InMemoryStore
 
         pre_model_hooks: list[HookType] = [
-            filter_messages_node,
             manage_system_prompts_node,
         ]
 
@@ -414,9 +412,7 @@ class TestMultiTurnConversation:
             tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
-            hooks_config=HookConfig(
-                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
-            ),
+            hooks_config=HookConfig(pre_model_hooks=[manage_system_prompts_node]),
             agent_config=AgentConfig(agent_name="test_agent"),
         )
 
@@ -460,9 +456,7 @@ class TestStatePersistence:
             tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
-            hooks_config=HookConfig(
-                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
-            ),
+            hooks_config=HookConfig(pre_model_hooks=[manage_system_prompts_node]),
             agent_config=AgentConfig(agent_name="test_agent"),
         )
 
@@ -498,9 +492,7 @@ class TestStatePersistence:
             tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
-            hooks_config=HookConfig(
-                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
-            ),
+            hooks_config=HookConfig(pre_model_hooks=[manage_system_prompts_node]),
             agent_config=AgentConfig(agent_name="test_agent"),
         )
 
@@ -541,7 +533,7 @@ class TestCheckpointRecovery:
         fake_llm_1 = create_fake_llm(["First graph response"])
         fake_llm_2 = create_fake_llm(["Second graph response"])
 
-        hooks: list[HookType] = [filter_messages_node, manage_system_prompts_node]
+        hooks: list[HookType] = [manage_system_prompts_node]
         store = InMemoryStore()
         config = _thread_config()
 
@@ -591,7 +583,7 @@ class TestCheckpointRecovery:
         fake_llm_1 = create_fake_llm(["AI response from first session"])
         fake_llm_2 = create_fake_llm(["AI response from second session"])
 
-        hooks: list[HookType] = [filter_messages_node, manage_system_prompts_node]
+        hooks: list[HookType] = [manage_system_prompts_node]
         store = InMemoryStore()
         config = _thread_config()
 
@@ -637,19 +629,17 @@ class TestCheckpointRecovery:
 class TestPreModelHooksExecution:
     """Test 5: Verify pre-model hooks actually execute during graph runs."""
 
-    async def test_filter_messages_node_runs_during_execution(self, pg_checkpointer):
-        """A dangling (unanswered) tool call must be stripped before the LLM sees it."""
+    async def test_a_dangling_tool_call_is_answered_before_the_llm_sees_it(self, pg_checkpointer):
+        """A dangling (unanswered) tool call reaches the model answered as unfinished, so the run completes."""
         from langgraph.store.memory import InMemoryStore
 
-        fake_llm = create_fake_llm(["Response after filtering"])
+        fake_llm = create_fake_llm(["Response after repair"])
 
         builder = create_agent(
             tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
-            hooks_config=HookConfig(
-                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
-            ),
+            hooks_config=HookConfig(pre_model_hooks=[manage_system_prompts_node]),
             agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
@@ -679,15 +669,15 @@ class TestPreModelHooksExecution:
             config=config,
         )
 
-        # Graph completed: filter_messages_node stripped the dangling call
+        # Graph completed: the provider transcript answered the dangling call
         ai_msgs = [
             m
             for m in result["messages"]
             if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None)
         ]
         assert len(ai_msgs) >= 1, (
-            "Graph should produce a clean AI response after filter_messages_node "
-            "strips the dangling tool call"
+            "Graph should produce a clean AI response after the provider transcript "
+            "answers the dangling tool call"
         )
 
     async def test_manage_system_prompts_keeps_latest_only(self, pg_checkpointer):
@@ -700,9 +690,7 @@ class TestPreModelHooksExecution:
             tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
-            hooks_config=HookConfig(
-                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
-            ),
+            hooks_config=HookConfig(pre_model_hooks=[manage_system_prompts_node]),
             agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
@@ -748,9 +736,7 @@ class TestPreModelHooksExecution:
             tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
-            hooks_config=HookConfig(
-                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
-            ),
+            hooks_config=HookConfig(pre_model_hooks=[manage_system_prompts_node]),
             agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
@@ -776,7 +762,7 @@ class TestErrorDuringInvocation:
         """After a second invocation's LLM raises, the first turn's checkpointed state must survive."""
         from langgraph.store.memory import InMemoryStore
 
-        hooks: list[HookType] = [filter_messages_node, manage_system_prompts_node]
+        hooks: list[HookType] = [manage_system_prompts_node]
         store = InMemoryStore()
         config = _thread_config()
 
@@ -861,7 +847,7 @@ class TestErrorDuringInvocation:
         """After an LLM error, a subsequent invocation must accumulate onto the pre-error state."""
         from langgraph.store.memory import InMemoryStore
 
-        hooks: list[HookType] = [filter_messages_node, manage_system_prompts_node]
+        hooks: list[HookType] = [manage_system_prompts_node]
         store = InMemoryStore()
         config = _thread_config()
 
