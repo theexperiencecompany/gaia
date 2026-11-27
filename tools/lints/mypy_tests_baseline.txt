@@ -287,15 +287,12 @@ apps/api/tests/unit/tools/test_integration_tool_accounts.py	arg-type
 apps/api/tests/unit/tools/test_integration_tools_proxy.py	call-arg
 apps/api/tests/unit/tools/test_linkedin_tool.py	call-arg
 apps/api/tests/unit/tools/test_manual_tool.py	attr-defined
-apps/api/tests/unit/tools/test_research_tool.py	arg-type
-apps/api/tests/unit/tools/test_research_tool.py	assignment
 apps/api/tests/unit/tools/test_skill_tools.py	attr-defined
 apps/api/tests/unit/tools/test_skill_tools.py	typeddict-item
 apps/api/tests/unit/tools/test_subagent_control_tool.py	arg-type
 apps/api/tests/unit/tools/test_subscription_tool.py	attr-defined
 apps/api/tests/unit/tools/test_support_tool.py	attr-defined
 apps/api/tests/unit/utils/search/providers/test_base.py	arg-type
-apps/api/tests/unit/utils/search/test_engine.py	arg-type
 apps/api/tests/unit/utils/search/test_providers.py	arg-type
 apps/api/tests/unit/utils/search/test_providers.py	attr-defined
 apps/api/tests/unit/utils/search/test_providers.py	misc
@@ -312,7 +309,6 @@ apps/api/tests/unit/utils/test_research_utils.py	arg-type
 apps/api/tests/unit/utils/test_schema_fixes.py	arg-type
 apps/api/tests/unit/utils/test_schema_fixes.py	index
 apps/api/tests/unit/utils/test_schema_fixes.py	operator
-apps/api/tests/unit/utils/test_search_utils.py	arg-type
 apps/api/tests/unit/utils/test_webpage_fetch.py	arg-type
 apps/api/tests/unit/workers/test_browser_worker.py	arg-type
 apps/api/tests/unit/workers/test_browser_worker.py	attr-defined

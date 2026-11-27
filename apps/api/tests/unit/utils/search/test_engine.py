@@ -5,9 +5,11 @@ import pytest
 import respx
 
 from app.config.settings import settings
+from app.constants.providers import CredentialProviderName
+from app.models.web_search_models import SearchResponse, SearchResultItem
 from app.services.providers.provider_credentials_service import resolve
+from app.utils.search.budget import FreeTierBudget
 from app.utils.search.engine import SearchEngine
-from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers import default_providers
 from app.utils.search.providers.base import SearchProvider
 from tests.helpers import InMemoryCredentialStore
@@ -47,8 +49,9 @@ class FakeProvider(SearchProvider):
         return self._response
 
 
-class FakeBudget:
+class FakeBudget(FreeTierBudget):
     def __init__(self, denied: set[str] | None = None) -> None:
+        super().__init__(limits={})
         self._denied = denied or set()
         self.recorded: list[str] = []
 
@@ -157,7 +160,7 @@ async def test_selfhost_with_searxng_never_sends_the_query_to_duckduckgo(
     for field in ("EXA_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY", "SEARXNG_BASE_URL"):
         monkeypatch.setattr(settings, field, None)
     selfhost_credential_store.save("searxng", base_url="http://searxng.lan:8080")
-    await resolve("searxng")
+    await resolve(CredentialProviderName.SEARXNG)
     searxng = respx.get("http://searxng.lan:8080/search").mock(
         return_value=httpx.Response(200, json={"results": [{"url": "https://example.com/s"}]})
     )

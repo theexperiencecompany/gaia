@@ -4,8 +4,8 @@ from bs4 import BeautifulSoup
 import httpx
 from pydantic import BaseModel, ConfigDict
 
+from app.models.web_search_models import SearchResponse, SearchResultItem
 from app.utils.log_identifiers import user_text_shape
-from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
 from shared.py.wide_events import log
 

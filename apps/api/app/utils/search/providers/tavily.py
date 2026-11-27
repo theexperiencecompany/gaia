@@ -8,7 +8,7 @@ import asyncio
 from pydantic import BaseModel, ConfigDict, Field
 from tavily import TavilyClient
 
-from app.utils.search.models import SearchResponse, SearchResultItem
+from app.models.web_search_models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import CredentialSearchProvider
 
 

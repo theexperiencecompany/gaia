@@ -85,8 +85,7 @@ def _renamed(node: JsonValue, names: dict[str, str]) -> JsonValue:
     if isinstance(node, dict):
         ref = node.get("$ref")
         if isinstance(ref, str) and ref.startswith(_REF_PREFIX):
-            name = ref.removeprefix(_REF_PREFIX)
-            return {**node, "$ref": _REF_PREFIX + names.get(name, name)}
+            return {**node, "$ref": _REF_PREFIX + names[ref.removeprefix(_REF_PREFIX)]}
         return {key: _renamed(value, names) for key, value in node.items()}
     if isinstance(node, list):
         return [_renamed(item, names) for item in node]

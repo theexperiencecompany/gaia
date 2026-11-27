@@ -128,6 +128,43 @@ def test_the_draft_card_carries_the_agents_delivery() -> None:
     assert card["suggested_title"] == "Billing replies"
 
 
+@pytest.mark.parametrize(
+    ("fields", "trigger"),
+    [
+        (
+            {},
+            {
+                "trigger_type": "integration",
+                "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+                "cron_expression": None,
+            },
+        ),
+        (
+            {"trigger_type": "scheduled", "trigger_slug": None, "cron_expression": "0 9 * * *"},
+            {"trigger_type": "schedule", "trigger_slug": None, "cron_expression": "0 9 * * *"},
+        ),
+    ],
+    ids=["integration", "scheduled"],
+)
+def test_the_draft_card_carries_the_drafts_trigger(
+    fields: dict[str, object], trigger: dict[str, object]
+) -> None:
+    result = parse_subagent_response(_reply(**fields))
+
+    assert result.draft is not None
+    assert result.draft.to_card(WorkflowDelivery.NOW, "draft-1").model_dump(mode="json") == {
+        "suggested_title": "Billing replies",
+        "suggested_description": "Drafts a reply to customer billing emails",
+        "prompt": "1. Read the email\n2. Draft a reply in Gmail",
+        **trigger,
+        "integration_ids": ["gmail"],
+        "runs_only_when": None,
+        "direct_create": False,
+        "delivery": "now",
+        "draft_id": "draft-1",
+    }
+
+
 def test_the_draft_card_carries_the_draft_id_the_create_sends_back() -> None:
     result = parse_subagent_response(_reply())
 
