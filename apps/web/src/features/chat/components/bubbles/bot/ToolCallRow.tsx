@@ -188,13 +188,10 @@ function ToolCallDetails({
             {display.hasOutput && (
               <div className="flex flex-col">
                 <span className="text-zinc-500 font-medium mb-1">Output</span>
-                {!!call.output && (
-                  <CompactMarkdown content={displayToolOutput(call)} />
-                )}
+                <CompactMarkdown content={displayToolOutput(call)} />
                 {call.output_original_length != null && (
                   <OutputTruncatedNote
                     originalLength={call.output_original_length}
-                    keptAny={!!call.output}
                   />
                 )}
               </div>

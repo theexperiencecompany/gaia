@@ -49,19 +49,6 @@ describe("ToolCallRow output the server cut", () => {
     expect(screen.getByText(TRUNCATED_NOTE)).toBeDefined();
   });
 
-  it("says an old card's output is no longer stored when the server kept none of it", () => {
-    renderRow(call({ output: "", output_original_length: 1_250 }));
-
-    fireEvent.click(screen.getByText("Get forecast"));
-
-    expect(screen.getByText("Output")).toBeDefined();
-    expect(
-      screen.getByText(
-        "This text is no longer stored. It was 1,250 characters long.",
-      ),
-    ).toBeDefined();
-  });
-
   it("says nothing under an output the server kept whole", () => {
     renderRow(call({ output: "sunny" }));
 

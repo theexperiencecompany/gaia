@@ -162,12 +162,9 @@ function SubagentTextBlock({
       className={`${className} text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit`}
     >
       <span className="text-zinc-500 font-medium mb-0.5 block">{title}</span>
-      {!!content && <CompactMarkdown content={content} />}
+      <CompactMarkdown content={content} />
       {originalLength != null && (
-        <OutputTruncatedNote
-          originalLength={originalLength}
-          keptAny={!!content}
-        />
+        <OutputTruncatedNote originalLength={originalLength} />
       )}
     </div>
   );
@@ -360,11 +357,10 @@ function CompletedSubagentBody({
                 </div>
               )}
 
-              {(group.handoff_output ||
-                group.handoff_output_original_length != null) && (
+              {group.handoff_output && (
                 <SubagentTextBlock
                   title="Result"
-                  content={group.handoff_output ?? ""}
+                  content={group.handoff_output}
                   className="mt-2"
                   originalLength={group.handoff_output_original_length}
                 />
