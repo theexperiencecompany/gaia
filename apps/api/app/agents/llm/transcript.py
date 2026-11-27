@@ -12,18 +12,19 @@ from collections.abc import Sequence
 from typing import cast
 
 from langchain_core.language_models import LanguageModelInput
-from langchain_core.messages import AIMessage, AnyMessage, ToolMessage, convert_to_messages
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    InvalidToolCall,
+    ToolCall,
+    ToolMessage,
+    convert_to_messages,
+)
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 UNFINISHED_TOOL_RESULT = "[Tool call did not finish: the run ended before this tool returned.]"
-
-
-def _calls(message: AIMessage) -> list[tuple[str, str]]:
-    """Return the (id, name) of every call a provider is sent for this message, unparsed ones included."""
-    calls = [*message.tool_calls, *message.invalid_tool_calls]
-    return [(call["id"], call["name"] or "") for call in calls if call["id"]]
 
 
 def _sits_after(messages: Sequence[AnyMessage], call_index: int, result: ToolMessage) -> bool:
@@ -48,7 +49,6 @@ def provider_transcript(messages: Sequence[AnyMessage]) -> list[AnyMessage]:
             results.setdefault(message.tool_call_id, message)
 
     shaped: list[AnyMessage] = []
-    placed: set[str] = set()
     moved = unfinished = 0
     for index, message in enumerate(messages):
         if isinstance(message, ToolMessage):
@@ -56,15 +56,21 @@ def provider_transcript(messages: Sequence[AnyMessage]) -> list[AnyMessage]:
         shaped.append(message)
         if not isinstance(message, AIMessage):
             continue
-        for call_id, name in _calls(message):
-            if call_id in placed:
+        # OpenAI is sent the unparsed calls as tool calls too, so they need a result as well.
+        parsed: list[ToolCall] = message.tool_calls
+        unparsed: list[InvalidToolCall] = message.invalid_tool_calls
+        calls = [(c["id"], c["name"]) for c in parsed] + [(c["id"], c["name"]) for c in unparsed]
+        for call_id, name in calls:
+            if not call_id:
                 continue
-            placed.add(call_id)
             result = results.get(call_id)
             if result is None:
                 unfinished += 1
                 result = ToolMessage(
-                    content=UNFINISHED_TOOL_RESULT, tool_call_id=call_id, name=name, status="error"
+                    content=UNFINISHED_TOOL_RESULT,
+                    tool_call_id=call_id,
+                    name=name,
+                    status="error",
                 )
             elif not _sits_after(messages, index, result):
                 moved += 1
