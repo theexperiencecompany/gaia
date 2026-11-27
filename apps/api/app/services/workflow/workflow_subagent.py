@@ -59,7 +59,7 @@ from shared.py.wide_events import log
 MAX_DRAFT_CORRECTIONS = 2
 
 # Forced final turn when the authoring loop exhausts its step budget. The
-# budget resets and filter_messages_node drops dangling tool calls, so the
+# budget resets and the provider transcript answers dangling tool calls as unfinished, so the
 # model can only reply with text.
 FORCE_FINALIZE_DIRECTIVE = (
     "You have already gathered enough information. STOP calling tools now. "

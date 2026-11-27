@@ -3,9 +3,6 @@
 Each hook rewrites the message list on its way to the model, and each one's
 contract assumes the previous ones already ran:
 
-* filter_messages_node strips unanswered tool calls — if it ran *after*
-  manage_system_prompts_node the provider would reject the request for a
-  dangling tool call, so the user's message appears to vanish;
 * adapt_media_node rewrites media blocks for the model lane;
 * the executor's drain_inbox_hook adds work handed over mid-run;
 * manage_system_prompts_node runs LAST and builds the request the model sees,
@@ -115,44 +112,28 @@ class TestDeclaredChains:
         hooks = captured.get("hooks_config") or HookConfig()
         return list(hooks.pre_model_hooks or [])
 
-    async def test_the_executor_filters_before_it_manages_prompts(self):
-        """filter_messages_node must run first, or a dangling tool call reaches the provider and gets rejected."""
-        from app.agents.core.nodes.adapt_media import adapt_media_node
-        from app.agents.core.nodes.filter_messages import filter_messages_node
-        from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
-
-        hooks = await self._hooks_for("build_executor_graph")
-
-        assert hooks[0] is filter_messages_node
-        assert hooks[1] is adapt_media_node
-        assert hooks.index(filter_messages_node) < hooks.index(manage_system_prompts_node)
-
     async def test_the_prompt_manager_runs_last_so_it_sees_what_others_added(self):
         """Work the inbox drain adds after the request is built would never reach the model."""
         from app.agents.core.background.executor_channel import drain_inbox_hook
         from app.agents.core.nodes.adapt_media import adapt_media_node
-        from app.agents.core.nodes.filter_messages import filter_messages_node
         from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 
         hooks = await self._hooks_for("build_executor_graph")
 
         assert hooks == [
-            filter_messages_node,
             adapt_media_node,
             drain_inbox_hook,
             manage_system_prompts_node,
         ]
 
-    async def test_comms_filters_drains_the_log_then_manages_prompts(self):
+    async def test_comms_drains_the_log_then_manages_prompts(self):
         """Inputs logged after the batch join the attempt before the prompt manager builds the request."""
         from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
-        from app.agents.core.nodes.filter_messages import filter_messages_node
         from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 
         hooks = await self._hooks_for("build_comms_graph")
 
         assert hooks == [
-            filter_messages_node,
             drain_conversation_log_hook,
             manage_system_prompts_node,
         ]

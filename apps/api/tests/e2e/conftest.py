@@ -1,13 +1,13 @@
 """E2E test fixtures for GAIA agent graph scenarios.
 
-Uses real GAIA nodes (filter_messages_node, manage_system_prompts_node) and the
+Uses the real GAIA manage_system_prompts_node and the
 real create_agent/State from app.override.langgraph_bigtool — only the LLM
 (BindableToolsFakeModel) is mocked. USE_REAL_SERVICES=1 (CI) backs the
 checkpointer/store with AsyncPostgresSaver/AsyncPostgresStore against real
 Postgres; USE_REAL_SERVICES=0 falls back to MemorySaver/InMemoryStore.
 
-If filter_messages_node or manage_system_prompts_node are deleted or
-mis-imported, every fixture here — and every test using them — fails.
+If manage_system_prompts_node is deleted or mis-imported, every fixture
+here — and every test using them — fails.
 """
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ import pytest
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
-from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
@@ -122,11 +121,10 @@ def build_gaia_test_graph(
 ):
     """Build a real GAIA agent graph: real create_agent and pre-model hooks, fake LLM/checkpointer/store.
 
-    Deleting filter_messages_node or manage_system_prompts_node raises ImportError
+    Deleting manage_system_prompts_node raises ImportError
     here — the intended sentinel for every e2e test.
     """
     pre_model_hooks: list[HookType] = [
-        cast(HookType, filter_messages_node),
         cast(HookType, manage_system_prompts_node),
     ]
 

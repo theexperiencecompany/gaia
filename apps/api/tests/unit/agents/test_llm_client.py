@@ -28,7 +28,7 @@ from langchain_core.callbacks import (
 )
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, Generation, LLMResult
 from langchain_core.runnables import (
@@ -1286,6 +1286,80 @@ class TestOneInvocationPerCall:
         assert result.content == "cold"
 
 
+class TestEveryProviderIsSentAToolValidTranscript:
+    """A thread whose tool result drifted from its call still reaches every provider in a valid shape."""
+
+    @staticmethod
+    def _strict_provider(sent: list[list[AnyMessage]]) -> RunnableLambda:
+        """Reject, like OpenAI and Anthropic, a tool call not answered in the messages right after it."""
+
+        def check(messages: list[AnyMessage]) -> AIMessage:
+            sent.append(messages)
+            for index, message in enumerate(messages):
+                if isinstance(message, ToolMessage):
+                    before = messages[index - 1] if index else None
+                    if not isinstance(before, AIMessage | ToolMessage):
+                        raise ValueError(f"tool result {message.tool_call_id} follows no tool call")
+                if not isinstance(message, AIMessage) or not message.tool_calls:
+                    continue
+                answers = []
+                for follower in messages[index + 1 :]:
+                    if not isinstance(follower, ToolMessage):
+                        break
+                    answers.append(follower.tool_call_id)
+                calls = [call["id"] for call in message.tool_calls]
+                if answers != calls:
+                    raise ValueError(f"tool_call_ids did not have response messages: {calls}")
+            return AIMessage(content="ok")
+
+        return RunnableLambda(check)
+
+    @staticmethod
+    def _drifted_thread() -> list[AnyMessage]:
+        """Build the executor thread of the 2026-11-26 failure: a backfilled result after later turns."""
+        call = {"id": "call_e260", "name": "web_search", "args": {"q": "x"}}
+        return [
+            HumanMessage(content="research"),
+            AIMessage(content="", tool_calls=[call]),
+            HumanMessage(content="add a todo"),
+            AIMessage(content="todo added"),
+            HumanMessage(content="and now?"),
+            ToolMessage(content="[did not finish]", tool_call_id="call_e260", status="error"),
+        ]
+
+    @pytest.mark.regression
+    async def test_the_fallback_after_a_rate_limit_is_sent_each_result_beside_its_call(
+        self,
+    ) -> None:
+        sent: list[list[AnyMessage]] = []
+        primary = NonCallableMagicMock()
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.ainvoke = AsyncMock(side_effect=ConnectionError("429 from Workers AI"))
+
+        reply = await ainvoke_llm(
+            primary, self._drifted_thread(), fallback=self._strict_provider(sent)
+        )
+
+        assert reply.content == "ok"
+        assert [type(m).__name__ for m in sent[0]] == [
+            "HumanMessage",
+            "AIMessage",
+            "ToolMessage",
+            "HumanMessage",
+            "AIMessage",
+            "HumanMessage",
+        ]
+
+    @pytest.mark.regression
+    def test_the_sync_call_is_sent_each_result_beside_its_call(self) -> None:
+        sent: list[list[AnyMessage]] = []
+
+        reply = invoke_llm(self._strict_provider(sent), self._drifted_thread())
+
+        assert reply.content == "ok"
+        assert isinstance(sent[0][2], ToolMessage)
+
+
 class TestFallbackHandover:
     """What the fallback is handed when the primary fails: sticky session, messages, metered config, and a stamp marking it fell back."""
 
@@ -1320,7 +1394,7 @@ class TestFallbackHandover:
         # aux request must keep its own sticky session on the fallback too — the
         # conversation's key would re-pin its provider from a background call.
         assert fallback.bind.call_args.kwargs == {"session_id": "conv-1-aux"}
-        assert fallback.ainvoke.call_args.args[0] is messages
+        assert fallback.ainvoke.call_args.args[0] == messages
         forwarded = fallback.ainvoke.call_args.kwargs["config"]
         assert forwarded["configurable"]["session_id"] == "conv-1"
         # The auxiliary meter rides along on the fallback attempt too — its

@@ -722,7 +722,7 @@ class TestProcessText:
 
         # Verify _generate_text_summary was called with truncated text
         call_args = processor.llm.ainvoke.call_args
-        user_content = call_args[0][0][1]["content"]
+        user_content = call_args[0][0][1].content
         # The text in the prompt should be <= 4000 chars from the source
         # (the prompt wrapping adds more, but the source slice is 4000)
         assert "x" * 4000 in user_content

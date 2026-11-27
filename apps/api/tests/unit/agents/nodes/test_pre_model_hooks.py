@@ -12,7 +12,6 @@ from app.agents.core.background.executor_channel import drain_inbox_hook
 from app.agents.core.background.subagent_channel import drain_subagent_inbox_hook
 from app.agents.core.nodes.adapt_media import adapt_media_node
 from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
-from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.core.nodes.pre_model_hooks import comms_pre_model_hooks, worker_pre_model_hooks
 from app.override.langgraph_bigtool.hooks import HookType
@@ -25,21 +24,18 @@ class TestTheChainsAreExactlyThese:
     def test_comms(self) -> None:
         """Its live-work status rides the turn-start context; only inputs the step absorbed join mid-run."""
         assert comms_pre_model_hooks() == [
-            filter_messages_node,
             drain_conversation_log_hook,
             manage_system_prompts_node,
         ]
 
     def test_a_worker(self) -> None:
         assert worker_pre_model_hooks() == [
-            filter_messages_node,
             adapt_media_node,
             manage_system_prompts_node,
         ]
 
     def test_the_executor_drains_its_inbox(self) -> None:
         assert worker_pre_model_hooks(drains_inbox=True) == [
-            filter_messages_node,
             adapt_media_node,
             drain_inbox_hook,
             manage_system_prompts_node,
@@ -47,7 +43,6 @@ class TestTheChainsAreExactlyThese:
 
     def test_a_subagent_drains_its_own_mailbox(self) -> None:
         assert worker_pre_model_hooks(drains_subagent_inbox=True) == [
-            filter_messages_node,
             adapt_media_node,
             drain_subagent_inbox_hook,
             manage_system_prompts_node,
@@ -86,8 +81,3 @@ class TestEachTierGetsOnlyItsOwnHooks:
 
         assert drain_inbox_hook not in chain
         assert drain_subagent_inbox_hook not in chain
-
-    @pytest.mark.parametrize("chain", [comms_pre_model_hooks(), worker_pre_model_hooks()])
-    def test_unanswered_tool_calls_are_stripped_first(self, chain: list[HookType]) -> None:
-        """Filtering first means every later hook sees a valid array."""
-        assert chain[0] is filter_messages_node

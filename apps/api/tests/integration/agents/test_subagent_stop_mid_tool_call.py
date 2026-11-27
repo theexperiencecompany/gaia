@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 import pytest
 
-from app.agents.core.interruption import INTERRUPTED_TOOL_RESULT, UNFINISHED_TOOL_RESULT
+from app.agents.core.interruption import INTERRUPTED_TOOL_RESULT
 from app.agents.core.subagents import subagent_runner
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -113,20 +113,3 @@ async def test_a_stop_mid_tool_call_leaves_the_next_run_working(model: _StrictPr
 
     assert (await _thread(graph))[-1].content == "todo added"
     assert await _closed(graph) == [(INTERRUPTED_TOOL_RESULT, "error")]
-
-
-async def test_a_thread_an_older_stop_left_open_is_repaired_before_the_model_runs(
-    model: _StrictProvider,
-) -> None:
-    graph = _graph(model)
-    call = {"id": CALL_ID, "name": "web_search", "args": {"q": "x"}}
-    await graph.aupdate_state(
-        {"configurable": {"thread_id": THREAD}},
-        {"messages": [HumanMessage(content="research"), AIMessage(content="", tool_calls=[call])]},
-        as_node="agent",
-    )
-
-    await execute_subagent_stream(ctx=_context(graph, "add a todo"))
-
-    assert (await _thread(graph))[-1].content == "todo added"
-    assert await _closed(graph) == [(UNFINISHED_TOOL_RESULT, "error")]

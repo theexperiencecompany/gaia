@@ -3,16 +3,16 @@
 When a user cancels a stream, the graph run stops between supersteps and the
 checkpoint is left as if the turn simply ended: any tool calls the model had
 emitted sit unanswered, and nothing tells the model — on the next turn — that
-it was cut off. filter_messages_node then strips the unanswered calls, so
-the evidence of the interruption is erased entirely.
+it was cut off.
 
 record_interruption closes that gap after the run has stopped:
 
-1. Every dangling tool call in the latest checkpoint gets a synthetic
-   ToolMessage marking it as interrupted (which also keeps the transcript
-   well-formed for providers that reject unanswered tool calls).
+1. Every dangling tool call in the latest checkpoint gets a ToolMessage saying
+   the user stopped it, so the model reads why it has no real result.
 2. A [Request interrupted by user] human message is appended so the model
    sees the turn boundary for what it was.
+
+Provider validity is app.agents.llm.transcript's job, not this module's.
 """
 
 from typing import TypedDict, cast
@@ -34,15 +34,12 @@ INTERRUPTION_MARKER = (
 INTERRUPTED_TOOL_RESULT = (
     "[Tool call interrupted: the user stopped the response before this tool finished.]"
 )
-UNFINISHED_TOOL_RESULT = "[Tool call did not finish: the run ended before this tool returned.]"
 
 # additional_kwargs source tag; filter/pruning hooks must leave these alone.
 INTERRUPTION_SOURCE = "interruption"
 
 
-def _interrupted_tool_messages(
-    messages: list[AnyMessage], answered: set[str], content: str = INTERRUPTED_TOOL_RESULT
-) -> list[ToolMessage]:
+def _interrupted_tool_messages(messages: list[AnyMessage], answered: set[str]) -> list[ToolMessage]:
     """One error ToolMessage per AI tool call the cancelled run left unanswered."""
     backfill: list[ToolMessage] = []
     for msg in messages:
@@ -53,7 +50,7 @@ def _interrupted_tool_messages(
             if tc["id"] and tc["id"] not in answered:
                 backfill.append(
                     ToolMessage(
-                        content=content,
+                        content=INTERRUPTED_TOOL_RESULT,
                         tool_call_id=tc["id"],
                         name=tc["name"],
                         status="error",
@@ -107,12 +104,16 @@ async def _thread(graph: CompiledStateGraph, config: RunnableConfig) -> list[Any
     return values.get("messages", [])
 
 
-async def _write_answers(
-    graph: CompiledStateGraph,
-    config: RunnableConfig,
-    messages: list[AnyMessage],
-    updates: list[AnyMessage],
-) -> None:
+async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig) -> None:
+    """Write the interruption record into the thread's checkpoint.
+
+    Must be called after the cancelled run has actually stopped (the astream
+    generator closed), so the checkpoint read here is the run's final state.
+    """
+    messages = await _thread(graph, config)
+    updates = build_interruption_messages(messages)
+    if not updates:
+        return
     # A call the cut run had not committed yet lives only in pending writes, which the
     # write below discards; re-writing its message (an upsert) keeps each backfill answered.
     backfilled = {update.tool_call_id for update in updates if isinstance(update, ToolMessage)}
@@ -126,44 +127,9 @@ async def _write_answers(
     await graph.aupdate_state(
         config, {"messages": with_message_ids([*calls, *updates])}, as_node="tools"
     )
-
-
-async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig) -> None:
-    """Write the interruption record into the thread's checkpoint.
-
-    Must be called after the cancelled run has actually stopped (the astream
-    generator closed), so the checkpoint read here is the run's final state.
-    """
-    messages = await _thread(graph, config)
-    updates = build_interruption_messages(messages)
-    if not updates:
-        return
-    await _write_answers(graph, config, messages, updates)
     configurable: AgentConfigurable = agent_configurable(config)
     log.info(
         f"{LogTag.AGENT} Recorded user interruption in checkpoint",
         thread_id=configurable.get("thread_id"),
         backfilled_tool_calls=len(updates) - 1,
-    )
-
-
-async def close_open_tool_calls(graph: CompiledStateGraph, config: RunnableConfig) -> None:
-    """Answer every tool call the thread left without a result, before a run sends it to a model.
-
-    Providers reject a thread holding an unanswered call, so one a crash or an older stop
-    left open would fail every later run in the conversation.
-    """
-    messages = await _thread(graph, config)
-    answered = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
-    backfill: list[AnyMessage] = [
-        *_interrupted_tool_messages(messages, answered, UNFINISHED_TOOL_RESULT)
-    ]
-    if not backfill:
-        return
-    await _write_answers(graph, config, messages, backfill)
-    configurable: AgentConfigurable = agent_configurable(config)
-    log.warning(
-        f"{LogTag.AGENT} Closed tool calls a previous run left open",
-        thread_id=configurable.get("thread_id"),
-        closed_tool_calls=len(backfill),
     )

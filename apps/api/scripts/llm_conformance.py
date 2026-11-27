@@ -13,7 +13,14 @@ from typing import NoReturn
 
 import httpx
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessageChunk
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    AnyMessage,
+    BaseMessageChunk,
+    HumanMessage,
+    ToolMessage,
+)
 from langchain_core.runnables import RunnableLambda
 from langchain_core.tools import tool
 from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
@@ -174,6 +181,39 @@ async def _forced_cap(model: BaseChatModel) -> Result:
     return Result("forced tool, maxLength", "not cut at the cap", observed, not _cut(headline))
 
 
+def _drifted_thread() -> list[AnyMessage]:
+    """Build a thread whose tool result was written after later turns, as a backfill appends it."""
+    call = {"id": "call_conformance_drift", "name": "get_weather", "args": {"city": "Paris"}}
+    return [
+        HumanMessage(content="What is the weather in Paris?"),
+        AIMessage(content="", tool_calls=[call]),
+        HumanMessage(content="Never mind that."),
+        AIMessage(content="ok"),
+        HumanMessage(content=_ASK_OK),
+        ToolMessage(content="sunny", tool_call_id="call_conformance_drift"),
+    ]
+
+
+async def _drifted_tool_result(model: BaseChatModel) -> Result:
+    """The request ainvoke_llm sends for a drifted thread: every provider must accept it."""
+    reply = await ainvoke_llm(
+        model.bind_tools([get_weather]), _drifted_thread(), label=_LABEL, options=_UNMETERED
+    )
+    answered = isinstance(reply, AIMessage) and bool(reply.text.strip() or reply.tool_calls)
+    observed = "answers" if answered else "empty reply"
+    return Result("drifted tool result", "accepted once shaped", observed, answered)
+
+
+async def _raw_drifted_tool_result(model: BaseChatModel) -> Result:
+    """The same thread sent unshaped: what this provider does with a result out of place."""
+    check, expected = "drifted tool result, unshaped", "(not relied on)"
+    try:
+        await model.bind_tools([get_weather]).ainvoke(_drifted_thread())
+    except LLM_FALLBACK_EXCEPTIONS as error:
+        return Result(check, expected, f"rejected: {type(error).__name__}", None)
+    return Result(check, expected, "accepted", None)
+
+
 def _simulated_429(provider: LLMProviderName) -> Exception:
     """Build the error provider's own SDK raises on a 429; none can be provoked on demand."""
     if provider is LLMProviderName.OPENROUTER:
@@ -274,6 +314,8 @@ _CHECKS: tuple[Callable[[BaseChatModel], Awaitable[Result]], ...] = (
     _structured,
     _held_cap,
     _forced_cap,
+    _drifted_tool_result,
+    _raw_drifted_tool_result,
 )
 _WORKERS_AI_CHECKS: tuple[Callable[[ChatWorkersAI], Awaitable[Result]], ...] = (
     _raw_stream,
