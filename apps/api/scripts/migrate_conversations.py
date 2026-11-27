@@ -48,8 +48,7 @@ async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
     """Run the entries migration, then the vocabulary rewrite in db, each only when needed and verified; 0 only when the build will boot."""
     failed = 0
     refusal = await first_refusal()
-    caught_up = refusal is not None and refusal.script == CONVERSATION_ENTRIES_MIGRATION_SCRIPT
-    if caught_up:
+    if refusal is not None and refusal.script == CONVERSATION_ENTRIES_MIGRATION_SCRIPT:
         print("Moving conversations into the conversation log...")
         failed = await entries.catch_up()
     if not failed and (await vocabulary.verify(db)).left:
@@ -61,9 +60,9 @@ async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
         return 1
     if failed:
         return failed
-    if caught_up:
-        # The release step's contract ran before this catch-up, so it kept the arrays just migrated.
-        await drop_embedded_arrays(apply=True)
+    # The release step's drop ran before this catch-up, so it kept any array migrated since;
+    # it reads only the current state, so it also finishes a drop an earlier run left half done.
+    await drop_embedded_arrays(apply=True)
     print("Every conversation is in this build's shape.")
     return 0
 

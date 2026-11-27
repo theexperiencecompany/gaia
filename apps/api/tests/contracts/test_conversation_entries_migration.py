@@ -1096,6 +1096,27 @@ async def test_the_contract_drops_every_array_the_log_holds_and_keeps_one_it_doe
     assert (await _cli(capsys, "--verify"))[0] == 0
 
 
+async def test_the_contract_keeps_the_archive_of_a_head_whose_verify_failed(
+    raw_collection: Any,
+    entries_collection: Any,
+    migration: ConversationEntriesMigration,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    full = await _at_the_size_limit(raw_collection, spare=70)
+    healthy = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    await migration.mark_failed(full, "verify: 1 mismatches")
+    archive = raw_collection.database[f"{raw_collection.name}_conversation_archived_messages"]
+
+    await drop_embedded_arrays(apply=True)
+
+    assert "messages_archived" in await _head(raw_collection, full)
+    assert await archive.count_documents({}) == 64
+    kept = {"conversation_id": full.conversation_id, "migration_fields": {"$exists": True}}
+    assert await entries_collection.count_documents(kept) > 0
+    assert "messages" not in await _head(raw_collection, healthy)
+
+
 async def test_the_contract_drops_the_old_array_indexes_and_runs_again_without_them(
     raw_collection: Any, entries_collection: Any
 ) -> None:

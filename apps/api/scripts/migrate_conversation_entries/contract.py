@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 
+from bson import ObjectId
 from pymongo.errors import OperationFailure
 
 from app.constants.chat import (
@@ -23,10 +24,12 @@ from app.db.repositories.conversation_entries import MIGRATION_FIELDS_FIELD, sto
 from app.db.repositories.conversation_migration_guard import (
     EMBEDDED_FINGERPRINT,
     MIGRATED_FINGERPRINT_FIELD,
-    ConversationMigrationGuard,
 )
 from scripts._cli import apply_requested
-from scripts.migrate_conversation_entries.migration import ARCHIVED_FIELD
+from scripts.migrate_conversation_entries.migration import (
+    ARCHIVED_FIELD,
+    ConversationEntriesMigration,
+)
 
 #: Heads whose array the log already holds: empty, marked and unchanged since, or moved to the archive.
 DROPPABLE_HEADS: dict[str, object] = {
@@ -47,31 +50,42 @@ LEGACY_ARRAY_INDEXES = ("user_id_1_messages.message_id_1", "user_id_1_messages.p
 _INDEX_NOT_FOUND = 27
 
 
-class EmbeddedArrayContract(ConversationMigrationGuard):
+class EmbeddedArrayContract(ConversationEntriesMigration):
     """Drops what the entries migration left behind once the log holds it."""
 
     async def drop(self, *, apply: bool) -> None:
+        """Drop every array the log holds; a head with a recorded failure keeps its array and archive."""
         heads = self._raw_collection()
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         archive = self._sibling_collection(CONVERSATION_ARCHIVED_MESSAGES_COLLECTION)
+        failed = await self.failed_heads()
+        droppable = {**DROPPABLE_HEADS, "_id": {"$nin": [ObjectId(f.head_id) for f in failed]}}
+        marked = {
+            **_MARKED_ENTRIES,
+            "conversation_id": {"$nin": [f.conversation_id for f in failed]},
+        }
         with store_errors("embedded array contract"):  # pragma: no mutate — error label only
             if not apply:
                 print(
-                    f"  would drop the array of {await heads.count_documents(DROPPABLE_HEADS)} "
+                    f"  would drop the array of {await heads.count_documents(droppable)} "
                     f"conversations and migration_fields of "
-                    f"{await entries.count_documents(_MARKED_ENTRIES)} entries"
+                    f"{await entries.count_documents(marked)} entries"
                 )
                 return
-            dropped = await heads.update_many(DROPPABLE_HEADS, {"$unset": _DROPPED_HEAD_FIELDS})
+            dropped = await heads.update_many(droppable, {"$unset": _DROPPED_HEAD_FIELDS})
             still_archived = await heads.distinct("_id", {ARCHIVED_FIELD: {"$exists": True}})
             kept = [str(head_id) for head_id in still_archived]
             unarchived = await archive.delete_many({"head_id": {"$nin": kept}})
-            unmarked = await entries.update_many(
-                _MARKED_ENTRIES, {"$unset": {MIGRATION_FIELDS_FIELD: ""}}
-            )
+            unmarked = await entries.update_many(marked, {"$unset": {MIGRATION_FIELDS_FIELD: ""}})
             for name in LEGACY_ARRAY_INDEXES:
                 await self._drop_index(name)
-            left = await heads.count_documents({"messages": {"$exists": True}})
+            left = await heads.count_documents(
+                {"$or": [{"messages": {"$exists": True}}, {ARCHIVED_FIELD: {"$exists": True}}]}
+            )
+        if not (
+            dropped.modified_count or unarchived.deleted_count or unmarked.modified_count or left
+        ):
+            return
         print(
             f"  dropped the array of {dropped.modified_count} conversations, "
             f"{unarchived.deleted_count} archived messages and migration_fields of "
