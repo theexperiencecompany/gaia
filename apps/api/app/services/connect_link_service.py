@@ -93,7 +93,7 @@ async def preview_connect_code(code: str) -> ConnectLinkPreviewResponse | None:
         return None
     return ConnectLinkPreviewResponse(
         integration_id=binding.integration_id,
-        name=resolved.name,
+        integration_name=resolved.name,
         icon_url=resolved.icon_url,
         account_email=mask_email(user.email) if user.email else None,
     )

@@ -7181,11 +7181,6 @@ export interface components {
             /** Code */
             code: string;
         };
-        /** Body_integrations_connect_link_preview_endpoint */
-        Body_integrations_connect_link_preview_endpoint: {
-            /** Code */
-            code: string;
-        };
         /** Body_notification_unregister_device_token */
         Body_notification_unregister_device_token: {
             /** Token */
@@ -8810,6 +8805,14 @@ export interface components {
             toolsCount: number | null;
         };
         /**
+         * ConnectLinkPreviewRequest
+         * @description A connect link's code, to preview without spending it.
+         */
+        ConnectLinkPreviewRequest: {
+            /** Code */
+            code: string;
+        };
+        /**
          * ConnectLinkPreviewResponse
          * @description What a connect link will connect, shown before the user spends it.
          */
@@ -8823,11 +8826,8 @@ export interface components {
             icon_url: string | null;
             /** Integration Id */
             integration_id: string;
-            /**
-             * Name
-             * @description The integration's display name
-             */
-            name: string;
+            /** Integration Name */
+            integration_name: string;
         };
         /**
          * ContentTokenResponse
@@ -19227,7 +19227,6 @@ export type Body_bot_transcribe_bot_audio = components['schemas']['Body_bot_tran
 export type Body_file_upload_file_endpoint = components['schemas']['Body_file_upload_file_endpoint'];
 export type Body_image_image_to_text = components['schemas']['Body_image_image_to_text'];
 export type Body_integrations_connect_link_endpoint = components['schemas']['Body_integrations_connect_link_endpoint'];
-export type Body_integrations_connect_link_preview_endpoint = components['schemas']['Body_integrations_connect_link_preview_endpoint'];
 export type Body_notification_unregister_device_token = components['schemas']['Body_notification_unregister_device_token'];
 export type Body_support_submit_support_request_with_attachments = components['schemas']['Body_support_submit_support_request_with_attachments'];
 export type Body_user_update_holo_card_colors = components['schemas']['Body_user_update_holo_card_colors'];
@@ -19325,6 +19324,7 @@ export type ConditionOperator = components['schemas']['ConditionOperator'];
 export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
+export type ConnectLinkPreviewRequest = components['schemas']['ConnectLinkPreviewRequest'];
 export type ConnectLinkPreviewResponse = components['schemas']['ConnectLinkPreviewResponse'];
 export type ContentTokenResponse = components['schemas']['ContentTokenResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
@@ -25564,7 +25564,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/x-www-form-urlencoded": components["schemas"]["Body_integrations_connect_link_preview_endpoint"];
+                "application/json": components["schemas"]["ConnectLinkPreviewRequest"];
             };
         };
         responses: {

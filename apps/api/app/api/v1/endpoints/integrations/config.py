@@ -15,7 +15,7 @@ from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser
-from app.schemas.integrations.requests import ConnectIntegrationRequest
+from app.schemas.integrations.requests import ConnectIntegrationRequest, ConnectLinkPreviewRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     ConnectLinkPreviewResponse,
@@ -220,7 +220,7 @@ async def _bind_to_this_browser(
 @limiter.limit("10/minute")
 async def connect_link_preview_endpoint(
     request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
-    code: Annotated[str, Form()],
+    body: ConnectLinkPreviewRequest,
 ) -> ConnectLinkPreviewResponse:
     """Show what a connect link connects, and for which account, without spending the code.
 
@@ -228,7 +228,7 @@ async def connect_link_preview_endpoint(
     and a masked email, so a guessed code learns nothing it could not use anyway.
     """
     log.set(operation="connect_link_preview")
-    preview = await preview_connect_code(code)
+    preview = await preview_connect_code(body.code)
     if preview is None:
         log.set(outcome="rejected")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invalid_or_expired_link")

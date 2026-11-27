@@ -591,11 +591,14 @@
 @source "../../../features/instructions/api/queryKeys.ts";
 @source "../../../features/instructions/components/InstructionsConflictNotice.tsx";
 @source "../../../features/instructions/hooks/useInstructions.ts";
+@source "../../../features/integrations/api/connectLinkApi.ts";
 @source "../../../features/integrations/api/integrationsApi.ts";
 @source "../../../features/integrations/api/queries.ts";
 @source "../../../features/integrations/api/queryKeys.ts";
 @source "../../../features/integrations/components/BearerTokenModal.tsx";
 @source "../../../features/integrations/components/CategoryFilter.tsx";
+@source "../../../features/integrations/components/ConnectLinkCard.tsx";
+@source "../../../features/integrations/components/ConnectLinkExpired.tsx";
 @source "../../../features/integrations/components/ConnectLinkLogos.tsx";
 @source "../../../features/integrations/components/GlobalIntegrationModal.tsx";
 @source "../../../features/integrations/components/InstanceSetupNotice.tsx";
@@ -623,6 +626,7 @@
 @source "../../../features/integrations/constants/categories.ts";
 @source "../../../features/integrations/constants/connect.ts";
 @source "../../../features/integrations/hooks/useBearerTokenModal.ts";
+@source "../../../features/integrations/hooks/useConnectLinkPreview.ts";
 @source "../../../features/integrations/hooks/useInlineIntegrationConnect.ts";
 @source "../../../features/integrations/hooks/useIntegrationAccounts.ts";
 @source "../../../features/integrations/hooks/useIntegrationDeepLink.ts";
@@ -638,7 +642,6 @@
 @source "../../../features/integrations/lib/marketplaceDirectoryPages.ts";
 @source "../../../features/integrations/lib/marketplaceSlug.ts";
 @source "../../../features/integrations/utils/catalog.ts";
-@source "../../../features/integrations/utils/connectLinkServerApi.ts";
 @source "../../../features/integrations/utils/instructionsPreview.ts";
 @source "../../../features/integrations/utils/mentionDoc.ts";
 @source "../../../features/integrations/utils/permissionCopy.ts";

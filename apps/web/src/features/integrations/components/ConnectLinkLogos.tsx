@@ -1,32 +1,17 @@
-import { ArrowDataTransferHorizontalIcon, ConnectIcon } from "@icons";
+import { ArrowDataTransferHorizontalIcon } from "@icons";
+import type { ConnectLinkPreviewResponse } from "@shared/api/generated";
 import Image from "next/image";
 
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "./IntegrationIcon";
 
 interface ConnectLinkLogosProps {
-  integrationId: string;
-  iconUrl: string | null;
+  preview: Pick<ConnectLinkPreviewResponse, "integration_id" | "icon_url">;
 }
 
 const LOGO_SIZE = 40;
 
 /** GAIA's logo and the integration's, side by side, for the connect-link page. */
-export function ConnectLinkLogos({
-  integrationId,
-  iconUrl,
-}: ConnectLinkLogosProps) {
-  const integrationIcon = getToolCategoryIcon(
-    integrationId,
-    {
-      size: LOGO_SIZE,
-      width: LOGO_SIZE,
-      height: LOGO_SIZE,
-      showBackground: false,
-      loading: "eager",
-    },
-    iconUrl,
-  ) ?? <ConnectIcon className="h-10 w-10 text-accent" />;
-
+export function ConnectLinkLogos({ preview }: ConnectLinkLogosProps) {
   return (
     <div className="mb-6 flex items-center justify-center gap-4">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-800">
@@ -40,7 +25,12 @@ export function ConnectLinkLogos({
       </div>
       <ArrowDataTransferHorizontalIcon className="h-5 w-5 text-zinc-500" />
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-800">
-        {integrationIcon}
+        <IntegrationIcon
+          integrationId={preview.integration_id}
+          iconUrl={preview.icon_url}
+          size={LOGO_SIZE}
+          loading="eager"
+        />
       </div>
     </div>
   );

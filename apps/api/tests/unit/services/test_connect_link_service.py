@@ -190,7 +190,7 @@ class TestConnectLinkPreview:
 
         assert preview == ConnectLinkPreviewResponse(
             integration_id="dodo",
-            name="Dodo Payments",
+            integration_name="Dodo Payments",
             icon_url="https://dodo.example/icon.png",
             account_email="ar***@heygaia.io",
         )

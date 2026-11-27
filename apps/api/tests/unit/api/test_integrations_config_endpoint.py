@@ -799,12 +799,12 @@ class TestConnectLinkPreview:
             ),
             patch(f"{_MODULE}.log") as mock_log,
         ):
-            resp = await unauthed_client.post(f"{API}/connect-link/preview", data={"code": code})
+            resp = await unauthed_client.post(f"{API}/connect-link/preview", json={"code": code})
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["integration_id"] == "gmail"
-        assert body["name"] == "Gmail"
+        assert body["integration_name"] == "Gmail"
         assert body["account_email"] == "ar***@heygaia.io"
         assert await resolve_and_consume_connect_code(code) is not None
         mock_log.set.assert_called_with(outcome="success", integration={"id": "gmail"})
@@ -812,7 +812,7 @@ class TestConnectLinkPreview:
     @pytest.mark.usefixtures("fake_redis")
     async def test_a_dead_link_is_not_found(self, unauthed_client: AsyncClient) -> None:
         with patch(f"{_MODULE}.log") as mock_log:
-            resp = await unauthed_client.post(f"{API}/connect-link/preview", data={"code": "nope"})
+            resp = await unauthed_client.post(f"{API}/connect-link/preview", json={"code": "nope"})
 
         assert resp.status_code == 404
         assert resp.json()["message"] == "invalid_or_expired_link"

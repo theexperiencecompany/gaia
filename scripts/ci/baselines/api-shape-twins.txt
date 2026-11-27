@@ -15,7 +15,6 @@
 # This file only ever shrinks. A line that no longer matches anything is
 # reported as removable and does not fail the gate.
 
-apps/mobile/src/components/EmptyState.tsx:EmptyStateProps=CreateWorkflowRequest
 apps/mobile/src/config/openui/components/content.tsx:CarouselItem=NotificationContentView
 apps/mobile/src/features/auth/api/auth-api.ts:UserInfoResponse=AuthenticatedUserResponse
 apps/mobile/src/features/auth/types/index.ts:UserInfo=AuthenticatedUserResponse
@@ -43,7 +42,6 @@ apps/mobile/src/features/settings/api/settings-api.ts:UserProfile=AuthenticatedU
 apps/mobile/src/features/settings/components/SupportScreen.tsx:SupportRequest=Body_support_submit_support_request_with_attachments
 apps/mobile/src/features/settings/components/SupportScreen.tsx:SupportResponse=SupportRequestSubmissionResponse
 apps/mobile/src/features/settings/components/sections/memory-section.tsx:Memory=MemoryEntry
-apps/mobile/src/features/todos/components/create/todo-create-pickers.tsx:TodoCreatePickersProps=TodoModel
 apps/mobile/src/features/todos/components/create/todo-create-sheet.tsx:ManualSelections=TodoModel
 apps/mobile/src/features/todos/types/todo-types.ts:TodoCreate=TodoModel
 apps/mobile/src/features/workflows/components/edit-workflow-modal.tsx:EditFormState=SelectedWorkflowDataInput
@@ -67,7 +65,6 @@ apps/web/src/components/ui/map.tsx:MapArcDatum=GmailMessageSummary
 apps/web/src/features/auth/utils/toCurrentUser.ts:CurrentUser=AuthenticatedUserResponse
 apps/web/src/features/blog/components/BlogMetadata.tsx:TeamMember=AuthorDetails
 apps/web/src/features/chat/components/bubbles/bot/ChartDisplay.tsx:ChartData=SupportRequestCreate
-apps/web/src/features/chat/components/composer/ComposerLeft.tsx:DropdownItemConfig=NotificationAction
 # One of the ten raw-apiauth feature files the concurrent migration is moving
 # onto the typed client; expected to go with it.
 apps/web/src/features/chat/types/enhancedTools.ts:EnhancedToolInfo=ToolInfo
@@ -97,7 +94,6 @@ apps/web/src/features/support/hooks/useContactSupport.ts:ContactFormData=Body_su
 apps/web/src/features/support/hooks/useContactSupport.ts:ContactSupportInitialValues=Body_support_submit_support_request_with_attachments
 apps/web/src/features/thanks/components/Thanks.tsx:ToolMetadata=URLResponse
 apps/web/src/features/thanks/components/ToolCard.tsx:ToolMetadata=URLResponse
-apps/web/src/features/todo/components/shared/TodoFieldsRow.tsx:TodoFieldsRowProps=TodoModel
 apps/web/src/features/use-cases/components/MetaInfoCard.tsx:MetaInfoCardProps=SkillTarget
 apps/web/src/features/workflows/components/shared/UnifiedWorkflowCard.tsx:UnifiedWorkflowCardProps=SelectedWorkflowDataInput
 apps/web/src/features/workflows/components/shared/useWorkflowCardActions.ts:UseWorkflowCardActionsParams=SelectedWorkflowDataInput

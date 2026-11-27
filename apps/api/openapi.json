@@ -2078,19 +2078,6 @@
         "title": "Body_integrations_connect_link_endpoint",
         "type": "object"
       },
-      "Body_integrations_connect_link_preview_endpoint": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code"
-        ],
-        "title": "Body_integrations_connect_link_preview_endpoint",
-        "type": "object"
-      },
       "Body_notification_unregister_device_token": {
         "properties": {
           "token": {
@@ -5641,6 +5628,21 @@
         "title": "ConnectIntegrationResponse",
         "type": "object"
       },
+      "ConnectLinkPreviewRequest": {
+        "description": "A connect link's code, to preview without spending it.",
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "ConnectLinkPreviewRequest",
+        "type": "object"
+      },
       "ConnectLinkPreviewResponse": {
         "description": "What a connect link will connect, shown before the user spends it.",
         "properties": {
@@ -5671,15 +5673,14 @@
             "title": "Integration Id",
             "type": "string"
           },
-          "name": {
-            "description": "The integration's display name",
-            "title": "Name",
+          "integration_name": {
+            "title": "Integration Name",
             "type": "string"
           }
         },
         "required": [
           "integration_id",
-          "name",
+          "integration_name",
           "icon_url",
           "account_email"
         ],
@@ -34675,9 +34676,9 @@
         "operationId": "integrations_connect_link_preview_endpoint",
         "requestBody": {
           "content": {
-            "application/x-www-form-urlencoded": {
+            "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_integrations_connect_link_preview_endpoint"
+                "$ref": "#/components/schemas/ConnectLinkPreviewRequest"
               }
             }
           },

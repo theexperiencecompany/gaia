@@ -18,6 +18,7 @@ from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, call, create_autospec, patch
 from urllib.parse import parse_qs, urlparse
 
+from cryptography.fernet import Fernet
 from langchain_core.tools import BaseTool
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from mcp.types import (
@@ -1825,6 +1826,64 @@ class TestMCPTokenStoreDCRClient:
         mock_session.commit.assert_not_awaited()
 
 
+class TestForgetRejectedGrant:
+    """A refresh's rejection clears only what that refresh sent; a reconnect meanwhile keeps its own."""
+
+    @pytest.fixture(autouse=True)
+    def _cipher_key(self) -> Iterator[None]:
+        with patch("app.services.mcp.mcp_token_store.settings") as mock_settings:
+            mock_settings.MCP_ENCRYPTION_KEY = Fernet.generate_key().decode()
+            yield
+
+    @staticmethod
+    def _stored(store: MCPTokenStore, refresh_token: str, client_id: str) -> MCPCredential:
+        return _make_credential(
+            refresh_token=store._encrypt(refresh_token),
+            client_registration=json.dumps({"client_id": client_id}),
+        )
+
+    async def test_the_rejected_token_and_client_are_cleared(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = self._stored(store, "old_refresh", "old_client")
+        ctx_fn, mock_session = _fake_db_session(existing)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.forget_rejected_grant(INTEGRATION_ID, "old_refresh", client_id="old_client")
+        assert existing.refresh_token is None
+        assert existing.client_registration is None
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.regression
+    async def test_a_client_registered_by_a_reconnect_meanwhile_is_kept(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = self._stored(store, "old_refresh", "new_client")
+        ctx_fn, _ = _fake_db_session(existing)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.forget_rejected_grant(INTEGRATION_ID, "old_refresh", client_id="old_client")
+        assert existing.refresh_token is None
+        assert json.loads(existing.client_registration) == {"client_id": "new_client"}
+
+    @pytest.mark.regression
+    async def test_a_token_stored_by_a_reconnect_meanwhile_is_kept(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = self._stored(store, "new_refresh", "new_client")
+        new_refresh = existing.refresh_token
+        ctx_fn, mock_session = _fake_db_session(existing)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.forget_rejected_grant(INTEGRATION_ID, "old_refresh", client_id="old_client")
+        assert existing.refresh_token == new_refresh
+        assert json.loads(existing.client_registration) == {"client_id": "new_client"}
+        mock_session.commit.assert_not_awaited()
+
+    async def test_a_dead_grant_alone_keeps_the_client(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = self._stored(store, "old_refresh", "old_client")
+        ctx_fn, _ = _fake_db_session(existing)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.forget_rejected_grant(INTEGRATION_ID, "old_refresh")
+        assert existing.refresh_token is None
+        assert json.loads(existing.client_registration) == {"client_id": "old_client"}
+
+
 class TestMCPTokenStoreOAuthDiscovery:
     async def test_store_and_get_discovery(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -2106,7 +2165,7 @@ class TestTryRefreshToken:
             )
 
         assert result is False
-        token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.forget_rejected_grant.assert_awaited_once_with(INTEGRATION_ID, "refresh_tok")
         mock_log.warning.assert_any_call(
             f"{LogTag.MCP} try_refresh_token: token endpoint returned an error",
             status_code=400,
@@ -2149,8 +2208,9 @@ class TestTryRefreshToken:
         )
 
         assert result is False
-        token_store.delete_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
-        token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.forget_rejected_grant.assert_awaited_once_with(
+            INTEGRATION_ID, "refresh_tok", client_id="forgotten"
+        )
 
     async def test_invalid_client_keeps_a_configured_client(self):
         """A pre-configured client is the operator's to fix; GAIA never re-registers over it."""
@@ -2163,8 +2223,7 @@ class TestTryRefreshToken:
         )
 
         assert result is False
-        token_store.delete_dcr_client.assert_not_awaited()
-        token_store.clear_refresh_token.assert_not_awaited()
+        token_store.forget_rejected_grant.assert_not_awaited()
 
     async def test_transient_refresh_error_keeps_the_refresh_token(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -2190,7 +2249,7 @@ class TestTryRefreshToken:
             )
 
         assert result is False
-        token_store.clear_refresh_token.assert_not_awaited()
+        token_store.forget_rejected_grant.assert_not_awaited()
 
     async def test_refresh_exception(self):
         token_store = AsyncMock(spec=MCPTokenStore)
