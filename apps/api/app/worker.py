@@ -59,6 +59,7 @@ from app.workers.tasks import (
     sweep_undelivered_signup_emails,
 )
 from app.workers.tasks.briefing_retention_tasks import sweep_expired_briefings
+from app.workers.tasks.conversation_retention_tasks import drop_expired_tool_outputs
 from app.workers.tasks.conversation_sweep_tasks import (
     conversation_sweep_cron,
     sweep_step_conversations,
@@ -148,6 +149,7 @@ _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
 _sweep_expired_briefings = arq_task(sweep_expired_briefings)
+_drop_expired_tool_outputs = arq_task(drop_expired_tool_outputs)
 # Named from the constant platform linking enqueues it by, so the two cannot drift.
 _send_day_zero_hello = func(arq_task(send_day_zero_hello), name=DAY_ZERO_HELLO_TASK)
 # keep_result=0: the per-user job id means a kept result blocks re-enqueue for
@@ -222,6 +224,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_abandoned_imessage_registrations,
     _sweep_expired_memories,
     _sweep_expired_briefings,
+    _drop_expired_tool_outputs,
     _deliver_signup_emails,
     _sweep_undelivered_signup_emails,
     _warm_device_servers,
@@ -346,6 +349,14 @@ WorkerSettings.cron_jobs = [
         cast(WorkerCoroutine, _sweep_expired_briefings),
         hour=2,
         minute=45,
+        second=0,
+    ),
+    # Tool outputs and thinking on cards past their 30 days, the cards kept. Daily, between
+    # the 03:00 session prune and the 04:00 backfill.
+    cron(
+        cast(WorkerCoroutine, _drop_expired_tool_outputs),
+        hour=3,
+        minute=30,
         second=0,
     ),
 ]
