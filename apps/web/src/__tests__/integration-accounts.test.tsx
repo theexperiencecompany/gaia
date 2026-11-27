@@ -35,11 +35,13 @@ vi.mock("@/components/shared/ConfirmationDialog", () => ({
   ConfirmationDialog: () => null,
 }));
 
-import type { IntegrationAccountsResponse } from "@shared/api/generated";
+import type {
+  IntegrationAccountsResponse,
+  MyIntegrationItem,
+} from "@shared/api/generated";
 import { IntegrationAccounts } from "@/components/layout/sidebar/right-variants/integration-sidebar/IntegrationAccounts";
 import { integrationKeys } from "@/features/integrations/api/queryKeys";
 import { useIntegrationAccounts } from "@/features/integrations/hooks/useIntegrationAccounts";
-import type { Integration } from "@/features/integrations/types";
 
 function accountsResponse(
   overrides: Partial<IntegrationAccountsResponse> = {},
@@ -73,13 +75,14 @@ function accountsResponse(
   };
 }
 
-const gmail: Integration = {
+const gmail: MyIntegrationItem = {
   id: "gmail",
   name: "Gmail",
   description: "Email",
   category: "communication",
   status: "connected",
   managedBy: "composio",
+  source: "platform",
   slug: "gmail",
 };
 

@@ -1,6 +1,7 @@
 import type { Key } from "@heroui/react";
 import { Accordion } from "@heroui/react";
 import { Add01Icon, RedoIcon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import {
   CONNECT_ACTION_LABEL,
   INTEGRATION_STATE_ORDER,
@@ -13,7 +14,6 @@ import { IntegrationIcon } from "@/features/integrations/components/IntegrationI
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useRouter } from "@/i18n/navigation";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
-import type { Integration } from "../types";
 
 const ITEM_SIZE_CLASSES = {
   small: "gap-2 rounded-xl p-2",
@@ -27,7 +27,7 @@ interface IntegrationsCardProps {
 }
 
 const IntegrationItem: React.FC<{
-  integration: Integration;
+  integration: MyIntegrationItem;
   onConnect: (id: string) => void;
   onClick: (id: string) => void;
   size: keyof typeof ITEM_SIZE_CLASSES;

@@ -5,6 +5,7 @@
  * up. Fidelity: the API and the bearer modal are stubbed; each site's success
  * handler runs for real and the helper is observed, not the refetch it starts.
  */
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -17,7 +18,6 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
-  Integration,
   PublicIntegrationResponse,
   SuggestedIntegration,
 } from "@/features/integrations/types";
@@ -189,7 +189,11 @@ describe("a connect the user makes refreshes the integration caches", () => {
     render(
       <IntegrationActions
         integration={
-          { id: "deepwiki", name: "DeepWiki", status: "created" } as Integration
+          {
+            id: "deepwiki",
+            name: "DeepWiki",
+            status: "created",
+          } as MyIntegrationItem
         }
         isConnected={false}
         onConnect={vi.fn()}

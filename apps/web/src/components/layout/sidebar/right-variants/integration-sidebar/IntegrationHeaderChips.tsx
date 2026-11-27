@@ -2,13 +2,13 @@
 
 import { Avatar, Chip } from "@heroui/react";
 import { UserCircle02Icon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import type { Integration } from "@/features/integrations/types";
 
 interface IntegrationHeaderChipsProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   isConnected: boolean;
   isOwnIntegration: boolean;
   isForkedIntegration: boolean;

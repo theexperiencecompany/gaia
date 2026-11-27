@@ -1,11 +1,11 @@
 "use client";
 
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Dispatch } from "react";
 import { useCallback, useMemo, useState } from "react";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import type { Integration } from "@/features/integrations/types";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import {
@@ -205,16 +205,16 @@ export function useWorkflowModalActions({
   // Integrations the generated steps require but aren't connected. Sourced
   // from the backend's `missing_integrations` (same data the workflow card
   // uses) but re-checked against live status so a freshly-connected one drops out without a refetch.
-  const missingStepIntegrations = useMemo<Integration[]>(() => {
+  const missingStepIntegrations = useMemo<MyIntegrationItem[]>(() => {
     const refs = currentWorkflow?.missing_integrations ?? [];
     return refs
       .map((ref) => integrations.find((i) => i.id === ref.id))
-      .filter((i): i is Integration => !!i && i.status !== "connected");
+      .filter((i): i is MyIntegrationItem => !!i && i.status !== "connected");
   }, [currentWorkflow, integrations]);
 
   // Trigger + step integrations that still need connecting, deduped by id.
-  const missingIntegrations = useMemo<Integration[]>(() => {
-    const byId = new Map<string, Integration>();
+  const missingIntegrations = useMemo<MyIntegrationItem[]>(() => {
+    const byId = new Map<string, MyIntegrationItem>();
     if (missingTriggerIntegration)
       byId.set(missingTriggerIntegration.id, missingTriggerIntegration);
     for (const integration of missingStepIntegrations)

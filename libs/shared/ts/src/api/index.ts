@@ -13,27 +13,6 @@ export type {
 } from "./conversationsApi";
 export { CONVERSATION_ENDPOINTS } from "./conversationsApi";
 export type {
-  AddPublicIntegrationParams,
-  AddToWorkspaceParams,
-  CommunityIntegrationsParams,
-  ConnectIntegrationParams,
-  ConnectParams,
-  CreateCustomIntegrationParams,
-  DisconnectParams,
-  IntegrationAddPublicResponse,
-  IntegrationConnectResponse,
-  IntegrationListParams,
-  IntegrationPublishResponse,
-  IntegrationStatusEntry,
-  IntegrationStatusResponse,
-  IntegrationUnpublishResponse,
-  IntegrationWorkspaceAddResponse,
-  McpTestConnectionResponse,
-  SearchIntegrationsParams,
-  TestConnectionParams,
-} from "./integrationsApi";
-export { buildIntegrationUrl, INTEGRATION_ENDPOINTS } from "./integrationsApi";
-export type {
   BulkNotificationAction,
   BulkNotificationActionParams,
   NotificationListParams,

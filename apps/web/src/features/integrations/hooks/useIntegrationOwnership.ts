@@ -1,15 +1,14 @@
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useMemo } from "react";
 
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-
-import type { Integration } from "../types";
 
 /**
  * Ownership of a custom integration relative to the current user:
  * - own: a custom integration the current user created
  * - forked: a custom integration created by someone else (added from the marketplace)
  */
-export function useIntegrationOwnership(integration: Integration) {
+export function useIntegrationOwnership(integration: MyIntegrationItem) {
   const currentUserId = useCurrentUser().userId;
 
   const isOwnIntegration = useMemo(

@@ -13,9 +13,7 @@ import { IntegrationIcon } from "@/features/integrations/components/IntegrationI
 import type { TriggerConnectionPromptProps } from "./types";
 
 export function TriggerConnectionPrompt({
-  integrationName,
-  integrationId,
-  iconUrl,
+  integration,
   onConnect,
 }: TriggerConnectionPromptProps) {
   return (
@@ -23,14 +21,14 @@ export function TriggerConnectionPrompt({
       <div className="flex min-w-0 items-center gap-3">
         <div className="shrink-0">
           <IntegrationIcon
-            integrationId={integrationId}
-            iconUrl={iconUrl}
+            integrationId={integration.id}
+            iconUrl={integration.iconUrl}
             size={22}
           />
         </div>
         <p className="min-w-0 text-sm text-zinc-300">
           Connect{" "}
-          <span className="font-medium text-zinc-100">{integrationName}</span>{" "}
+          <span className="font-medium text-zinc-100">{integration.name}</span>{" "}
           to configure this trigger
         </p>
       </div>

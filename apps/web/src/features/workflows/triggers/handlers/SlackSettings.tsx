@@ -6,6 +6,7 @@
 
 "use client";
 
+import type { SlackNewMessageConfig } from "@shared/api/generated";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
@@ -18,14 +19,9 @@ import { isTriggerOption, useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { TriggerSettingsProps } from "../registry";
 import type { TriggerConfigDraft } from "../types";
 
-export type SlackTriggerData = {
+// The draft holds whichever slug the picker set, so trigger_name is any string.
+export type SlackTriggerData = Omit<SlackNewMessageConfig, "trigger_name"> & {
   trigger_name: string;
-  channel_ids?: string[];
-  exclude_bot_messages?: boolean;
-  exclude_direct_messages?: boolean;
-  exclude_group_messages?: boolean;
-  exclude_mpim_messages?: boolean;
-  exclude_thread_replies?: boolean;
 };
 
 export interface SlackConfig extends TriggerConfigDraft {
@@ -42,8 +38,8 @@ export function SlackSettings({
   const triggerData = config.trigger_data;
 
   const integrationId = "slack";
-  const isConnected =
-    integrations.find((i) => i.id === integrationId)?.status === "connected";
+  const integration = integrations.find((i) => i.id === integrationId);
+  const isConnected = integration?.status === "connected";
 
   const triggerName = String(config.trigger_name || config.type);
   const isMessageTrigger = triggerName === "slack_new_message";
@@ -74,14 +70,12 @@ export function SlackSettings({
   const selectedValues = triggerData?.channel_ids || [];
 
   if (!isConnected) {
-    return (
+    return integration ? (
       <TriggerConnectionPrompt
-        integrationName="Slack"
-        integrationId={integrationId}
-        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
-        onConnect={() => connectIntegration(integrationId)}
+        integration={integration}
+        onConnect={() => connectIntegration(integration.id)}
       />
-    );
+    ) : null;
   }
 
   // For channel_created, no config needed - just show a simple confirmation

@@ -1,4 +1,4 @@
-import type { Integration } from "@/features/integrations/types";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { extractMentions } from "@/features/integrations/utils/toolMentions";
 
 /**
@@ -6,8 +6,8 @@ import { extractMentions } from "@/features/integrations/utils/toolMentions";
  * actually use (connected) or that they created themselves.
  */
 export const mentionableIntegrations = (
-  integrations: Integration[],
-): Integration[] =>
+  integrations: MyIntegrationItem[],
+): MyIntegrationItem[] =>
   integrations.filter(
     (i) => i.status === "connected" || i.status === "created",
   );
@@ -19,7 +19,7 @@ export const mentionableIntegrations = (
  */
 export const mentionedIntegrationIds = (
   prompt: string,
-  integrations: Integration[],
+  integrations: MyIntegrationItem[],
 ): string[] => {
   const mentionable = mentionableIntegrations(integrations);
   const mentioned = new Set(

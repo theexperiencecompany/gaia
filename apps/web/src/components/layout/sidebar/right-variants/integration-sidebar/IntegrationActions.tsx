@@ -1,6 +1,7 @@
 "use client";
 
 import { RemoveCircleIcon, Unlink04Icon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -11,7 +12,7 @@ import { BearerTokenModal } from "@/features/integrations/components/BearerToken
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
-import type { Integration } from "@/features/integrations/types";
+import type { ConnectIntegrationOutcome } from "@/features/integrations/types";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 import { ConnectedActions } from "./ConnectedActions";
@@ -81,7 +82,7 @@ interface PublishDialogCopy extends DialogCopy {
 // destructive, publishing a private one is not.
 function getPublishDialogCopy(
   name: string,
-  isPublic?: boolean,
+  isPublic: MyIntegrationItem["isPublic"],
 ): PublishDialogCopy {
   return isPublic
     ? {
@@ -106,7 +107,7 @@ type BoundPublishAction = () => Promise<void>;
 // publish. Returns null when the matching handler isn't wired up.
 function getPublishToggleAction(
   integrationId: string,
-  isPublic?: boolean,
+  isPublic: MyIntegrationItem["isPublic"],
   onPublish?: PublishHandler,
   onUnpublish?: PublishHandler,
 ): BoundPublishAction | null {
@@ -129,7 +130,7 @@ async function runPublishToggle(
 
 // Bearer-auth integrations collect their token through a modal instead of
 // connecting directly.
-function usesBearerAuth(integration: Integration): boolean {
+function usesBearerAuth(integration: MyIntegrationItem): boolean {
   return integration.authType === "bearer" && Boolean(integration.requiresAuth);
 }
 
@@ -142,11 +143,9 @@ function getDisconnectIcon(isCustom: boolean) {
 }
 
 interface IntegrationActionsProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   isConnected: boolean;
-  onConnect: (
-    integrationId: string,
-  ) => Promise<{ status: string; toolsCount?: number }>;
+  onConnect: (integrationId: string) => Promise<ConnectIntegrationOutcome>;
   onDisconnect?: (integrationId: string) => void;
   onDelete?: (integrationId: string) => Promise<void>;
   onPublish?: (integrationId: string) => Promise<void>;
@@ -281,11 +280,9 @@ export function IntegrationActions({
     setShowPublishDialog(true);
   };
 
-  const handleShare = async () => {
+  const handleShare = async (slug: string) => {
     try {
-      await copyText(
-        `${window.location.origin}${marketplacePath(integration.slug)}`,
-      );
+      await copyText(`${window.location.origin}${marketplacePath(slug)}`);
       toast.success("Link copied to clipboard!");
     } catch {
       toast.error("Failed to copy link to clipboard");
