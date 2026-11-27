@@ -1,4 +1,4 @@
-import type { RateLimitData } from "@shared/chat";
+import type { RateLimitCardData } from "@shared/api/generated";
 import {
   formatFeatureName,
   formatPlanName,
@@ -9,8 +9,8 @@ import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 function getSubtitle(
-  message: string | undefined,
-  currentPlan: string | undefined,
+  message: string | null,
+  currentPlan: string,
   isUpgradeRequired: boolean,
   planName: string,
 ): string {
@@ -21,7 +21,7 @@ function getSubtitle(
 }
 
 /** Everything the rate-limit card renders is derived from one payload. */
-export function useRateLimitCard(data: RateLimitData) {
+export function useRateLimitCard(data: RateLimitCardData) {
   const { feature, plan_required, reset_time, message, current_plan } = data;
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   const billingEnabled = useDeployment().bills;

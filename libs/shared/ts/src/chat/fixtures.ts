@@ -153,7 +153,6 @@ const searchResultsFixture: SearchResults = {
       content:
         "HN thread discussing the new architecture and its performance implications.",
       published_date: "2026-01-16",
-      source: "Hacker News",
     },
     {
       title: "Meta reports 30% memory improvements in RN 0.77",
@@ -161,7 +160,6 @@ const searchResultsFixture: SearchResults = {
       content:
         "Meta engineering team published benchmark numbers showing memory gains.",
       published_date: "2026-01-17",
-      source: "The Verge",
     },
   ],
   answer:
@@ -254,38 +252,34 @@ const emailFetchFixture: EmailFetchData[] = [
 
 const emailThreadFixture: EmailThreadData = {
   thread_id: "thread-42",
-  subject: "Mobile chat gallery review",
   messages_count: 3,
   messages: [
     {
       id: "msg-1",
       from: "sarah@linear.app",
-      from_name: "Sarah Drasner",
       subject: "Mobile chat gallery review",
       snippet: "Can we set up a side-by-side comparison page?",
       body: "Hey team — I think we should build a gallery page that renders every tool card with fixture data. That way we can diff web vs mobile in one shot. Thoughts?",
       time: "2026-04-16T18:00:00Z",
-      date: "Apr 16",
+      content: "",
     },
     {
       id: "msg-2",
       from: "dhruv@heygaia.io",
-      from_name: "Dhruv Maradiya",
       subject: "Re: Mobile chat gallery review",
       snippet: "+1, much faster than triggering real tool calls.",
       body: "+1. Much faster than triggering real tool calls every time. I'll spin up `/dev/tool-gallery` on both apps and share fixtures via @gaia/shared.",
       time: "2026-04-16T19:15:00Z",
-      date: "Apr 16",
+      content: "",
     },
     {
       id: "msg-3",
       from: "sarah@linear.app",
-      from_name: "Sarah Drasner",
       subject: "Re: Mobile chat gallery review",
       snippet: "Perfect — let me know when it's up.",
       body: "Perfect — let me know when it's up and I'll do a pass.",
       time: "2026-04-17T09:02:00Z",
-      date: "Today",
+      content: "",
     },
   ],
 };
@@ -328,6 +322,7 @@ const contactsFixture: ContactData[] = [
   {
     name: "Priya Narayan",
     email: "priya@anthropic.com",
+    phone: null,
     resource_name: "people/c1003",
   },
 ];
@@ -344,6 +339,7 @@ const peopleSearchFixture: PeopleSearchData[] = [
   {
     name: "Dhruv Maradiya",
     email: "dhruv@heygaia.io",
+    phone: null,
     organization: "GAIA",
     role: "Founding Engineer",
     resource_name: "people/p1002",
@@ -767,8 +763,13 @@ const workflowDraftFixture: WorkflowDraftData = {
   prompt:
     "Give me a morning brief: today's calendar, the 3 most important unread emails, and any overdue tasks.",
   trigger_type: "schedule",
+  trigger_slug: null,
   cron_expression: "0 8 * * 1-5",
+  integration_ids: [],
   delivery: "brief",
+  runs_only_when: null,
+  draft_id: "draft-wf-001",
+  direct_create: false,
 };
 
 const workflowCreatedFixture: WorkflowCreatedData = {
@@ -779,7 +780,10 @@ const workflowCreatedFixture: WorkflowCreatedData = {
     type: "schedule",
     cron_expression: "0 8 * * 1-5",
     enabled: true,
+    timezone: null,
+    trigger_name: null,
   },
+  integration_ids: [],
   activated: true,
 };
 
@@ -860,6 +864,10 @@ const mcpAppFixture: MCPAppData = {
   resource_uri: "stripe://subscription/sub_123",
   html_content:
     '<div style="padding:16px;color:#e5e7eb;background:#18181b;border-radius:12px"><strong>Active subscription</strong><p>$29/mo · renews Apr 28</p></div>',
+  csp: null,
+  permissions: null,
+  tool_result: null,
+  tool_arguments: {},
 };
 
 const toolCallsFixture: ToolCallEntry[] = [

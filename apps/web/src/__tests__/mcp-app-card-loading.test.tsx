@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /** While the MCP app chunk loads, its card shows a local placeholder instead of blanking the messages around it. */
+
+import type { McpAppData } from "@shared/api/generated";
 import { render, screen } from "@testing-library/react";
 import { Suspense } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { MCPAppData } from "@/config/registries/toolRegistry";
 import { renderTool } from "@/features/chat/components/bubbles/bot/TextBubble/ToolRenderers";
 
 // The app-router next/dynamic, which production resolves next/dynamic to; the
@@ -22,12 +23,16 @@ vi.mock(
   () => new Promise<never>(() => undefined),
 );
 
-const MCP_APP: MCPAppData = {
+const MCP_APP: McpAppData = {
   tool_call_id: "call_1",
   tool_name: "show_chart",
   server_url: "https://mcp.example.com",
   resource_uri: "ui://chart",
   html_content: "<p>chart</p>",
+  csp: null,
+  permissions: null,
+  tool_result: null,
+  tool_arguments: {},
 };
 
 describe("MCP app card while its chunk loads", () => {

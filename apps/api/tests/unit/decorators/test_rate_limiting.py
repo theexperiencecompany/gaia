@@ -30,6 +30,7 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.decorators import rate_limiting as rl
 from app.models.payment_models import PlanType
+from app.models.rate_limit_card_models import RateLimitCardData
 from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
@@ -45,10 +46,12 @@ class TestBuildRateLimitCard:
 
     def test_the_card_is_a_system_rate_limit_tool_payload(self) -> None:
         card = rl.build_rate_limit_card(
-            feature="generate_image",
-            plan_required="pro",
-            reset_time="2026-03-01T12:00:00+00:00",
-            current_plan="free",
+            RateLimitCardData(
+                feature="generate_image",
+                plan_required="pro",
+                reset_time="2026-03-01T12:00:00+00:00",
+                current_plan="free",
+            )
         )
 
         assert card["tool_data"]["tool_name"] == "rate_limit_data"
@@ -58,14 +61,17 @@ class TestBuildRateLimitCard:
             "plan_required": "pro",
             "reset_time": "2026-03-01T12:00:00+00:00",
             "current_plan": "free",
+            "message": None,
         }
 
     def test_the_card_is_stamped_with_a_utc_timestamp(self) -> None:
         card = rl.build_rate_limit_card(
-            feature="generate_image",
-            plan_required=None,
-            reset_time=None,
-            current_plan="free",
+            RateLimitCardData(
+                feature="generate_image",
+                plan_required=None,
+                reset_time=None,
+                current_plan="free",
+            )
         )
 
         stamped = datetime.fromisoformat(card["tool_data"]["timestamp"])
@@ -74,25 +80,29 @@ class TestBuildRateLimitCard:
 
     def test_an_explicit_message_travels_with_the_card(self) -> None:
         card = rl.build_rate_limit_card(
-            feature="memory",
-            plan_required="pro",
-            reset_time=None,
-            current_plan="free",
-            message="You have reached the free memory cap.",
+            RateLimitCardData(
+                feature="memory",
+                plan_required="pro",
+                reset_time=None,
+                current_plan="free",
+                message="You have reached the free memory cap.",
+            )
         )
 
         assert card["tool_data"]["data"]["message"] == "You have reached the free memory cap."
 
-    def test_no_message_means_no_message_key(self) -> None:
+    def test_no_message_means_a_null_message(self) -> None:
         """The frontend renders its own default copy; an empty string would override it with a blank line."""
         card = rl.build_rate_limit_card(
-            feature="memory",
-            plan_required=None,
-            reset_time=None,
-            current_plan="free",
+            RateLimitCardData(
+                feature="memory",
+                plan_required=None,
+                reset_time=None,
+                current_plan="free",
+            )
         )
 
-        assert "message" not in card["tool_data"]["data"]
+        assert card["tool_data"]["data"]["message"] is None
 
 
 async def _limited_tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -151,6 +161,7 @@ class TestBlockedToolStreamsItsCard:
             "plan_required": "pro",
             "reset_time": RESET_AT.isoformat(),
             "current_plan": "pro",
+            "message": None,
         }
 
     async def test_a_plain_count_limit_offers_no_upgrade(self) -> None:

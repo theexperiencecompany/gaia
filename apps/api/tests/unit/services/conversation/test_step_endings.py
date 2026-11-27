@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 import pytest
 
+from app.constants.chat import TOOL_CALLS_CARD
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
@@ -39,7 +40,6 @@ from app.services.conversation.ports import (
     Streamed,
 )
 from app.services.conversation.reply_analytics import spoken_context
-from app.services.conversation.screen import TOOL_CALL_CARD
 from app.services.conversation.step import advance
 from app.services.conversation.step_attempt import Attempt, Drafting
 from app.services.conversation.step_endings import end_attempt
@@ -73,7 +73,7 @@ from tests.unit.services.conversation.runtime_doubles import (
 )
 
 HANDOFF_CARD: ToolDataEntry = {
-    "tool_name": TOOL_CALL_CARD,
+    "tool_name": TOOL_CALLS_CARD,
     "data": {"tool_name": CALL_EXECUTOR_NAME, "tool_call_id": "h1", "inputs": {}},
 }
 CARD: ToolDataEntry = {"tool_name": "search", "data": {"query": "flights"}}

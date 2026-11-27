@@ -23,8 +23,8 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.integrations.calendar_tool import (
+    _calendar_card,
     _extract_datetime,
-    _format_calendar_for_stream,
     _get_user_timezone,
     _run_sync,
     register_calendar_custom_tools,
@@ -197,25 +197,20 @@ class TestExtractDatetime:
 
 
 # ---------------------------------------------------------------------------
-# _format_calendar_for_stream
+# _calendar_card
 # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# _format_calendar_for_stream
-# ---------------------------------------------------------------------------
-
-
-class TestFormatCalendarForStream:
+class TestCalendarCard:
     def test_google_shape(self) -> None:
-        assert _format_calendar_for_stream(
+        assert _calendar_card(
             CalendarSummary(
                 summary="Work",
                 id="work@group.calendar.google.com",
                 description="team",
                 backgroundColor="#ff0000",
             )
-        ) == {
+        ).model_dump() == {
             "name": "Work",
             "id": "work@group.calendar.google.com",
             "description": "team",
@@ -223,10 +218,10 @@ class TestFormatCalendarForStream:
         }
 
     def test_missing_fields_do_not_raise(self) -> None:
-        out = _format_calendar_for_stream(CalendarSummary())
-        assert out["name"] is None
-        assert out["id"] is None
-        assert out["backgroundColor"] is None
+        out = _calendar_card(CalendarSummary())
+        assert out.name is None
+        assert out.id is None
+        assert out.backgroundColor is None
 
 
 # ---------------------------------------------------------------------------

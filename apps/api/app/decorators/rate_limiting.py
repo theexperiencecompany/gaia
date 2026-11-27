@@ -6,7 +6,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
 import inspect
-from typing import NotRequired, ParamSpec, TypedDict, TypeVar
+from typing import ParamSpec, TypedDict, TypeVar
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -29,6 +29,7 @@ from app.core.request_context import resolve_caller
 from app.models.agent_config import read_run_metadata
 from app.models.agent_models import current_stream_writer
 from app.models.payment_models import PlanType
+from app.models.rate_limit_card_models import RateLimitCardData
 from app.models.usage_models import UsageInfo
 from app.services.cost_budget import (
     get_cost,
@@ -67,16 +68,6 @@ class RateLimitUsage(TypedDict):
     feature_key: str
     usage_info: dict[str, UsageInfo]
     user_plan: str
-
-
-class RateLimitCardData(TypedDict):
-    """The data the frontend's RateLimitCard renders."""
-
-    feature: str
-    plan_required: str | None
-    reset_time: str | None
-    current_plan: str
-    message: NotRequired[str]
 
 
 class RateLimitCard(TypedDict):
@@ -119,32 +110,13 @@ def plan_label(user_plan: object) -> str:
     return user_plan.value if hasattr(user_plan, "value") else str(user_plan)
 
 
-def build_rate_limit_card(
-    *,
-    feature: str,
-    plan_required: str | None,
-    reset_time: str | None,
-    current_plan: str,
-    message: str | None = None,
-) -> RateLimitCard:
-    """Build the rate_limit_data stream-card payload the frontend's RateLimitCard renders.
-
-    Shared by every caller that surfaces a rate/budget/cap limit inline in
-    chat. message is omitted from the payload when not given.
-    """
-    data: RateLimitCardData = {
-        "feature": feature,
-        "plan_required": plan_required,
-        "reset_time": reset_time,
-        "current_plan": current_plan,
-    }
-    if message is not None:
-        data["message"] = message
+def build_rate_limit_card(card: RateLimitCardData) -> RateLimitCard:
+    """Build the system rate_limit_data entry every caller that surfaces a limit inline in chat streams."""
     return {
         "tool_data": {
             "tool_name": "rate_limit_data",
             "tool_category": "system",
-            "data": data,
+            "data": card.model_dump(mode="json"),
             "timestamp": datetime.now(UTC).isoformat(),
         }
     }
@@ -199,10 +171,12 @@ def _limit_hit_exception(
     card_reset_time = reset_time.isoformat() if isinstance(reset_time, datetime) else reset_time
     current_stream_writer()(
         build_rate_limit_card(
-            feature=actual_feature_key,
-            plan_required=plan_required,
-            reset_time=card_reset_time,
-            current_plan=plan_label(user_plan),
+            RateLimitCardData(
+                feature=actual_feature_key,
+                plan_required=plan_required,
+                reset_time=card_reset_time,
+                current_plan=plan_label(user_plan),
+            )
         )
     )
 

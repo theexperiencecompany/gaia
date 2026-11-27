@@ -5,7 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.integrations.weather import WeatherLocation, WeatherReport
+from app.models.integrations.weather import OpenWeatherMain, WeatherLocation, WeatherReport
+from app.models.tool_card_registry import tool_card_data
+from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,7 +28,7 @@ def _make_weather_data(location: str = "London") -> WeatherReport:
     return WeatherReport(
         forecast=[],
         location=WeatherLocation(city=location, country="GB", region="England"),
-        main={"temp": 15.2},
+        main=OpenWeatherMain(temp=15.2),
     )
 
 
@@ -57,7 +59,7 @@ class TestGetWeather:
 
         from app.agents.tools.weather_tool import get_weather
 
-        result = await get_weather.coroutine(
+        result = await tool_coroutine(get_weather, str)(
             config=_make_config(),
             location="Mumbai,IN",
         )
@@ -86,7 +88,7 @@ class TestGetWeather:
 
         from app.agents.tools.weather_tool import get_weather
 
-        result = await get_weather.coroutine(
+        result = await tool_coroutine(get_weather, str)(
             config=_make_config(),
             location="London",
         )
@@ -108,7 +110,7 @@ class TestGetWeather:
 
         from app.agents.tools.weather_tool import get_weather
 
-        await get_weather.coroutine(
+        await tool_coroutine(get_weather, str)(
             config=_make_config(),
             location="Tokyo,JP",
         )
@@ -131,40 +133,39 @@ class TestGetWeather:
 
         from app.agents.tools.weather_tool import get_weather
 
-        await get_weather.coroutine(
+        await tool_coroutine(get_weather, str)(
             config=_make_config(),
             location="Paris,FR",
         )
 
         data_call = writer.call_args_list[1][0][0]
-        assert data_call["weather_data"] == weather_data.model_dump(mode="json", exclude_unset=True)
+        assert data_call["weather_data"] == tool_card_data("weather_data", weather_data)
         assert data_call["location"] == "Paris,FR"
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
-    async def test_a_weather_report_streams_only_the_fields_it_carries(
+    async def test_a_field_open_weather_map_left_out_streams_as_null(
         self,
         mock_user_weather: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        """Unset optional fields (name, sys) are omitted from the card, not sent as nulls."""
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
         mock_user_weather.return_value = WeatherReport(
             forecast=[],
             location=WeatherLocation(city="Pune", country="IN", region=None),
-            main={"temp": 21.5},
+            main=OpenWeatherMain(temp=21.5),
         )
 
         from app.agents.tools.weather_tool import get_weather
 
-        await get_weather.coroutine(config=_make_config(), location="Pune,IN")
+        await tool_coroutine(get_weather, str)(config=_make_config(), location="Pune,IN")
 
-        assert writer.call_args_list[1][0][0]["weather_data"] == {
-            "main": {"temp": 21.5},
-            "forecast": [],
-            "location": {"city": "Pune", "country": "IN", "region": None},
-        }
+        card = writer.call_args_list[1][0][0]["weather_data"]
+        assert card["main"]["temp"] == 21.5
+        assert card["name"] is None
+        assert card["sys"] is None
+        assert card["location"] == {"city": "Pune", "country": "IN", "region": None}
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
@@ -180,7 +181,7 @@ class TestGetWeather:
         from app.agents.tools.weather_tool import get_weather
 
         with pytest.raises(Exception, match="API key invalid"):
-            await get_weather.coroutine(
+            await tool_coroutine(get_weather, str)(
                 config=_make_config(),
                 location="Nowhere",
             )
@@ -198,7 +199,7 @@ class TestGetWeather:
 
         from app.agents.tools.weather_tool import get_weather
 
-        result = await get_weather.coroutine(
+        result = await tool_coroutine(get_weather, str)(
             config=_make_config(),
             location="NYC",
         )
@@ -219,7 +220,7 @@ class TestGetWeather:
 
         from app.agents.tools.weather_tool import get_weather
 
-        result = await get_weather.coroutine(
+        result = await tool_coroutine(get_weather, str)(
             config=_make_config(),
             location="Berlin,DE",
         )
@@ -249,7 +250,7 @@ class TestGetWeather:
 
         from app.agents.tools.weather_tool import get_weather
 
-        result = await get_weather.coroutine(config=_make_config(), location="Atlantis")
+        result = await tool_coroutine(get_weather, str)(config=_make_config(), location="Atlantis")
 
         assert result == sentence
         assert all("weather_data" not in call[0][0] for call in writer.call_args_list)

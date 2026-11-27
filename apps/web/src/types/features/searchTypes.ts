@@ -1,1 +1,1 @@
-export type { DeepResearchResults, SearchResults } from "@shared/chat";
+export type { DeepResearchResults } from "@shared/chat";

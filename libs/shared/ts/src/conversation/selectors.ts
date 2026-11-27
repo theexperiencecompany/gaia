@@ -124,7 +124,7 @@ export const timelineShows = (timeline: ToolTimeline): boolean =>
 
 /** The data of every call of one tool among a timeline's cards, in the order they were made; a grouped tool's calls arrive as one card. */
 export function cardData(timeline: ToolTimeline, toolName: string): unknown[] {
-  return timeline.cards.flatMap(({ card }) => {
+  return timeline.cards.flatMap(({ card }): unknown[] => {
     if (card.tool_name !== toolName) return [];
     return Array.isArray(card.data) ? card.data : [card.data];
   });

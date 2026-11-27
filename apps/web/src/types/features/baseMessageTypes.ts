@@ -6,11 +6,6 @@ import type { Dispatch } from "react";
 import type { BaseMessageData } from "@/config/registries/baseMessageRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 
-import type { EmailComposeData } from "./mailTypes";
-import type { DeepResearchResults, SearchResults } from "./searchTypes";
-import type { ImageData } from "./toolDataTypes";
-import type { WeatherData } from "./weatherTypes";
-
 // Type for image data used in UI callbacks
 export interface SetImageDataType {
   src: string; // corresponds to url in ImageData
@@ -60,12 +55,3 @@ export interface BotMessageData extends BaseMessageData {
 
   animateParts?: boolean;
 }
-
-// Re-export all tool data types for convenience
-export type {
-  DeepResearchResults,
-  EmailComposeData,
-  ImageData,
-  SearchResults,
-  WeatherData,
-};

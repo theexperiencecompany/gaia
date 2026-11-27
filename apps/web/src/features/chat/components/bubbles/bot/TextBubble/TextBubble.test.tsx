@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
+import type { TimelineToolCard } from "@shared/api/generated";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 
 import TextBubble from ".";
@@ -26,7 +26,7 @@ const CRASHING_CARD = [
     data: {},
     timestamp: "2026-10-14T00:00:00Z",
   },
-] as unknown as TypedToolDataEntry[];
+] as unknown as TimelineToolCard[];
 
 const turn = (over: Partial<ChatBubbleBotProps>) =>
   ({

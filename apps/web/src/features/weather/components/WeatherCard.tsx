@@ -16,6 +16,7 @@ import {
   Tornado02Icon,
   VisionIcon,
 } from "@icons";
+import type { DailyForecast, WeatherReport } from "@shared/api/generated";
 import {
   FIXED_LOCALE,
   formatTime as formatTimeOfDay,
@@ -33,7 +34,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { WeatherData } from "@/types/features/convoTypes";
 import { WeatherDetailItem } from "./WeatherDetailItem";
 
 const accordionStyles = accordionVariants({
@@ -42,7 +42,7 @@ const accordionStyles = accordionVariants({
 });
 
 interface WeatherCardProps {
-  weatherData: WeatherData;
+  weatherData: WeatherReport;
 }
 
 // Helper function to convert timestamp to readable time, taking into account timezone
@@ -204,7 +204,7 @@ const getAtmosphereTheme = (weatherId: number): WeatherTheme => {
 
 // Map an OpenWeather condition code to the card's visual theme.
 // Codes: https://openweathermap.org/weather-conditions
-const getWeatherTheme = (weatherData: WeatherData): WeatherTheme | null => {
+const getWeatherTheme = (weatherData: WeatherReport): WeatherTheme | null => {
   if (!weatherData?.weather?.[0]) return null;
   const weatherId = weatherData.weather[0].id;
 
@@ -311,10 +311,10 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
     ? Math.round(celsiusToFahrenheit(weatherData.main?.feels_like ?? 0))
     : Math.round(weatherData.main?.feels_like ?? 0);
   const sunriseTime = weatherData.sys?.sunrise
-    ? formatTime(weatherData.sys.sunrise, weatherData.timezone)
+    ? formatTime(weatherData.sys.sunrise, weatherData.timezone ?? 0)
     : "N/A";
   const sunsetTime = weatherData.sys?.sunset
-    ? formatTime(weatherData.sys.sunset, weatherData.timezone)
+    ? formatTime(weatherData.sys.sunset, weatherData.timezone ?? 0)
     : "N/A";
 
   return (
@@ -333,7 +333,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
         displayTemp={displayTemp}
         displayFeelsLike={displayFeelsLike}
         useFahrenheit={useFahrenheit}
-        description={weatherData.weather[0].description}
+        description={weatherData.weather?.[0].description}
       />
 
       {/* weather Details Accordion */}
@@ -459,7 +459,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
 };
 
 interface WeatherLocationHeaderProps {
-  weatherData: WeatherData;
+  weatherData: WeatherReport;
   weatherTheme: WeatherTheme;
   useFahrenheit: boolean;
   onUseFahrenheitChange: (value: boolean) => void;
@@ -536,7 +536,7 @@ interface MainWeatherDisplayProps {
   displayTemp: number;
   displayFeelsLike: number;
   useFahrenheit: boolean;
-  description: string;
+  description: string | undefined;
 }
 
 function MainWeatherDisplay({
@@ -575,21 +575,8 @@ function MainWeatherDisplay({
   );
 }
 
-interface ForecastDay {
-  date: string;
-  timestamp: number;
-  temp_min: number;
-  temp_max: number;
-  humidity: number;
-  weather: {
-    main: string;
-    description: string;
-    icon: string;
-  };
-}
-
 interface WeeklyForecastRowProps {
-  day: ForecastDay;
+  day: DailyForecast;
   useFahrenheit: boolean;
   weatherTheme: WeatherTheme;
 }
@@ -644,7 +631,7 @@ function WeeklyForecastRow({
 }
 
 interface WeatherDetailsGridProps {
-  weatherData: WeatherData;
+  weatherData: WeatherReport;
   weatherTheme: WeatherTheme;
   sunriseTime: string;
   sunsetTime: string;
@@ -664,7 +651,7 @@ function WeatherDetailsGrid({
             <FastWindIcon className="h-6 w-6" color={weatherTheme.colorCode} />
           ),
           label: "Wind",
-          value: `${weatherData.wind.speed} m/s`,
+          value: `${weatherData.wind?.speed} m/s`,
           tooltipText: "Wind speed in meters per second",
         },
         {

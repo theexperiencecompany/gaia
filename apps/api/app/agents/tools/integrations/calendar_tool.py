@@ -26,6 +26,7 @@ from app.models.agent_models import current_stream_writer, read_agent_configurab
 from app.models.calendar_models import (
     AddRecurrenceInput,
     CalendarEventDisplay,
+    CalendarListCard,
     CalendarSummary,
     CreatedEventSummary,
     CreateEventInput,
@@ -51,6 +52,7 @@ from app.models.calendar_models import (
 )
 from app.models.common_models import GatherContextInput
 from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.tool_card_registry import tool_card
 from app.services import calendar_service
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.calendar_tool_docs import (
@@ -123,14 +125,14 @@ def _extract_datetime(dt: GoogleCalendarEventDateTime) -> str:
     return dt.dateTime or dt.date or ""
 
 
-def _format_calendar_for_stream(cal: CalendarSummary) -> dict[str, str | None]:
-    """Format a calendar entry into CalendarListFetchData schema for frontend streaming."""
-    return {
-        "name": cal.summary,
-        "id": cal.id,
-        "description": cal.description,
-        "backgroundColor": cal.backgroundColor,
-    }
+def _calendar_card(cal: CalendarSummary) -> CalendarListCard:
+    """The calendar list card's row for one calendar."""
+    return CalendarListCard(
+        name=cal.summary,
+        id=cal.id,
+        description=cal.description,
+        backgroundColor=cal.backgroundColor,
+    )
 
 
 def _get_user_timezone() -> tzinfo | None:
@@ -276,14 +278,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             else [entry.model_dump() for entry in calendar_list.items]
         )
 
-        writer = current_stream_writer()
         if summaries:
-            writer(
-                {
-                    "calendar_list_fetch_data": [
-                        _format_calendar_for_stream(summary) for summary in summaries
-                    ]
-                }
+            current_stream_writer()(
+                tool_card(
+                    "calendar_list_fetch_data", [_calendar_card(summary) for summary in summaries]
+                )
             )
 
         return {"calendars": calendars}
@@ -342,13 +341,14 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
-            formatted_events = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
+            event_cards: list[CalendarEventDisplay] | list[GoogleCalendarEventResource] = [
+                calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in events
             ]
         except Exception as e:
             _warn_metadata_unavailable(user_id, e)
-            formatted_events = [event.model_dump() for event in events]
+            event_cards = events
+        formatted_events = [card.model_dump() for card in event_cards]
 
         busy_minutes: float = 0.0
         for event in events:
@@ -396,9 +396,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             "busy_hours": round(busy_minutes / 60, 1),
         }
 
-        writer = current_stream_writer()
-        if formatted_events:
-            writer({"calendar_fetch_data": formatted_events})
+        if event_cards:
+            current_stream_writer()(tool_card("calendar_fetch_data", event_cards))
 
         return result_data
 
@@ -429,17 +428,17 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
-            calendar_fetch_data = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
+            event_cards: list[CalendarEventDisplay] | list[GoogleCalendarEventResource] = [
+                calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in events
             ]
         except Exception as e:
             _warn_metadata_unavailable(user_id, e)
-            calendar_fetch_data = [event.model_dump() for event in events]
+            event_cards = events
+        calendar_fetch_data = [card.model_dump() for card in event_cards]
 
-        writer = current_stream_writer()
-        if calendar_fetch_data:
-            writer({"calendar_fetch_data": calendar_fetch_data})
+        if event_cards:
+            current_stream_writer()(tool_card("calendar_fetch_data", event_cards))
 
         return {
             "calendar_fetch_data": calendar_fetch_data,
@@ -470,17 +469,17 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
-            calendar_search_data = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
+            event_cards: list[CalendarEventDisplay] | list[GoogleCalendarEventResource] = [
+                calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in result.matching_events
             ]
         except Exception as e:
             _warn_metadata_unavailable(user_id, e)
-            calendar_search_data = events
+            event_cards = result.matching_events
+        calendar_search_data = [card.model_dump() for card in event_cards]
 
-        writer = current_stream_writer()
-        if calendar_search_data:
-            writer({"calendar_fetch_data": calendar_search_data})
+        if event_cards:
+            current_stream_writer()(tool_card("calendar_fetch_data", event_cards))
 
         return {
             "events": events,
@@ -793,7 +792,6 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         if errors and not created_events:
             raise ValueError(f"All events failed validation: {failures}")
 
-        writer = current_stream_writer()
         if created_events:
             displays = [
                 CalendarEventDisplay(
@@ -805,9 +803,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 )
                 for e in created_events
             ]
-            # JSON-native fields: python and json dumps are identical
-            dumps = [d.model_dump(mode="json") for d in displays]  # pragma: no mutate
-            writer({"calendar_fetch_data": dumps})
+            current_stream_writer()(tool_card("calendar_fetch_data", displays))
 
         # JSON-native fields: python and json dumps are identical
         created_dumps = [e.model_dump(mode="json") for e in created_events]  # pragma: no mutate

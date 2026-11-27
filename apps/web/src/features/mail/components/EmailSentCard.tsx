@@ -17,7 +17,7 @@ const SECONDS_PER_HOUR = 3600;
 const formatClockOf = (timestamp: string) =>
   formatTimeOfDay(timestamp, { locale: FIXED_LOCALE });
 
-const formatTime = (timestamp?: string) => {
+const formatTime = (timestamp: string | null | undefined) => {
   if (!timestamp) return "Just now";
   const secondsAgo = (Date.now() - new Date(timestamp).getTime()) / 1000;
   return secondsAgo < SECONDS_PER_HOUR
@@ -26,6 +26,9 @@ const formatTime = (timestamp?: string) => {
 };
 
 export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
+  // Only a sent stored draft carries the send receipt; a sent compose card has just its fields.
+  const receipt = "message" in emailSentData ? emailSentData : undefined;
+  const recipients = receipt?.recipients;
   return (
     <div className="w-full min-w-fit max-w-xs rounded-2xl bg-green-900/20 p-4 text-white">
       {/* Header */}
@@ -36,7 +39,7 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
           <span className="text-sm font-medium text-green-400">Email Sent</span>
         </div>
         <Chip size="sm" variant="soft" color="success" className="text-xs">
-          {formatTime(emailSentData.timestamp)}
+          {formatTime(receipt?.timestamp)}
         </Chip>
       </div>
 
@@ -49,17 +52,19 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
           </div>
         )}
 
-        {emailSentData.recipients && emailSentData.recipients.length > 0 && (
+        {recipients && recipients.length > 0 && (
           <div className="text-sm">
             <span className="text-gray-400">To: </span>
             <span className="text-gray-200">
-              {emailSentData.recipients.join(", ")}
+              {typeof recipients === "string"
+                ? recipients
+                : recipients.join(", ")}
             </span>
           </div>
         )}
 
         <div className="text-sm font-medium text-green-400">
-          {emailSentData.message}
+          {receipt?.message}
         </div>
       </div>
     </div>

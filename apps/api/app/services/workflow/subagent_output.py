@@ -9,13 +9,14 @@ The expected JSON block format lives in the subagent prompt
 (app/agents/prompts/subagent_prompts.py); this module validates it.
 """
 
-from typing import Literal, Self, TypedDict
+from typing import Literal, Self
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_gate_models import GateCondition
+from app.models.workflow_card_models import WorkflowDraftData
 from app.models.workflow_models import TriggerType
 from app.utils.markdown_utils import json_blocks
 from shared.py.wide_events import log
@@ -45,23 +46,6 @@ class ClarifyingOutput(BaseModel):
 
     type: Literal["clarifying"] = Field(description="Must be 'clarifying' when asking questions")
     message: str = Field(description="The clarifying question to ask the user")
-
-
-class WorkflowDraftPayload(TypedDict):
-    """The workflow_draft stream frame the chat's draft card renders."""
-
-    suggested_title: str
-    suggested_description: str
-    prompt: str
-    trigger_type: str
-    trigger_slug: str | None
-    integration_ids: list[str]
-    cron_expression: str | None
-    runs_only_when: str | None
-    direct_create: bool
-    delivery: str
-    #: Sent back on create, so whatever waited on the user setting it up is picked back up.
-    draft_id: str
 
 
 class FinalizedOutput(BaseModel):
@@ -116,29 +100,25 @@ class FinalizedOutput(BaseModel):
         """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(
-        self, delivery: WorkflowDelivery, draft_id: str
-    ) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
-        """Convert to the format expected by frontend stream handler.
+    def to_card(self, delivery: WorkflowDelivery, draft_id: str) -> WorkflowDraftData:
+        """Return the workflow_draft card for this draft.
 
         delivery is not the assistant's to choose: the calling agent sets it from
         the user's intent, and the draft carries it to the confirming modal.
         """
-        return {
-            "workflow_draft": {
-                "suggested_title": self.title,
-                "suggested_description": self.description,
-                "prompt": self.prompt,
-                "trigger_type": self.backend_trigger_type.value,
-                "trigger_slug": self.trigger_slug,
-                "integration_ids": self.integration_ids,
-                "cron_expression": self.cron_expression,
-                "runs_only_when": self.runs_only_when,
-                "direct_create": self.direct_create,
-                "delivery": delivery.value,
-                "draft_id": draft_id,
-            }
-        }
+        return WorkflowDraftData(
+            suggested_title=self.title,
+            suggested_description=self.description,
+            prompt=self.prompt,
+            trigger_type=self.backend_trigger_type,
+            trigger_slug=self.trigger_slug,
+            integration_ids=self.integration_ids,
+            cron_expression=self.cron_expression,
+            runs_only_when=self.runs_only_when,
+            direct_create=self.direct_create,
+            delivery=delivery,
+            draft_id=draft_id,
+        )
 
 
 # =============================================================================

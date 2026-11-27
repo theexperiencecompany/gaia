@@ -32,7 +32,12 @@ from app.models.agent_models import (
     read_agent_configurable,
 )
 from app.models.chat_models import SourceCategory
+from app.models.integration_card_models import (
+    IntegrationConnectionData,
+    ReconnectAccount,
+)
 from app.models.integration_models import IntegrationAccount
+from app.models.tool_card_registry import tool_card
 from app.services.connect_link_service import build_connect_link_url
 from app.services.conversation.integration_log import record_integration_needed
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -321,24 +326,21 @@ async def request_integration_connection(
         await wait_for_user(
             run, user_id, WaitCondition.INTEGRATION_CONNECTED, integration_id, integration_name
         )
-        current_stream_writer()(
-            {
-                "integration_connection_required": {
-                    "integration_id": integration_id,
-                    "integration_name": integration_name,
-                    "expired": not adding
-                    and (expired or mode is ConnectMode.RECONNECT or account is not None),
-                    "add_account": adding,
-                    "message": ask.card,
-                    "connected_accounts": (
-                        await _connected_account_names(user_id, integration_id) if adding else []
-                    ),
-                    "reconnect_account": (
-                        {"id": account.id, "name": account.display_name} if account else None
-                    ),
-                }
-            }
+        card = IntegrationConnectionData(
+            integration_id=integration_id,
+            integration_name=integration_name,
+            expired=not adding
+            and (expired or mode is ConnectMode.RECONNECT or account is not None),
+            add_account=adding,
+            message=ask.card,
+            connected_accounts=(
+                await _connected_account_names(user_id, integration_id) if adding else []
+            ),
+            reconnect_account=(
+                ReconnectAccount(id=account.id, name=account.display_name) if account else None
+            ),
         )
+        current_stream_writer()(tool_card("integration_connection_required", card))
 
     if first_ask:
         await _log_need(user_id, integration_id, integration_name)

@@ -287,8 +287,6 @@ apps/api/tests/unit/tools/test_integration_tool_accounts.py	arg-type
 apps/api/tests/unit/tools/test_integration_tools_proxy.py	call-arg
 apps/api/tests/unit/tools/test_linkedin_tool.py	call-arg
 apps/api/tests/unit/tools/test_manual_tool.py	attr-defined
-apps/api/tests/unit/tools/test_memory_tools.py	arg-type
-apps/api/tests/unit/tools/test_memory_tools.py	attr-defined
 apps/api/tests/unit/tools/test_research_tool.py	arg-type
 apps/api/tests/unit/tools/test_research_tool.py	assignment
 apps/api/tests/unit/tools/test_skill_tools.py	attr-defined
@@ -296,9 +294,6 @@ apps/api/tests/unit/tools/test_skill_tools.py	typeddict-item
 apps/api/tests/unit/tools/test_subagent_control_tool.py	arg-type
 apps/api/tests/unit/tools/test_subscription_tool.py	attr-defined
 apps/api/tests/unit/tools/test_support_tool.py	attr-defined
-apps/api/tests/unit/tools/test_twitter_tool.py	call-arg
-apps/api/tests/unit/tools/test_weather_tool.py	attr-defined
-apps/api/tests/unit/tools/test_weather_tool.py	call-arg
 apps/api/tests/unit/tools/test_webpage_tool.py	attr-defined
 apps/api/tests/unit/utils/search/providers/test_base.py	arg-type
 apps/api/tests/unit/utils/search/test_engine.py	arg-type

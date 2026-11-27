@@ -20,6 +20,8 @@ describe("RateLimitCard", () => {
         data={{
           feature: "task_size",
           current_plan: "pro",
+          plan_required: null,
+          reset_time: null,
           message: TASK_SIZE_STOP,
         }}
       />,
@@ -37,6 +39,7 @@ describe("RateLimitCard", () => {
         data={{
           feature: "monthly_usage",
           current_plan: "pro",
+          plan_required: null,
           reset_time: reset,
           message: "You've used this month's AI usage allowance.",
         }}
@@ -50,7 +53,13 @@ describe("RateLimitCard", () => {
   it("falls back to the daily-count copy when the backend sends no message", () => {
     render(
       <RateLimitCard
-        data={{ feature: "chat_messages", current_plan: "pro" }}
+        data={{
+          feature: "chat_messages",
+          current_plan: "pro",
+          plan_required: null,
+          reset_time: null,
+          message: null,
+        }}
       />,
     );
 

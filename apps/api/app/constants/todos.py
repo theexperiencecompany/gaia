@@ -13,6 +13,9 @@ from app.constants.chat import MAX_MESSAGE_LENGTH
 
 ONBOARDING_TODO_LIMIT = 3
 
+# Matches no project, so a user with no inbox yet counts 0 inbox todos.
+NO_INBOX_PROJECT_ID: Final[str] = "no_inbox_found"
+
 # Label marking a todo seeded during onboarding — used to fetch and to purge them.
 ONBOARDING_LABEL: Final[str] = "onboarding"
 

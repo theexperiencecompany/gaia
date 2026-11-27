@@ -406,7 +406,9 @@ class TestResolveToolAttachments:
         assert res.call_args.kwargs == {"tool": "OUTLOOK_SEND_EMAIL", "toolkit": "outlook"}
         assert params["arguments"]["attachment"] == resolved[0]
         assert "attachments" not in params["arguments"]
-        assert display == [{"name": "deck.pdf", "mimetype": "application/pdf"}]
+        assert [d.model_dump() for d in display] == [
+            {"name": "deck.pdf", "mimetype": "application/pdf"}
+        ]
 
     def test_resolution_writes_back_under_the_tools_own_param_name(self):
         params = {"arguments": {"attachments": [{"url": "https://x/y.png"}]}, "user_id": "u1"}
@@ -440,9 +442,10 @@ class TestResolveToolAttachments:
         # Composio's uploader always sets both, but the card renders whatever is
         # here — a missing key must not put "None" in front of the user.
         params = {"arguments": {"attachment": {"s3key": "k"}}, "user_id": "u1"}
-        assert resolve_tool_attachments("T", "tk", params, native_param="attachment") == [
-            {"name": "", "mimetype": ""}
-        ]
+        assert [
+            d.model_dump()
+            for d in resolve_tool_attachments("T", "tk", params, native_param="attachment")
+        ] == [{"name": "", "mimetype": ""}]
 
     def test_no_attachments_derives_display_from_native(self):
         params = {
@@ -451,9 +454,10 @@ class TestResolveToolAttachments:
             },
             "user_id": "u1",
         }
-        assert resolve_tool_attachments("T", "tk", params, native_param="attachment") == [
-            {"name": "a.pdf", "mimetype": "application/pdf"}
-        ]
+        assert [
+            d.model_dump()
+            for d in resolve_tool_attachments("T", "tk", params, native_param="attachment")
+        ] == [{"name": "a.pdf", "mimetype": "application/pdf"}]
 
     def test_non_list_aborts(self):
         params = {"arguments": {"attachments": "not-a-list"}, "user_id": "u1"}
@@ -475,7 +479,10 @@ class TestResolveToolAttachments:
         # An explicit empty list is the one supported falsy value: attach nothing,
         # and never write the native param or touch the friendly one.
         params = {"arguments": {"attachments": []}, "user_id": "u1"}
-        assert resolve_tool_attachments("T", "tk", params, native_param="attachment") == []
+        assert [
+            d.model_dump()
+            for d in resolve_tool_attachments("T", "tk", params, native_param="attachment")
+        ] == []
         assert params["arguments"] == {"attachments": []}
 
     def test_reference_without_a_source_aborts(self):

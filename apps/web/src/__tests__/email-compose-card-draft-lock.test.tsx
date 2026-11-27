@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import EmailComposeCard from "@/features/mail/components/EmailComposeCard";
+import type { EmailComposeData } from "@/types/features/mailTypes";
 
 /**
  * Regression test: a compose card carrying a `draft_id` sends that stored draft
@@ -17,10 +18,16 @@ vi.mock("@/features/mail/api/mailApi", () => ({
   mailApi: { sendDraft: vi.fn(), sendEmail: vi.fn() },
 }));
 
-const BASE = {
+const BASE: EmailComposeData = {
   to: ["bob@example.com"],
   subject: "Quarterly report",
   body: "<p>Attached.</p>",
+  cc: null,
+  bcc: null,
+  thread_id: null,
+  is_html: null,
+  attachments: [],
+  draft_id: null,
 };
 
 describe("EmailComposeCard draft lock", () => {

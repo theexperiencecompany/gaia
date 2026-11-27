@@ -16,7 +16,6 @@ from app.agents.tools.notification_tool import (
     NotificationListResult,
     NotificationPreferencesResult,
     SendNotificationFailure,
-    SentNotificationResult,
     get_notification_count,
     get_notification_preferences,
     get_notifications,
@@ -450,7 +449,7 @@ class TestSendNotificationChannels:
         )
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        result = await tool_coroutine(send_notification, SentNotificationResult)(
+        result = await tool_coroutine(send_notification, dict[str, object])(
             tool_call_id="call-1",
             config=_chat_run_config("web"),
             message="Build done",
@@ -706,7 +705,7 @@ async def test_a_sent_notification_is_streamed_as_the_result_it_returns(
     mock_writer_factory.return_value = writer
     mock_service.notify = AsyncMock(side_effect=deliver)
 
-    result = await tool_coroutine(send_notification, SentNotificationResult)(
+    result = await tool_coroutine(send_notification, dict[str, object])(
         tool_call_id="call-1",
         config=_make_config(),
         message=" Build done ",
@@ -924,7 +923,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        result = await tool_coroutine(send_notification, SentNotificationResult)(
+        result = await tool_coroutine(send_notification, dict[str, object])(
             tool_call_id="call-1",
             config=_chat_run_config("telegram"),
             message="Your flight is booked",

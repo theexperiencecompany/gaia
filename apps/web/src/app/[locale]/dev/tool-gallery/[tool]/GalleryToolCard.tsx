@@ -1,6 +1,6 @@
 import type { ToolFixture } from "@shared/chat";
 import type { JSX } from "react";
-import type { ToolDataMap, ToolName } from "@/config/registries/toolRegistry";
+import type { ToolPayloadMap } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import { CalendarDeleteSection } from "@/features/chat/components/bubbles/bot/CalendarDeleteSection";
 import { CalendarEditSection } from "@/features/chat/components/bubbles/bot/CalendarEditSection";
@@ -34,8 +34,10 @@ import WorkflowCreatedCard from "@/features/workflows/components/WorkflowCreated
 import WorkflowDraftCard from "@/features/workflows/components/WorkflowDraftCard";
 import type { RedditData } from "@/types/features/redditTypes";
 
+type GalleryToolName = keyof ToolPayloadMap;
+
 type GalleryRenderers = {
-  [K in ToolName]?: (data: ToolDataMap[K]) => JSX.Element;
+  [K in GalleryToolName]?: (data: ToolPayloadMap[K]) => JSX.Element;
 };
 
 function UnsupportedOnWeb({ label }: { label: string }): JSX.Element {
@@ -85,19 +87,11 @@ const GALLERY_RENDERERS: GalleryRenderers = {
     <CalendarEditSection calendar_edit_options={data} />
   ),
   calendar_fetch_data: (data) => <CalendarListCard events={data} />,
-  todo_data: (data) => (
-    <TodoSection
-      todos={data.todos}
-      projects={data.projects}
-      stats={data.stats}
-      action={data.action}
-      message={data.message}
-    />
-  ),
+  todo_data: (data) => <TodoSection card={data} />,
   todo_progress: (data) => <TodoProgressSection todo_progress={data} />,
   google_docs_data: (data) => <GoogleDocsSection google_docs_data={data} />,
   code_data: (data) => <CodeExecutionSection code_data={data} />,
-  artifact_data: (data) => <FileArtifactSection artifact_data={data} />,
+  artifact_data: (data) => <FileArtifactSection artifact_data={[data]} />,
   twitter_search_data: (data) => (
     <TwitterSearchSection twitter_search_data={data} />
   ),
@@ -127,13 +121,13 @@ const GALLERY_RENDERERS: GalleryRenderers = {
   mcp_app: (data) => <MCPAppRenderer data={data} />,
 };
 
-function hasGalleryCard(toolName: string): toolName is ToolName {
+function hasGalleryCard(toolName: string): toolName is GalleryToolName {
   return Object.hasOwn(GALLERY_RENDERERS, toolName);
 }
 
-function renderGalleryCard<K extends ToolName>(
+function renderGalleryCard<K extends GalleryToolName>(
   toolName: K,
-  data: ToolDataMap[K],
+  data: ToolPayloadMap[K],
 ): JSX.Element | undefined {
   return GALLERY_RENDERERS[toolName]?.(data);
 }
@@ -146,7 +140,7 @@ export default function GalleryToolCard({
 }): JSX.Element {
   const { toolName, data } = fixture;
   const card = hasGalleryCard(toolName)
-    ? renderGalleryCard(toolName, data as ToolDataMap[typeof toolName])
+    ? renderGalleryCard(toolName, data as ToolPayloadMap[typeof toolName])
     : undefined;
   return card ?? <UnsupportedOnWeb label={toolName} />;
 }

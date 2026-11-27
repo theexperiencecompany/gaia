@@ -21,7 +21,6 @@ from app.agents.workspace.paths import MountRole, detect_content_type, session_a
 from app.config.settings import settings
 from app.constants.sandbox import ARTIFACT_ENUMERATE_TIMEOUT_SECONDS
 from app.models.short_link_models import ShortLink, ShortLinkTargetType, WorkspaceFileTarget
-from app.services.artifact_events import ArtifactFileEvent
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.storage import ArtifactInfo
 
@@ -171,7 +170,7 @@ def _sandbox(stdout: str) -> MagicMock:
 
 async def test_bash_cards_every_file_find_lists_in_one_round_trip() -> None:
     sandbox = _sandbox("a.md\x005\x001.5\x00b/c.txt\x0010\x00")
-    written: list[dict[str, ArtifactFileEvent]] = []
+    written: list[Mapping[str, object]] = []
     with patch(WRITER, return_value=written.append):
         await bash_tool._publish_artifacts(sandbox, "u1", "c1", changed_since=MTIME)
 
@@ -195,7 +194,7 @@ async def test_bash_cards_every_file_find_lists_in_one_round_trip() -> None:
 
 async def test_bash_cards_every_complete_record_when_none_is_cut_short() -> None:
     sandbox = _sandbox("a.md\x005\x001.5\x00b/c.txt\x0010\x002.5\x00")
-    written: list[dict[str, ArtifactFileEvent]] = []
+    written: list[Mapping[str, object]] = []
     with patch(WRITER, return_value=written.append):
         await bash_tool._publish_artifacts(sandbox, "u1", "c1", changed_since=MTIME)
 

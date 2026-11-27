@@ -1,5 +1,9 @@
-import type { GmailMessageSummary } from "@shared/api/generated";
-import type { EmailComposeData } from "@shared/chat";
+import type {
+  AttachmentDisplay,
+  EmailComposeCard,
+  EmailSentDraftCard,
+  GmailMessageSummary,
+} from "@shared/api/generated";
 
 /**
  * The API forwards each Gmail message with its raw keys alongside the derived
@@ -42,13 +46,13 @@ export interface EmailBody {
 
 export type {
   ContactData,
-  EmailComposeData,
   EmailFetchData,
-  EmailSentData,
   EmailThreadData,
   PeopleSearchData,
 } from "@shared/chat";
 
-export type EmailAttachmentMeta = NonNullable<
-  EmailComposeData["attachments"]
->[number];
+export type EmailComposeData = EmailComposeCard;
+
+export type EmailSentData = EmailComposeCard | EmailSentDraftCard;
+
+export type EmailAttachmentMeta = AttachmentDisplay;

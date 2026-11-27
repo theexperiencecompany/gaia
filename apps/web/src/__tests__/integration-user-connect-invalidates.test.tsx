@@ -5,7 +5,10 @@
  * up. Fidelity: the API and the bearer modal are stubbed; each site's success
  * handler runs for real and the helper is observed, not the refetch it starts.
  */
-import type { MyIntegrationItem } from "@shared/api/generated";
+import type {
+  MyIntegrationItem,
+  SuggestedIntegrationCard,
+} from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -17,10 +20,7 @@ import {
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-  PublicIntegrationResponse,
-  SuggestedIntegration,
-} from "@/features/integrations/types";
+import type { PublicIntegrationResponse } from "@/features/integrations/types";
 
 const harness = vi.hoisted(() => ({
   invalidateIntegrationCaches: vi.fn(),
@@ -209,11 +209,13 @@ describe("a connect the user makes refreshes the integration caches", () => {
   });
 
   it("adding a suggested integration", async () => {
-    const suggestion: SuggestedIntegration = {
+    const suggestion: SuggestedIntegrationCard = {
       id: "deepwiki",
       name: "DeepWiki",
       description: "Docs for any repo",
       category: "developer",
+      iconUrl: null,
+      authType: null,
       relevanceScore: 1,
       slug: "deepwiki",
     };

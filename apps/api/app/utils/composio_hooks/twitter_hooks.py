@@ -27,6 +27,14 @@ from app.models.integrations.twitter_hooks import (
     TwitterUserLookupData,
     TwitterUserPage,
 )
+from app.models.tool_card_registry import tool_card
+from app.models.twitter_card_models import (
+    TwitterSearchCard,
+    TwitterSearchTweet,
+    TwitterTweetAuthor,
+    TwitterUnknownAuthor,
+    TwitterUserCard,
+)
 from shared.py.wide_events import log
 
 from .registry import (
@@ -114,7 +122,7 @@ class _AuthoredTweet:
     author: TwitterHookUser | None
 
 
-def _metrics_payload(obj: TwitterHookTweet | TwitterHookUser) -> dict[str, object]:
+def _metrics_payload(obj: TwitterHookTweet | TwitterHookUser) -> dict[str, int]:
     """Return public_metrics exactly as X sent it, or {} when it was not requested."""
     return obj.public_metrics.model_dump(exclude_unset=True) if obj.public_metrics else {}
 
@@ -132,20 +140,27 @@ def _author_identity(author: TwitterHookUser | None) -> dict[str, object]:
     }
 
 
-def _search_tweet_card(item: _AuthoredTweet) -> dict[str, object]:
+def _search_tweet_card(item: _AuthoredTweet) -> TwitterSearchTweet:
     """Render a search result as the chat card shows it, author bio and metrics included."""
-    author = _author_identity(item.author)
-    if item.author is not None:
-        author["description"] = item.author.description
-        author["public_metrics"] = _metrics_payload(item.author)
-    return {
-        "id": item.tweet.id,
-        "text": item.tweet.text,
-        "created_at": item.tweet.created_at,
-        "author": author,
-        "public_metrics": _metrics_payload(item.tweet),
-        "conversation_id": item.tweet.conversation_id,
-    }
+    author = item.author
+    return TwitterSearchTweet(
+        id=item.tweet.id,
+        text=item.tweet.text,
+        created_at=item.tweet.created_at,
+        author=TwitterUnknownAuthor(username=_UNKNOWN_AUTHOR_USERNAME, name=_UNKNOWN_AUTHOR_NAME)
+        if author is None
+        else TwitterTweetAuthor(
+            id=author.id,
+            username=author.username,
+            name=author.name,
+            profile_image_url=author.profile_image_url,
+            verified=author.verified,
+            description=author.description,
+            public_metrics=_metrics_payload(author),
+        ),
+        public_metrics=_metrics_payload(item.tweet),
+        conversation_id=item.tweet.conversation_id,
+    )
 
 
 def _timeline_tweet_card(item: _AuthoredTweet) -> dict[str, object]:
@@ -158,20 +173,20 @@ def _timeline_tweet_card(item: _AuthoredTweet) -> dict[str, object]:
     }
 
 
-def _profile_card(user: TwitterHookUser) -> dict[str, object]:
+def _profile_card(user: TwitterHookUser) -> TwitterUserCard:
     """Render a looked-up user as the profile card shows them."""
-    return {
-        "id": user.id,
-        "username": user.username,
-        "name": user.name,
-        "description": user.description,
-        "profile_image_url": user.profile_image_url,
-        "verified": user.verified,
-        "public_metrics": _metrics_payload(user),
-        "created_at": user.created_at,
-        "location": user.location,
-        "url": user.url,
-    }
+    return TwitterUserCard(
+        id=user.id,
+        username=user.username,
+        name=user.name,
+        description=user.description,
+        profile_image_url=user.profile_image_url,
+        verified=user.verified,
+        public_metrics=_metrics_payload(user),
+        created_at=user.created_at,
+        location=user.location,
+        url=user.url,
+    )
 
 
 def _follow_card(user: TwitterHookUser) -> dict[str, object]:
@@ -366,16 +381,13 @@ def twitter_search_after_hook(
         page = TwitterTweetPage.model_validate(raw)
         tweets = _with_authors(page)
 
-        # Send to frontend
         if tweets:
-            payload = {
-                "twitter_search_data": {
-                    "tweets": [_search_tweet_card(item) for item in tweets],
-                    "result_count": _result_count(page, tweets),
-                    "next_token": page.meta.next_token,
-                },
-            }
-            writer(payload)
+            card = TwitterSearchCard(
+                tweets=[_search_tweet_card(item) for item in tweets],
+                result_count=_result_count(page, tweets),
+                next_token=page.meta.next_token,
+            )
+            writer(tool_card("twitter_search_data", card))
 
         # Return cleaned data for LLM (minimize tokens)
         llm_tweets: list[TweetSummary] = [
@@ -429,12 +441,8 @@ def twitter_user_lookup_after_hook(
             user_data = TwitterUserLookupData.model_validate(raw).data
             users = user_data if isinstance(user_data, list) else [user_data] if user_data else []
 
-        # Send to frontend
         if users:
-            payload = {
-                "twitter_user_data": [_profile_card(user) for user in users],
-            }
-            writer(payload)
+            writer(tool_card("twitter_user_data", [_profile_card(user) for user in users]))
 
         # Return for LLM
         summary: UserLookupsSummary = {
