@@ -4,6 +4,7 @@ from typing import cast
 
 import pytest
 
+from app.constants import summarization
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
@@ -33,6 +34,7 @@ from app.services.conversation.tool_cards import (
     TOOL_CALLS_CARD,
     FoldedCards,
     coalesced_thinking,
+    dropped_outputs,
     fold_cards,
 )
 from app.services.conversation.tool_timeline import tool_timeline
@@ -501,3 +503,95 @@ def test_an_mcp_apps_tool_result_is_never_cut() -> None:
         [ToolDataEvent(tool_data=card(MCP_APP_CARD, {"tool_call_id": "c1"})), output("c1", result)]
     ).tool_data
     assert shown["data"] == {"tool_call_id": "c1", "tool_result": result}
+
+
+def _subagent_calls(count: int, text: str) -> list[StreamPayload]:
+    """Return a subagent's start and count calls in it, each returning text."""
+    payloads: list[StreamPayload] = [start("s1")]
+    for index in range(count):
+        call_id = f"c{index}"
+        payloads.append(
+            ToolDataEvent(
+                tool_data=card(TOOL_CALLS_CARD, {"tool_call_id": call_id}, subagent_id="s1")
+            )
+        )
+        payloads.append(output(call_id, text, subagent_id="s1"))
+    return payloads
+
+
+@pytest.mark.regression
+def test_a_subagent_groups_calls_together_keep_at_most_one_cards_budget() -> None:
+    full = MAX_OUTPUT_CHARS
+    calls_in_budget = summarization.MAX_CARD_TEXT_CHARS // full
+    (shown,) = fold_cards(_subagent_calls(calls_in_budget + 2, "o" * full)).tool_data
+    calls = cast(list[dict[str, object]], cast(dict[str, object], shown["data"])["tool_calls"])
+    assert [call["output"] for call in calls[:calls_in_budget]] == ["o" * full] * calls_in_budget
+    assert [
+        (call["output"], call["output_original_length"]) for call in calls[calls_in_budget:]
+    ] == [("", full), ("", full)]
+
+
+@pytest.mark.regression
+def test_an_entrys_cards_together_keep_at_most_the_entry_budget() -> None:
+    full = MAX_OUTPUT_CHARS
+    cards_in_budget = summarization.MAX_ENTRY_TEXT_CHARS // full
+    payloads: list[StreamPayload] = []
+    for index in range(cards_in_budget + 1):
+        payloads.append(
+            ToolDataEvent(tool_data=card(TOOL_CALLS_CARD, {"tool_call_id": f"c{index}"}))
+        )
+        payloads.append(output(f"c{index}", "o" * full))
+    shown = fold_cards(payloads).tool_data
+    kept = [cast(dict[str, object], each["data"]) for each in shown]
+    assert (
+        sum(len(cast(str, call["output"])) for call in kept) == summarization.MAX_ENTRY_TEXT_CHARS
+    )
+    assert kept[-1] == {
+        "tool_call_id": f"c{cards_in_budget}",
+        "output": "",
+        "output_original_length": full,
+    }
+
+
+@pytest.mark.regression
+def test_thinking_streamed_past_the_per_call_limit_is_kept_to_it() -> None:
+    once = fold_cards([reasoning("t" * (MAX_OUTPUT_CHARS - 1))]).tool_data
+    (shown,) = fold_cards([reasoning("t" * 5)], seed=once).tool_data
+    assert shown["data"] == [thinking("t" * MAX_OUTPUT_CHARS)]
+
+
+def test_a_cut_seeds_output_keeps_the_length_its_tool_returned() -> None:
+    stored = card(
+        TOOL_CALLS_CARD,
+        {
+            "tool_call_id": "c1",
+            "output": "s" * MAX_OUTPUT_CHARS,
+            "output_original_length": 9_000_000,
+        },
+    )
+    cards = [stored] * (summarization.MAX_ENTRY_TEXT_CHARS // MAX_OUTPUT_CHARS + 1)
+    *_, last = fold_cards([], seed=cards).tool_data
+    assert last["data"] == {"tool_call_id": "c1", "output": "", "output_original_length": 9_000_000}
+
+
+def test_dropping_outputs_removes_a_card_of_thinking_alone_and_keeps_a_card_that_was_empty() -> (
+    None
+):
+    thought = card(TOOL_CALLS_CARD, [thinking("why")])
+    empty = card(TOOL_CALLS_CARD, [], tool_category="gmail")
+    assert dropped_outputs([thought, empty]) == (empty,)
+
+
+def test_dropping_outputs_removes_a_legacy_card_of_one_thinking_step() -> None:
+    assert dropped_outputs([card(TOOL_CALLS_CARD, thinking("why"))]) == ()
+
+
+def test_thinking_past_a_spent_budget_leaves_no_empty_thinking_step() -> None:
+    calls_in_budget = summarization.MAX_CARD_TEXT_CHARS // MAX_OUTPUT_CHARS
+    payloads = [
+        *_subagent_calls(calls_in_budget, "o" * MAX_OUTPUT_CHARS),
+        reasoning("a late thought", subagent_id="s1"),
+    ]
+    (shown,) = fold_cards(payloads).tool_data
+    calls = cast(list[dict[str, object]], cast(dict[str, object], shown["data"])["tool_calls"])
+    assert [call["tool_call_id"] for call in calls] == [f"c{i}" for i in range(calls_in_budget)]

@@ -75,6 +75,8 @@ async def test_an_old_install_boots_after_one_run_and_a_second_run_has_nothing_t
 
     await refuse_unmigrated_conversations()
     assert await entries_collection.count_documents({"conversation_id": conversation_id}) == 1
+    head = await raw_collection.find_one({"conversation_id": conversation_id})
+    assert head is not None and "messages" not in head
     ledger_row: dict[str, Any] | None = await db[LEDGER].find_one({"approval_id": "a1"})
     assert ledger_row is not None and "state" not in ledger_row
     capsys.readouterr()
@@ -135,7 +137,7 @@ async def test_a_conversation_a_verify_found_wrong_fails_the_run_until_it_verifi
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     conversation_id = await _legacy(raw_collection)
-    assert await migrate_conversations(db) == 0
+    assert await entries.migrate_all(apply=True) == 0
     entry = {"conversation_id": conversation_id, "id": "m1"}
     await entries_collection.update_one(entry, {"$set": {"text": "tampered"}})
     assert await entries.verify_all() == 1

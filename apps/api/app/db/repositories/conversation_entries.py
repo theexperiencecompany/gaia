@@ -52,6 +52,8 @@ ADVANCE_SYNC_CLOCK: dict[str, object] = {"$currentDate": {"updatedAt": True}}
 REVISION_FIELD = "revision"
 #: On a migrated entry: each field's hash as the migration wrote it (the next pass sets only what changed).
 MIGRATION_FIELDS_FIELD = "migration_fields"
+#: On an entry whose tool outputs the retention sweep dropped: set once it did.
+OUTPUTS_DROPPED_FIELD = "outputs_dropped"
 #: Head fields that never reach a ConversationDocument (or the client it is returned to).
 HEAD_INTERNAL_FIELDS = (
     LOG_HEAD_FIELD,
@@ -207,7 +209,15 @@ def newest(stored: StoredEntry | None, staged: StoredEntry) -> StoredEntry:
 
 _ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
 #: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
-_POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "content_hash", "migration_fields")
+_POSITION_KEYS = (
+    "conversation_id",
+    "user_id",
+    "seq",
+    "at",
+    "content_hash",
+    MIGRATION_FIELDS_FIELD,
+    OUTPUTS_DROPPED_FIELD,
+)
 
 
 @dataclass(frozen=True)

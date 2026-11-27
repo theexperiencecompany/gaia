@@ -21,7 +21,7 @@ from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.api.v1.middleware.logging import LoggingMiddleware
 from app.constants.chat import ConversationSource
 from app.constants.conversation import EVENTS_KEY_PREFIX
-from app.constants.summarization import MAX_OUTPUT_CHARS
+from app.constants.summarization import MAX_ENTRY_TEXT_CHARS, MAX_OUTPUT_CHARS
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
@@ -327,8 +327,11 @@ async def test_a_run_whose_outputs_pass_mongos_document_cap_saves_its_finish_wit
 
     lean = await _read(api, conversation.id, wire=2)
     assert lean.items["work:t1"]["status"] == "done"
-    assert _outputs(lean, "t1") == [(MAX_OUTPUT_CHARS, MEGABYTE)] * calls
-    assert lean.received < 1.1 * calls * MAX_OUTPUT_CHARS
+    kept = MAX_ENTRY_TEXT_CHARS // MAX_OUTPUT_CHARS
+    assert _outputs(lean, "t1") == [(MAX_OUTPUT_CHARS, MEGABYTE)] * kept + [(0, MEGABYTE)] * (
+        calls - kept
+    )
+    assert lean.received < 1.1 * MAX_ENTRY_TEXT_CHARS
     assert lean.items == await conversation.screen()
 
 

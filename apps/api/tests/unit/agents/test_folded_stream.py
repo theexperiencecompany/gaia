@@ -17,7 +17,8 @@ from app.agents.core.background.session import (
 )
 from app.services.conversation.tool_cards import FoldedCards
 
-pytestmark = pytest.mark.unit
+# open_folded_stream reaches Redis, so no test here may depend on the global fence being on.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
 
 FOLDED = "app.agents.core.background.folded_stream"
 STREAM = "subagent-stream-1"
@@ -65,7 +66,6 @@ async def test_closing_the_stream_drops_its_session() -> None:
     assert get_session(STREAM) is None
 
 
-@pytest.mark.usefixtures("fake_redis")
 async def test_an_open_stream_is_alive_to_the_sweep_for_its_conversation_and_task_only() -> None:
     with patch(f"{FOLDED}.record_work_carried", new=AsyncMock(return_value=True)):
         await open_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
@@ -75,7 +75,6 @@ async def test_an_open_stream_is_alive_to_the_sweep_for_its_conversation_and_tas
     assert await run_is_lost("conv-1", "another-stream")
 
 
-@pytest.mark.usefixtures("fake_redis")
 async def test_closing_the_stream_stops_its_liveness_beat() -> None:
     with patch(f"{FOLDED}.record_work_carried", new=AsyncMock(return_value=True)):
         await open_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
@@ -100,7 +99,6 @@ async def test_closing_a_stream_with_nothing_beating_still_ends_it(opened: bool)
 
 
 @pytest.mark.regression
-@pytest.mark.usefixtures("fake_redis")
 async def test_the_run_is_alive_to_the_sweep_before_its_work_is_logged() -> None:
     lost_when_logged: list[bool] = []
 
