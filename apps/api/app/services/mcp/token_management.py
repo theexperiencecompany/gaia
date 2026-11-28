@@ -21,6 +21,7 @@ from app.utils.mcp_oauth_utils import (
     oauth_token_expiry,
     parse_oauth_error_response,
 )
+from app.utils.url_safety import assert_may_carry_credentials
 from mcp.shared.auth import OAuthToken
 from shared.py.wide_events import log
 
@@ -59,6 +60,7 @@ async def try_refresh_token(
 
     try:
         token_endpoint = str(oauth_config.as_metadata.token_endpoint)
+        await assert_may_carry_credentials(token_endpoint)
 
         configured_client_id, _ = resolve_client_credentials(mcp_config)
         client = await resolve_oauth_client(token_store, integration_id, mcp_config, oauth_config)
@@ -183,6 +185,7 @@ async def revoke_tokens(
         tokens_to_revoke.append(("access_token", access_token))
 
     try:
+        await assert_may_carry_credentials(revocation_endpoint)
         async with mcp_http_client() as http_client:
             for token_type, token in tokens_to_revoke:
                 data = {"token": token, "token_type_hint": token_type}

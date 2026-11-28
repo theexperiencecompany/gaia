@@ -46,7 +46,7 @@ def _patch_external_io(
     if resolver_return is None:
         mock_resolved = MagicMock()
         mock_resolved.mcp_config = MagicMock()
-        mock_resolved.mcp_config.server_url = "http://test-server"  # NOSONAR
+        mock_resolved.mcp_config.server_url = "https://test-server"
         mock_resolved.mcp_config.transport = "streamable-http"
         mock_resolved.mcp_config.requires_auth = False
         mock_resolved.source = "platform"
@@ -363,7 +363,7 @@ class TestMCPConnectionFlow:
 
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://test-server"  # NOSONAR
+        resolved.mcp_config.server_url = "https://test-server"
         resolved.mcp_config.transport = "streamable-http"
         # Intentionally mark as no-auth at the config level; bearer token
         # overrides that path in _build_config.
@@ -439,7 +439,7 @@ class TestMCPConnectionFlow:
 
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://test-server"  # NOSONAR
+        resolved.mcp_config.server_url = "https://test-server"
         resolved.mcp_config.transport = "streamable-http"
         resolved.mcp_config.requires_auth = True  # OAuth branch
         resolved.source = "platform"
@@ -494,7 +494,7 @@ class TestMCPConnectionFlow:
         # The session's requests carry the stored OAuth token, read when each is sent.
         assert len(captured_configs) == 1
         session_auth = captured_configs[0]["mcpServers"]["oauth-integration"]["auth"]
-        request = httpx.Request("POST", "http://test-server")
+        request = httpx.Request("POST", "https://test-server")
         await anext(session_auth.async_auth_flow(request))
         assert request.headers["Authorization"] == f"Bearer {oauth_token}"
 
@@ -505,7 +505,7 @@ class TestMCPConnectionFlow:
     async def test_connect_raises_when_auth_required_but_no_token(self):
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://secure-server"  # NOSONAR
+        resolved.mcp_config.server_url = "https://secure-server"
         resolved.mcp_config.transport = "streamable-http"
         resolved.mcp_config.requires_auth = True
         resolved.source = "platform"
@@ -548,7 +548,7 @@ class TestMCPConnectionFlow:
 
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://test-server"  # NOSONAR
+        resolved.mcp_config.server_url = "https://test-server"
         resolved.mcp_config.transport = "streamable-http"
         resolved.mcp_config.requires_auth = False
         resolved.source = "platform"
@@ -614,7 +614,7 @@ class TestMCPConnectionFlow:
 
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://test-server"
+        resolved.mcp_config.server_url = "https://test-server"
         resolved.mcp_config.transport = "streamable-http"
         resolved.mcp_config.requires_auth = True
         resolved.source = "platform"
@@ -715,7 +715,7 @@ class TestMCPConnectionFlow:
 
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://test-server"
+        resolved.mcp_config.server_url = "https://test-server"
         resolved.mcp_config.transport = "streamable-http"
         resolved.mcp_config.requires_auth = False
         resolved.source = "platform"

@@ -51,6 +51,7 @@ from app.services.mcp.mcp_client import MCPClient, get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import attach_connected_account, create_oauth_state
+from app.utils.url_safety import CredentialsNeedHttpsError, assert_may_carry_credentials
 from shared.py.wide_events import log
 
 
@@ -204,6 +205,33 @@ async def _handle_connect_failure(
     )
 
 
+async def _refuse_plain_http_credentials(
+    target: _McpConnectTarget, server_url: str | None
+) -> ConnectIntegrationResponse | None:
+    """Return the error a sign-in over plain http to a public host gets, or None when it may go ahead."""
+    if server_url is None:
+        return None
+    try:
+        await assert_may_carry_credentials(server_url)
+    except CredentialsNeedHttpsError as e:
+        log.set(
+            integration={
+                "provider": target.integration_name,
+                "action": "connect_mcp",
+                "status": "error",
+                "error_type": type(e).__name__,
+            }
+        )
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=target.integration_id,
+            name=target.integration_name,
+            error=str(e),
+            message="This server needs an https:// URL to sign in.",
+        )
+    return None
+
+
 class McpConnectOptions(TypedDict, total=False):
     """Optional connect_mcp_integration() inputs; is_platform defaults to False."""
 
@@ -237,6 +265,8 @@ async def connect_mcp_integration(
 
     # Bearer token flow - store and connect directly
     if bearer_token:
+        if refused := await _refuse_plain_http_credentials(target, server_url):
+            return refused
         return await _connect_with_bearer_token(target, bearer_token, mcp_client)
 
     # Use provided probe_result or perform probe if needed
@@ -253,6 +283,8 @@ async def connect_mcp_integration(
         requires_auth = True
 
     if requires_auth:
+        if refused := await _refuse_plain_http_credentials(target, server_url):
+            return refused
         return await _handle_auth_required(
             target, mcp_client, detected_auth_type=detected_auth_type, probe_result=probe_result
         )

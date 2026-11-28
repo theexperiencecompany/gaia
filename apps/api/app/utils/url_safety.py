@@ -11,6 +11,7 @@ someone configured on purpose (an MCP server, a model provider): the caller
 passes allow_private from the deployment, and link-local and metadata
 addresses and URLs carrying credentials stay refused regardless.
 endpoint_http_client runs that check before every request it sends.
+assert_may_carry_credentials: a token travels over https, or plain http to the LAN only.
 """
 
 import asyncio
@@ -131,6 +132,61 @@ def endpoint_http_client(*, allow_private: bool) -> httpx.AsyncClient:
         await assert_endpoint_url_allowed(str(request.url), allow_private=allow_private)
 
     return httpx.AsyncClient(event_hooks={"request": [_guard]})
+
+
+# Plain http may carry a token only inside these: RFC1918, IPv6 unique-local and
+# 100.64.0.0/10 (Tailscale/WireGuard, encrypted end to end; *.ts.net resolves there).
+# Loopback and link-local are matched by the ipaddress predicates.
+_PRIVATE_LAN_NETWORKS = tuple(
+    ipaddress.ip_network(net)
+    for net in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7")
+)
+_LOCAL_HOSTNAME_SUFFIX = ".local"  # mDNS names, which only resolve on the LAN
+
+
+class CredentialsNeedHttpsError(ValueError):
+    """Raised when a token would travel over plain http to a host outside the local network."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This server needs a sign-in, so its URL has to start with https://. "
+            "Plain http works only for a server on this machine or your local network."
+        )
+
+
+def _is_local_network(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return (
+        ip.is_loopback
+        or ip.is_link_local
+        or any(ip in network for network in _PRIVATE_LAN_NETWORKS)
+    )
+
+
+async def assert_may_carry_credentials(url: str) -> None:
+    """Raise CredentialsNeedHttpsError unless url may carry an OAuth or bearer token.
+
+    https always may; plain http only when the host is localhost, an mDNS .local
+    name, or resolves to loopback, link-local, private-LAN or tailnet addresses only.
+    """
+    if httpx.URL(url).scheme == "https":
+        return
+    host, port = _endpoint_host_port(url)
+    name = host.lower().rstrip(".")
+    if name == "localhost" or name.endswith(_LOCAL_HOSTNAME_SUFFIX):
+        return
+    try:
+        addresses = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            addresses = [
+                ipaddress.ip_address(a) for a in await asyncio.to_thread(_resolve, host, port)
+            ]
+        except OSError as e:
+            raise ValueError(f"DNS resolution failed: {e}") from e
+    if not all(_is_local_network(address) for address in addresses):
+        raise CredentialsNeedHttpsError
 
 
 def _resolve(host: str, port: int) -> list[str]:

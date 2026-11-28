@@ -47,6 +47,7 @@ from app.services.mcp.mcp_tools_service import invalidate_mcp_tools_cache
 from app.services.public_pages import invalidate_public_pages
 from app.utils.favicon_utils import fetch_favicon_from_url
 from app.utils.mcp_oauth_utils import OAuthDiscoveryError, OAuthSecurityError
+from app.utils.url_safety import CredentialsNeedHttpsError, assert_may_carry_credentials
 from shared.py.wide_events import log
 
 #: OAuth discovery/DCR failures that are the remote server's policy, not a GAIA
@@ -142,12 +143,24 @@ async def _build_updated_mcp_config(
 
     config_changes: dict[str, object] = {}
     if request.server_url is not None:
-        old_server_url = doc.mcp_config.server_url if doc.mcp_config else ""
         config_changes["server_url"] = request.server_url
         # The dedup key tracks the URL: a path edit must re-key, or the row
         # keeps matching (and colliding on) its old address.
         config_changes["server_url_normalized"] = dedup_server_url_key(request.server_url)
+    if request.requires_auth is not None:
+        config_changes["requires_auth"] = request.requires_auth
+    if request.auth_type is not None:
+        config_changes["auth_type"] = request.auth_type
+    updated = (
+        doc.mcp_config.model_copy(update=config_changes)
+        if doc.mcp_config
+        else MCPConfig.model_validate(config_changes)
+    )
+    if updated.requires_auth:
+        await assert_may_carry_credentials(updated.server_url)
 
+    if request.server_url is not None:
+        old_server_url = doc.mcp_config.server_url if doc.mcp_config else ""
         # Clean up old ChromaDB namespace when server_url changes
         if old_server_url and old_server_url != request.server_url:
             try:
@@ -160,16 +173,7 @@ async def _build_updated_mcp_config(
                     error_type=type(e).__name__,
                     user_id=user_id,
                 )
-
-    if request.requires_auth is not None:
-        config_changes["requires_auth"] = request.requires_auth
-    if request.auth_type is not None:
-        config_changes["auth_type"] = request.auth_type
-    return (
-        doc.mcp_config.model_copy(update=config_changes)
-        if doc.mcp_config
-        else MCPConfig.model_validate(config_changes)
-    )
+    return updated
 
 
 async def update_custom_integration(
@@ -350,6 +354,8 @@ async def create_and_connect_custom_integration(
             "action": "create_and_connect_custom_integration",
         }
     )
+    if request.bearer_token or request.requires_auth:
+        await assert_may_carry_credentials(request.server_url)
     icon_url = await _fetch_icon_safely(request.server_url)
     integration = await create_custom_integration(user_id, request, icon_url)
     integration_id = integration.integration_id
@@ -461,6 +467,8 @@ async def _build_oauth_result(
             redirect_path="/integrations",
         )
         return CustomIntegrationConnectionResult(status="requires_oauth", oauth_url=auth_url)
+    except CredentialsNeedHttpsError as e:
+        return _connect_failed(integration_id, str(e), type(e).__name__)
     except _EXPECTED_OAUTH_DISCOVERY_ERRORS as e:
         # Remote-server policy (its redirect_uri allowlist, missing AS metadata,
         # DCR disabled), returned to the user; warn to keep it out of Sentry High.

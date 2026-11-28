@@ -139,6 +139,8 @@ async def update_custom_mcp_integration(
         )
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Error updating integration",

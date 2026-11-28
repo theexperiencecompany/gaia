@@ -31,6 +31,7 @@ from app.services.mcp.mcp_oauth import (
     handle_oauth_callback,
 )
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.utils.url_safety import CredentialsNeedHttpsError
 from shared.py.wide_events import log
 
 AUTH = "https://auth.mcp.example"
@@ -399,25 +400,20 @@ class TestHandleOauthCallback:
         assert str(raised.value) == "Invalid OAuth state - possible CSRF attack or expired state"
 
     @respx.mock
-    async def test_insecure_token_endpoint_only_warns(self, respx_mock: respx.MockRouter) -> None:
+    async def test_a_public_plain_http_token_endpoint_never_receives_the_code(
+        self, respx_mock: respx.MockRouter
+    ) -> None:
         flow = _Callback()
-        insecure = "http://auth.mcp.example/token"
-        respx_mock.post(insecure).respond(200, json=flow.token_json)
+        insecure = "http://93.184.216.34/token"
+        token_route = respx_mock.post(insecure).respond(200, json=flow.token_json)
         discovery = _discovery(metadata=_metadata(token_endpoint=insecure))
 
-        with patch.object(log, "warning") as warning:
+        with pytest.raises(CredentialsNeedHttpsError):
             await flow.run(respx_mock, discovery=discovery)
 
-        warning.assert_called_once_with(
-            f"{LogTag.MCP} Token endpoint security warning",
-            error=(
-                f"OAuth endpoint must use HTTPS: {insecure}. "
-                "HTTP is only allowed for localhost during development."
-            ),
-            error_type="OAuthSecurityError",
-            integration_id=INTEGRATION_ID,
-        )
-        flow.connect.assert_awaited_once_with(INTEGRATION_ID)
+        assert not token_route.called
+        flow.store.store_oauth_tokens.assert_not_awaited()
+        flow.connect.assert_not_awaited()
 
     @respx.mock
     async def test_missing_client_id_explains_what_was_tried(
