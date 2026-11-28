@@ -1,0 +1,107 @@
+name: Effect UI
+
+# The hillclimb gate for the Effect UI migration. `effect-ui-check` scores every
+# PR that touches the Effect package or its web adapters. `effect-ui-e2e` is
+# manual because it needs the full dev stack, which a bare checkout cannot boot
+# yet (see its TODO).
+
+on:
+  pull_request:
+    paths:
+      - "packages/effect-ui/**"
+      - "apps/web/src/components/effect/**"
+      - "apps/web/e2e/effect-ui/**"
+      - "apps/web/scripts/effect-ui/**"
+      - ".github/workflows/effect-ui.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: effect-ui-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  effect-ui-check:
+    name: effect-ui-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Installs pnpm 10.17.1, Node from .node-version, and the workspace with
+      # `pnpm install --frozen-lockfile --prefer-offline`, the repo's one setup path.
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Typecheck
+        run: pnpm --filter @heygaia/effect-ui typecheck
+
+      - name: Test
+        run: pnpm --filter @heygaia/effect-ui test
+
+      - name: Score
+        run: |
+          node apps/web/scripts/effect-ui/score.mjs
+          node apps/web/scripts/effect-ui/score.mjs --json > "$RUNNER_TEMP/effect-ui-score.json"
+          { echo "### Effect UI score"; echo '```json'; cat "$RUNNER_TEMP/effect-ui-score.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  effect-ui-e2e:
+    name: effect-ui-e2e (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      # TODO: this job is documented, not green. `mise dev --agent` needs mise,
+      # uv, a synced Python env, Docker, and Mongo. The env files below are the
+      # only piece a bare checkout can bootstrap without secrets; installing the
+      # toolchain is the gap. Drop this TODO once CI has a mise + uv bootstrap.
+      - name: Seed env files from examples
+        run: |
+          set -eu
+          [ -f apps/api/.env ] || cp apps/api/.env.example apps/api/.env
+          [ -f apps/web/.env ] || cp apps/web/.env.example apps/web/.env
+
+      - name: Start the dev stack
+        env:
+          WEB_PORT: "3000"
+        run: |
+          set -eu
+          mise dev --agent > "$RUNNER_TEMP/stack.log" 2>&1 &
+          for _ in $(seq 1 180); do
+            if curl -fsS "http://localhost:${WEB_PORT}/" >/dev/null 2>&1; then
+              echo "stack up on :${WEB_PORT}"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "stack did not come up in 15 minutes"
+          tail -n 120 "$RUNNER_TEMP/stack.log"
+          exit 1
+
+      - name: Run effect-ui e2e
+        working-directory: apps/web
+        run: pnpm exec playwright test e2e/effect-ui
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: effect-ui-playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
