@@ -20,6 +20,7 @@ from app.constants.integrations import (
 from app.constants.log_tags import LogTag
 from app.db.repositories.errors import RepositoryError
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
+from app.models.connector_models import ConnectorCardInfo
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.composio import ComposioConnectLink
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
@@ -91,6 +92,11 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 slug=integration.id,  # Platform integrations use ID as slug
                 origin=integration.origin,
                 icon_url=integration.icon_url,
+                connector=(
+                    ConnectorCardInfo.from_spec(integration.connector_config, verified=True)
+                    if integration.connector_config
+                    else None
+                ),
             )
         )
     return IntegrationsConfigResponse(integrations=integration_configs)

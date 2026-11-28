@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.connectors import DEFINE_CONNECTOR_TOOL, RUN_CONNECTOR_TOOL
-from app.constants.integrations import ConnectMode, IntegrationStatus
+from app.constants.integrations import CONNECT_INTEGRATION_TOOL, ConnectMode, IntegrationStatus
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
 from app.models.agent_models import agent_configurable
@@ -20,6 +20,7 @@ from app.services.connectors.service import (
     CallFailure,
     ConnectorCallResult,
     ConnectorNotFoundError,
+    catalog_connectors_for,
     load_connector,
     run_with_secret,
 )
@@ -124,6 +125,21 @@ async def define_connector(
 ) -> str:
     user_id = _user_id(config)
     log.set(tool={"name": DEFINE_CONNECTOR_TOOL}, connector={"provider": spec.provider_domain})
+    if missing := spec.missing_builds():
+        named = "; ".join(
+            f"{name} has no {', '.join(arches)} build" for name, arches in missing.items()
+        )
+        return (
+            f"Not saved: {named}. List one binary package per arch (GAIA Cloud runs amd64, a "
+            "self-host box may be arm64), or install it with npm or pip."
+        )
+    if shipped := catalog_connectors_for(spec.provider_domain):
+        options = ", ".join(f"'{i.id}' ({i.name})" for i in shipped)
+        log.set_ns("connector", catalog_hit=True)
+        return (
+            f"GAIA already ships a connector for {spec.provider_domain}: {options}. Connect it with "
+            f"{CONNECT_INTEGRATION_TOOL} instead of defining one."
+        )
     doc = (await save_connector(user_id, name.strip(), description.strip(), spec)).doc
     if await user_integration_repository.is_connected(user_id, doc.integration_id):
         return (

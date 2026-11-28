@@ -8,6 +8,7 @@ redirect following, so neither the path nor a 3xx can carry the key elsewhere.
 """
 
 import argparse
+import base64
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import http.client
@@ -25,6 +26,8 @@ AUTH_HEADER_ENV = "GAIA_CONNECTOR_AUTH_HEADER"
 AUTH_QUERY_ENV = "GAIA_CONNECTOR_AUTH_QUERY"
 AUTH_TEMPLATE_ENV = "GAIA_CONNECTOR_AUTH_TEMPLATE"
 SECRET_PLACEHOLDER = "{secret}"
+# HTTP Basic: the user pastes "user:password" and the header carries its base64.
+SECRET_BASE64_PLACEHOLDER = "{secret_base64}"
 
 EXIT_OK = 0
 EXIT_NO_RESPONSE = 1
@@ -131,13 +134,18 @@ def _auth_config(env: Mapping[str, str]) -> _AuthConfig:
         raise UsageError(f"{SECRET_ENV} is not set")
     if (header is None) == (query is None):
         raise UsageError(f"set exactly one of {AUTH_HEADER_ENV} or {AUTH_QUERY_ENV}")
-    if SECRET_PLACEHOLDER not in template:
-        raise UsageError(f"{AUTH_TEMPLATE_ENV} must contain {SECRET_PLACEHOLDER}")
+    if SECRET_PLACEHOLDER not in template and SECRET_BASE64_PLACEHOLDER not in template:
+        raise UsageError(
+            f"{AUTH_TEMPLATE_ENV} must contain {SECRET_PLACEHOLDER} or {SECRET_BASE64_PLACEHOLDER}"
+        )
+    encoded = base64.b64encode(secret.encode()).decode()
     return _AuthConfig(
         host=base.hostname,
         port=base.port,
         base_path=base.path.rstrip("/"),
-        secret_value=template.replace(SECRET_PLACEHOLDER, secret),
+        secret_value=template.replace(SECRET_BASE64_PLACEHOLDER, encoded).replace(
+            SECRET_PLACEHOLDER, secret
+        ),
         header=header,
         query=query,
     )

@@ -63,7 +63,11 @@ class TestTheParentConfigurableADirectRunBuilds:
                 role=AgentRole.EXECUTOR,
                 dev_option=dev_option_for(None, use_defaults=True),
             ),
-            "turn": AgentTurn(user_preferences=None, writing_style=None),
+            "turn": AgentTurn(
+                user_preferences=None,
+                writing_style=None,
+                stream_id=build_config.call_args.kwargs["turn"].stream_id,
+            ),
         }
 
     async def test_a_passed_conversation_id_is_reused_so_turns_share_a_thread(self) -> None:
@@ -95,6 +99,16 @@ async def test_the_dev_users_onboarding_data_reaches_the_configurable() -> None:
     assert user_id == "dev-user-1"
     assert configurable["user_preferences"] == {"profession": "engineer"}
     assert configurable["writing_style"] == {"summary": "terse"}
+
+
+async def test_a_direct_run_carries_the_stream_identity_the_approval_gate_requires() -> None:
+    user_doc = MagicMock(id="dev-user-1", email="dev@gaia.local", onboarding=None)
+    user_doc.name = "Dev User"
+    with patch(f"{MODULE}.require_dev_user", AsyncMock(return_value=user_doc)):
+        configurable, _, cid = await _dev_base_configurable("dev@gaia.local", None, "executor")
+
+    assert configurable.get("stream_id")
+    assert (configurable.get("user_id"), configurable.get("conversation_id")) == ("dev-user-1", cid)
 
 
 def _dev_user_doc() -> MagicMock:

@@ -9,6 +9,14 @@ DEFINE_CONNECTOR_TOOL: Final = "define_connector"
 
 # The placeholder a credential file or REST auth template holds where the secret goes.
 CONNECTOR_SECRET_PLACEHOLDER: Final = "{secret}"
+# A two-part key pasted as ID:SECRET (an AWS access key): a template takes either half.
+CONNECTOR_SECRET_USER_PLACEHOLDER: Final = "{secret_user}"
+CONNECTOR_SECRET_PASSWORD_PLACEHOLDER: Final = "{secret_password}"
+CONNECTOR_SECRET_PLACEHOLDERS: Final = (
+    CONNECTOR_SECRET_PLACEHOLDER,
+    CONNECTOR_SECRET_USER_PLACEHOLDER,
+    CONNECTOR_SECRET_PASSWORD_PLACEHOLDER,
+)
 
 CONNECTOR_GUIDANCE_MAX_CHARS: Final = 2000
 MAX_CONNECTOR_HOSTS: Final = 12

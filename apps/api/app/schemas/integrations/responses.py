@@ -53,6 +53,7 @@ class IntegrationConfigItem(CamelModel):
     # "instance": a Composio toolkit the instance admin enabled; no hand-written tools or triggers.
     origin: Literal["code", "instance"] = "code"
     icon_url: str | None = None
+    connector: ConnectorCardInfo | None = None
 
 
 class IntegrationsConfigResponse(BaseModel):

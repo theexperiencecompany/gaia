@@ -167,3 +167,28 @@ def test_a_credential_file_may_be_a_cli_config_file(path: str) -> None:
 def test_an_unknown_field_is_refused() -> None:
     with pytest.raises(ValidationError):
         ConnectorSpec.model_validate({**make_connector_spec("cli").model_dump(), "shell": "sh -c"})
+
+
+def _binary(arch: str) -> dict[str, str]:
+    return {
+        "manager": "binary",
+        "name": "terraform",
+        "version": "1.17.2",
+        "arch": arch,
+        "url": f"https://releases.hashicorp.com/terraform_1.17.2_linux_{arch}.zip",
+        "sha256": "a" * 64,
+        "archive_member": "terraform",
+    }
+
+
+def test_a_saved_binary_built_for_one_cpu_still_loads_and_names_the_missing_build() -> None:
+    spec = make_connector_spec("cli", install=[_binary("amd64")])
+
+    assert spec.missing_builds() == {"terraform": ["arm64"]}
+
+
+def test_a_binary_built_for_both_cpus_is_accepted() -> None:
+    spec = make_connector_spec("cli", install=[_binary("amd64"), _binary("arm64")])
+
+    assert {p.arch for p in spec.install} == {"amd64", "arm64"}
+    assert spec.missing_builds() == {}

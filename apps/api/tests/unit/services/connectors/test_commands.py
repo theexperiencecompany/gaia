@@ -50,6 +50,10 @@ def test_help_is_a_read() -> None:
     assert not plan_call(GH, ["pr", "merge", "--help"]).is_write
 
 
+def test_asking_for_the_version_is_a_read() -> None:
+    assert not plan_call(GH, ["--version"]).is_write
+
+
 def test_rest_get_is_a_read_and_post_is_typed_by_method_and_resource() -> None:
     read = plan_call(RESEND, ["GET", "/domains"])
     write = plan_call(RESEND, ["post", "/emails", "--json", "{}"])

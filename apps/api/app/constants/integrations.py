@@ -19,6 +19,9 @@ MAX_INTEGRATION_TOOLS_FOR_LLM = 40
 # integrations can truncate get_my_integrations at all.
 MAX_MY_INTEGRATIONS_RESULTS = 100
 
+# Google's favicon service: the icon an integration falls back to, by registrable domain.
+GOOGLE_FAVICON_URL: Final = "https://www.google.com/s2/favicons?domain={domain}&sz=256"
+
 
 class IntegrationStatus(StrEnum):
     """Connection state of a user's integration, as stored and sent to clients."""

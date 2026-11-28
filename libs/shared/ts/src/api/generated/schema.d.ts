@@ -12381,6 +12381,7 @@ export interface components {
             available: boolean;
             /** Category */
             category: string;
+            connector?: components["schemas"]["ConnectorCardInfo"] | null;
             /** Description */
             description: string;
             /** Displaypriority */

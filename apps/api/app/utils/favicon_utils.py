@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 import tldextract
 
 from app.constants.cache import FAVICON_CACHE_TTL
+from app.constants.integrations import GOOGLE_FAVICON_URL
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
 from app.utils.mcp_oauth_utils import mcp_http_client
@@ -64,9 +65,6 @@ BROWSER_UA = (
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 _BROWSER_HEADERS = {"User-Agent": BROWSER_UA}
-
-# Google Favicon Service - fast and reliable
-GOOGLE_FAVICON_URL = "https://www.google.com/s2/favicons?domain={domain}&sz=256"
 
 # Smithery hosts every server under one host but the Smithery registry exposes a
 # per-server icon (its source varies: a CDN logo, a Google S2 favicon, or a

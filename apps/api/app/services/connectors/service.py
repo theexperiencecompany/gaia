@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 import re
 
+from app.config.oauth_config import all_integrations, get_integration_by_id
 from app.constants.connectors import (
     CONNECTOR_CALL_TIMEOUT_SECONDS,
+    CONNECTOR_SECRET_PASSWORD_PLACEHOLDER,
     CONNECTOR_SECRET_PLACEHOLDER,
+    CONNECTOR_SECRET_USER_PLACEHOLDER,
     CONNECTOR_STDERR_HEAD_BYTES,
     CONNECTOR_STDERR_TAIL_BYTES,
     CONNECTOR_STDOUT_HEAD_BYTES,
@@ -17,6 +20,7 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
 from app.models.connector_models import ConnectorKind, ConnectorSpec
 from app.models.integration_models import Integration
+from app.models.oauth_models import OAuthIntegration
 from app.services.connectors.commands import CallPlan, plan_call
 from app.services.connectors.install import install_hosts
 from app.services.connectors.rest_helper import (
@@ -26,7 +30,13 @@ from app.services.connectors.rest_helper import (
     BASE_URL_ENV,
     SECRET_ENV,
 )
-from app.services.connectors.runner import RunnerFile, RunOutcome, RunRequest, RunResult
+from app.services.connectors.runner import (
+    ConnectorRunner,
+    RunnerFile,
+    RunOutcome,
+    RunRequest,
+    RunResult,
+)
 from app.services.connectors.scrub import scrub, secret_pattern
 from app.services.connectors.selection import get_connector_runner
 from app.utils.output_limiter import truncate_head_tail
@@ -35,9 +45,14 @@ from shared.py.wide_events import log
 # What a CLI or API prints when the key itself is refused, as opposed to a missing permission.
 _AUTH_FAILURE_RE = re.compile(
     r"\bHTTP 401\b|\b401 Unauthorized\b|\bError code: 401\b|\bstatus(_code)?[ :=]+401\b"
-    r"|bad credentials|invalid (api[ _-]?)?(key|token)|AuthenticationError"
+    r"|bad credentials|invalid (auth |access )?(api[ _-]?)?(key|token)|AuthenticationError"
+    r"|invalid credentials|\bunauthorized\b|must be authenticated|token provided .{0,60}is not valid"
+    r"|only supports using a secret or restricted key|api key not valid|authentication error"
+    r"|token in (the )?\S+ (env var|environment variable) is invalid"
     r"|(token|key) (is |has )?(invalid|expired|been revoked|revoked)"
-    r"|authentication (failed|required)|not logged in|unauthenticated|incorrect api key",
+    r"|authentication (failed|required)|not logged in|unauthenticated|incorrect api key"
+    r"|InvalidClientTokenId|security token included in the request is invalid"
+    r"|invalid format for authorization header",
     re.IGNORECASE,
 )
 
@@ -68,17 +83,92 @@ class ConnectorCallResult:
     duration_ms: int
 
 
-async def load_connector(user_id: str, connector_id: str) -> tuple[Integration, ConnectorSpec]:
-    """Return the connector document and its spec when the user owns it or it is published."""
+def catalog_connector_doc(integration: OAuthIntegration) -> Integration | None:
+    """Project a catalog connector onto the document shape every connector path reads."""
+    if integration.connector_config is None:
+        return None
+    return Integration(
+        integration_id=integration.id,
+        name=integration.name,
+        description=integration.description,
+        category=integration.category,
+        managed_by=MANAGED_BY_CONNECTOR,
+        source="platform",
+        is_public=True,
+        created_by=None,
+        published_at=None,
+        clone_count=0,
+        connector_config=integration.connector_config,
+        requires_auth=True,
+        auth_type="bearer",
+        icon_url=integration.icon_url,
+        display_priority=integration.display_priority,
+        is_featured=integration.is_featured,
+    )
+
+
+def catalog_connectors_for(provider_domain: str) -> list[OAuthIntegration]:
+    """Return the catalog connectors GAIA ships for a provider's domain."""
+    return [
+        i
+        for i in all_integrations()
+        if i.connector_config is not None and i.connector_config.provider_domain == provider_domain
+    ]
+
+
+def catalog_connectors_named(word: str) -> list[OAuthIntegration]:
+    """Return the catalog connectors a guessed id means: "vercel" is vercel-cli, "stripe" both Stripe's."""
+    word = word.lower().strip()
+    return [
+        i
+        for i in all_integrations()
+        if i.connector_config is not None
+        and word in (i.id.split("-")[0], i.connector_config.provider_domain.split(".")[0])
+    ]
+
+
+async def find_connector(connector_id: str) -> Integration | None:
+    """Return the catalog or custom connector with this id, whoever owns it."""
+    if (platform := get_integration_by_id(connector_id)) is not None:
+        return catalog_connector_doc(platform)
     doc = await integration_repository.get_custom(connector_id)
+    if doc is None or doc.managed_by != MANAGED_BY_CONNECTOR or doc.connector_config is None:
+        return None
+    return doc
+
+
+async def load_connector(user_id: str, connector_id: str) -> tuple[Integration, ConnectorSpec]:
+    """Return the connector and its spec when it is in the catalog, the user's own, or published."""
+    doc = await find_connector(connector_id)
     if (
         doc is None
-        or doc.managed_by != MANAGED_BY_CONNECTOR
         or doc.connector_config is None
         or (doc.created_by != user_id and not doc.is_public)
     ):
         raise ConnectorNotFoundError(connector_id)
     return doc, doc.connector_config
+
+
+def _secret_halves(secret: str) -> dict[str, str]:
+    user, _, password = secret.partition(":")
+    return {
+        CONNECTOR_SECRET_USER_PLACEHOLDER: user,
+        CONNECTOR_SECRET_PASSWORD_PLACEHOLDER: password,
+    }
+
+
+def _render_template(template: str, secret: str) -> str:
+    for placeholder, half in _secret_halves(secret).items():
+        template = template.replace(placeholder, half)
+    return template.replace(CONNECTOR_SECRET_PLACEHOLDER, secret)
+
+
+def bound_secrets(spec: ConnectorSpec, secret: str) -> list[str]:
+    """Return every value of the secret a call holds: the whole key, plus each half a file takes."""
+    templates = " ".join(f.template for f in spec.credential.files)
+    return [secret] + [
+        half for placeholder, half in _secret_halves(secret).items() if placeholder in templates
+    ]
 
 
 def _secret_bindings(
@@ -97,7 +187,7 @@ def _secret_bindings(
         return env, ()
     env = dict.fromkeys(spec.credential.env, secret)
     files = tuple(
-        RunnerFile(path=f.path, content=f.template.replace(CONNECTOR_SECRET_PLACEHOLDER, secret))
+        RunnerFile(path=f.path, content=_render_template(f.template, secret))
         for f in spec.credential.files
     )
     return env, files
@@ -136,12 +226,14 @@ def classify_failure(result: RunResult) -> CallFailure | None:
             return CallFailure.EXIT
 
 
-async def run_with_secret(spec: ConnectorSpec, args: list[str], secret: str) -> ConnectorCallResult:
-    """Run one call in a fresh runner and return its output with the secret scrubbed out."""
+async def run_with_secret(
+    spec: ConnectorSpec, args: list[str], secret: str, *, runner: ConnectorRunner | None = None
+) -> ConnectorCallResult:
+    """Run one call in a fresh runner (this deployment's, unless one is named) with the secret scrubbed out."""
     plan = plan_call(spec, args)
-    runner = await get_connector_runner()
-    result = await runner.run(build_run_request(spec, plan, secret))
-    pattern = secret_pattern([secret])
+    chosen = runner or await get_connector_runner()
+    result = await chosen.run(build_run_request(spec, plan, secret))
+    pattern = secret_pattern(bound_secrets(spec, secret))
     stdout = scrub(result.stdout, pattern)
     stderr = scrub(result.stderr, pattern)
     failure = classify_failure(result)

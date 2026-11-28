@@ -16,6 +16,7 @@ from pydantic.alias_generators import to_camel
 from app.constants.connectors import (
     CONNECTOR_GUIDANCE_MAX_CHARS,
     CONNECTOR_SECRET_PLACEHOLDER,
+    CONNECTOR_SECRET_PLACEHOLDERS,
     CREDENTIAL_DENIED_DIRS,
     CREDENTIAL_HOME_FILES,
     MAX_CONNECTOR_HOSTS,
@@ -129,8 +130,10 @@ class CredentialFile(BaseModel):
     @field_validator("template")
     @classmethod
     def _has_placeholder(cls, value: str) -> str:
-        if CONNECTOR_SECRET_PLACEHOLDER not in value:
-            raise ValueError(f"template must contain {CONNECTOR_SECRET_PLACEHOLDER}")
+        if not any(placeholder in value for placeholder in CONNECTOR_SECRET_PLACEHOLDERS):
+            raise ValueError(
+                f"template must contain one of {', '.join(CONNECTOR_SECRET_PLACEHOLDERS)}"
+            )
         return value
 
     @field_validator("path")
@@ -323,6 +326,21 @@ class ConnectorSpec(BaseModel):
         ):
             raise ValueError("bind the secret to at least one env var or file")
         return self
+
+    def missing_builds(self) -> dict[str, list[str]]:
+        """Name each binary with no build for some runner CPU: cloud runs amd64, self-host may be arm64.
+
+        Checked where a connector is defined, never on load, so a saved one stays readable.
+        """
+        builds: dict[str, set[CpuArch]] = {}
+        for package in self.install:
+            if package.manager is PackageManager.BINARY and package.arch is not None:
+                builds.setdefault(package.name, set()).add(package.arch)
+        return {
+            name: sorted(arch.value for arch in set(CpuArch) - arches)
+            for name, arches in builds.items()
+            if set(CpuArch) - arches
+        }
 
     def hosts_outside_provider(self) -> list[str]:
         """Return the allowed hosts that are not the provider's domain or one of its subdomains."""
