@@ -40,6 +40,14 @@ class ScreenItemMoved(Exception):
     """A new projection moved or dropped an item already shown, which the screen's rules forbid."""
 
 
+class EntryNotHeld(Exception):
+    """An amendment names an entry this reader's window does not hold; head is where its client is."""
+
+    def __init__(self, seq: int, head: int) -> None:
+        super().__init__(f"entry {seq} amended outside the window projected through {head}")
+        self.head = head
+
+
 def screen_patches(
     shown: Sequence[ScreenItem], screen: Sequence[ScreenItem], head: int
 ) -> list[ScreenPatch]:
@@ -154,6 +162,8 @@ class ScreenTracker:
         Only the last names the new head, the rest the head before: a patch's head is where its
         client resumes from, and until the last is applied its screen is not the screen at that entry.
         """
+        if isinstance(frame, EntryUpdatedFrame) and frame.seq not in self._entries:
+            raise EntryNotHeld(frame.seq, self.head)
         at = frame.at if isinstance(frame, EntryFrame) else self._entries[frame.seq].at
         before = self.head
         self._entries[frame.seq] = LoggedEntry(seq=frame.seq, at=at, entry=frame.entry)

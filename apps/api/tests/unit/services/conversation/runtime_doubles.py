@@ -1,5 +1,7 @@
 """Deterministic doubles for the conversation runtime's ports: an in-memory log and a scripted comms run."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
@@ -13,6 +15,9 @@ from app.constants.hil import (
     HIL_ACK_DENIED,
     ApprovalDecision,
 )
+from app.db.repositories import conversations as conversations_repository
+from app.db.repositories.conversation_entries import OPENER_KINDS, StoredRow, openers_outside
+from app.models import conversation_log_models
 from app.models.conversation_frame_models import OutputFrame
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -136,6 +141,13 @@ class InMemoryConversationLog:
     ) -> Sequence[LoggedEntry]:
         await self.pause("read_after")
         return [item for item in self._read(conversation_id, user_id).entries if item.seq > seq]
+
+    async def read_screen(
+        self, conversation_id: str, user_id: str, *, after: int | None, limit: int
+    ) -> conversation_log_models.ScreenWindow:
+        await self.pause("read_screen")
+        conversation = self._read(conversation_id, user_id)
+        return await screen_window(conversation.entries, conversation.state, after, limit)
 
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         await self.pause("state")
@@ -263,6 +275,50 @@ class InMemoryConversationLog:
         return appended
 
 
+async def screen_window(
+    entries: Sequence[LoggedEntry], state: ConversationState, after: int | None, limit: int
+) -> conversation_log_models.ScreenWindow:
+    """Return the screen window over a whole log in memory, read as the Mongo log reads it."""
+    if not entries:
+        return conversation_log_models.ScreenWindow(entries=[], start=1)
+    newest = entries[-1].seq
+    start = (
+        max(len(entries) - limit, 0)
+        if after is None
+        else next(i for i, logged in enumerate(entries) if logged.seq > min(after, newest - 1))
+    )
+    if not any(isinstance(logged.entry, UserMessage) for logged in entries[start:]):
+        start = next(
+            (
+                i
+                for i in reversed(range(start))
+                if isinstance(entries[i].entry, UserMessage) and entries[i].seq > newest - limit
+            ),
+            start,
+        )
+    running = [work.task_id for work in state.work]
+    while missing := openers_outside(entries[start:], running, state.open_reply):
+        openers = [
+            i
+            for i, logged in enumerate(entries[:start])
+            if logged.entry.kind in OPENER_KINDS
+            and any(getattr(logged.entry, name, None) in ids for name, ids in missing.items())
+        ]
+        if not openers:
+            break
+        start = openers[0]
+    run = entries[start:]
+
+    async def lookup(ids: Sequence[str], _replies: Sequence[str]) -> list[StoredRow]:
+        return [StoredRow("", logged) for logged in entries if logged.entry.id in ids]
+
+    beside = await conversations_repository.read_beside(
+        [StoredRow("", logged) for logged in run], lookup
+    )
+    held = sorted([*run, *(row.logged for row in beside)], key=lambda logged: logged.seq)
+    return conversation_log_models.ScreenWindow(entries=held, start=run[0].seq)
+
+
 class PausingLog:
     """Any ConversationLog with pause(point) awaited before each call, at the points the in-memory log pauses."""
 
@@ -287,6 +343,12 @@ class PausingLog:
     ) -> Sequence[LoggedEntry]:
         await self.pause("read_after")
         return await self._inner.read_after(conversation_id, user_id, seq)
+
+    async def read_screen(
+        self, conversation_id: str, user_id: str, *, after: int | None, limit: int
+    ) -> conversation_log_models.ScreenWindow:
+        await self.pause("read_screen")
+        return await self._inner.read_screen(conversation_id, user_id, after=after, limit=limit)
 
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         await self.pause("state")

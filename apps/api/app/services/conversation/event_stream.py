@@ -51,7 +51,7 @@ from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.patched_wire import PatchedWire
 from app.services.conversation.ports import ConversationLog
 from app.services.conversation.screen import LIVE_WORK, project_screen
-from app.services.conversation.screen_patches import ScreenTracker
+from app.services.conversation.screen_patches import EntryNotHeld, ScreenTracker
 from app.services.conversation.shown_links import shown_frame
 from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import FrameKind, ReplyDeltaFrame, TimelineCard
@@ -209,16 +209,20 @@ async def follow(
     """Yield every frame after entry after_seq once, then follow live.
 
     None follows every read that drained or timed out, so the caller can check its client is still there.
-    The log after after_seq is replayed first, then from the stream only what the log cannot say: the
-    deltas of the reply being written and of live work, and updates to entries the client already had.
+    Updates to entries the client already had come first, then the log after after_seq, then from
+    the stream what the log cannot say: the deltas of the reply being written and of live work.
     """
     # Taken before the log read, so a frame published after it is followed live, never lost.
     cursor = await latest_frame_id(conversation_id)
     entries, state = await _log_after(log, conversation_id, user_id, after_seq)
-    for replayed in _log_frames(entries, state):
+    unlogged = await _unlogged_frames(conversation_id, cursor, state, after_seq)
+    # A logged entry may read an amended one, as a settle reads its reply's text: the amendment goes first.
+    amended = [streamed for streamed in unlogged if isinstance(streamed.frame, EntryUpdatedFrame)]
+    for replayed in (*amended, *_log_frames(entries, state)):
         yield replayed
-    for unlogged in await _unlogged_frames(conversation_id, cursor, state, after_seq):
-        yield unlogged
+    for streamed in unlogged:
+        if not isinstance(streamed.frame, EntryUpdatedFrame):
+            yield streamed
     covered = entries[-1].seq if entries else after_seq
     while True:
         for streamed in await read_frames(conversation_id, cursor):
@@ -298,7 +302,8 @@ async def follow_screen(
     """Yield the screen a client at entry after still lacks, then its patches and the deltas of what is being written.
 
     after is 0 for a client that holds nothing. A live frame another deploy wrote, which this
-    code can't read, reopens on the full screen: that is how a client heals any gap.
+    code can't read, reopens on the full screen: that is how a client heals any gap. An amendment
+    to an entry older than the window reopens from the client's head, which then reaches back to it.
     """
     if not after:
         wide_log.set_ns("conversation", resume=EventsResume.FRESH)
@@ -308,24 +313,43 @@ async def follow_screen(
                 yield frame
         except UnreadableFrames:
             after = 0
+        except EntryNotHeld as unheld:
+            # Reopened from the head its client reached, the window reaches back to the amended entry.
+            after = unheld.head
 
 
 async def _screen_from_the_head(
     log: ConversationLog, conversation_id: str, user_id: str, after: int
 ) -> AsyncGenerator[ScreenStreamFrame | None]:
-    entries = await log.read_after(conversation_id, user_id, 0)
-    tracker = await ScreenTracker.load(conversation_id, entries)
-    head = entries[-1].seq if entries else 0
-    logged_at = _logged_at(conversation_id, entries, after)
     # A client that names no head holds nothing, and its open is logged as fresh.
-    held = logged_at if after and await _vouched_for(conversation_id, after) else {}
+    amended = await _amended_since(conversation_id, after) if after else None
+    window = await log.read_screen(
+        conversation_id,
+        user_id,
+        after=None if amended is None else min([after, *(seq - 1 for seq in amended)]),
+        limit=CONVERSATION_READ_LIMIT,
+    )
+    tracker = await ScreenTracker.load(conversation_id, window.entries)
+    head = window.entries[-1].seq if window.entries else 0
+    # Equivalent under mutation: only its cards are read, which no conversation link shapes.
+    logged_at = _logged_at(conversation_id, window.entries, after)  # pragma: no mutate
+    # An amended entry is left out of what the client is taken to hold, so every item it shapes is sent.
+    held = (
+        {}
+        if amended is None
+        else _logged_at(
+            conversation_id,
+            [logged for logged in window.entries if logged.seq not in amended],
+            after,
+        )
+    )
     # A chat platform shows typing on the newest user message, which a bot resuming after it never held.
     answering = next((item for item in reversed(tracker.items) if isinstance(item, UserItem)), None)
     items = tuple(
         item
-        for item in tracker.items[-CONVERSATION_READ_LIMIT:]
+        for item in tracker.items
         # Running work's cards are in no entry, so its item never equals the one held at after.
-        if held.get(item.id) != item or item is answering
+        if item.seq >= window.start and (held.get(item.id) != item or item is answering)
     )
     yield ScreenFrame(items=items, head=head, held_cards=_held_cards(items, logged_at))
     async for streamed in follow(log, conversation_id, user_id, head):
@@ -350,46 +374,54 @@ class _Positioned(BaseModel):
     seq: int | None = None
 
 
-def _vouches(
-    conversation_id: str, stream_id: str, fields: object, after: int
-) -> EventsResume | None:
-    """Return what one stream entry says of a client at entry after: None when it is newer and says nothing."""
+def _positioned(conversation_id: str, stream_id: str, fields: object) -> _Positioned | None:
+    """Return where one stream entry sits; None, logged, when it is no frame this code can read."""
     try:
-        frame = _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
+        return _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
     except ValidationError as error:
-        # It may be the amendment or the entry looked for: the whole screen is the safe answer.
         wide_log.warning(
             "conversation stream frame unreadable, so it vouches for no head",
             conversation_id=conversation_id,
             stream_id=stream_id,
             error=str(error)[:300],
         )
-        return EventsResume.FULL_UNREADABLE
-    if frame.seq is None or frame.seq > after:
         return None
-    # The newest frame of an entry the client held: its own, or an amendment it may have missed.
-    if frame.kind != FrameKind.ENTRY:
-        return EventsResume.FULL_AMENDED
-    return EventsResume.RESUMED if frame.seq == after else EventsResume.FULL_NOT_HELD
 
 
-async def _vouched(conversation_id: str, after: int) -> EventsResume:
-    """Return RESUMED when the stream still holds entry after's frame with no amendment since to an entry at or below it.
+async def _vouched(conversation_id: str, after: int) -> tuple[EventsResume, frozenset[int]]:
+    """Return whether the stream still holds entry after's frame, and the entries at or below it amended since.
 
     Read newest first, a page at a time: everything before the entry's own frame came after it,
     and a reply's deltas can put hundreds of frames past a head a page would otherwise reach.
     """
     count, read = EVENTS_RESUME_PAGE, 0
+    amended: set[int] = set()
     while True:
         page = await redis_cache.client.xrevrange(_key(conversation_id), count=count)
         # Frames published since the last read sit at the front, so none past read is new.
         for stream_id, fields in page[read:]:
-            verdict = _vouches(conversation_id, stream_id, fields, after)
-            if verdict is not None:
-                return verdict
+            frame = _positioned(conversation_id, stream_id, fields)
+            # It may be the amendment or the entry looked for: the whole screen is the safe answer.
+            if frame is None:
+                return EventsResume.FULL_UNREADABLE, frozenset()
+            if frame.seq is None or frame.seq > after:
+                continue
+            if frame.kind != FrameKind.ENTRY:
+                amended.add(frame.seq)
+                continue
+            if frame.seq != after:
+                return EventsResume.FULL_NOT_HELD, frozenset()
+            return (EventsResume.AMENDED if amended else EventsResume.RESUMED), frozenset(amended)
         if len(page) < count:
-            return EventsResume.FULL_NOT_HELD
+            return EventsResume.FULL_NOT_HELD, frozenset()
         count, read = count * EVENTS_RESUME_PAGE_GROWTH, len(page)
+
+
+async def _amended_since(conversation_id: str, after: int) -> frozenset[int] | None:
+    """Return the entries at or below after amended since a client followed through it; None when the stream cannot vouch for that head."""
+    resume, amended = await _vouched(conversation_id, after)
+    wide_log.set_ns("conversation", resume=resume)
+    return amended if resume in {EventsResume.RESUMED, EventsResume.AMENDED} else None
 
 
 def _logged_at(
@@ -398,17 +430,6 @@ def _logged_at(
     """Return the items the log projects through entry after, by id; none for a client that names no head."""
     seen = [logged for logged in entries if logged.seq <= after]
     return {item.id: item for item in project_screen(conversation_id, seen, FILE_LINKS)}
-
-
-async def _vouched_for(conversation_id: str, after: int) -> bool:
-    """Return whether a client that followed through entry after still holds its items as the log has them.
-
-    The stream must still hold that entry's frame, with no amendment to an entry at or below
-    it since, which the log read after it cannot show.
-    """
-    resume = await _vouched(conversation_id, after)
-    wide_log.set_ns("conversation", resume=resume)
-    return resume is EventsResume.RESUMED
 
 
 #: What only a wire 2 frame carries: a reader built before wire 2 refuses a key it does not know.

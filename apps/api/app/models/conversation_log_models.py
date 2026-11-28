@@ -409,6 +409,17 @@ class LoggedEntry(BaseModel):
     entry: Entry
 
 
+class ScreenWindow(BaseModel):
+    """The entries a screen at the log's head projects from, in seq order, and where its own run of them starts.
+
+    Entries below start are only what the run's items read beside them: none of their items is
+    the window's to show.
+    """
+
+    entries: list[LoggedEntry]
+    start: int = Field(ge=1)
+
+
 class CommsPhase(StrEnum):
     """What the comms model is doing."""
 

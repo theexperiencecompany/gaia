@@ -371,6 +371,8 @@ def needed_beside(
         f"work:{link}" for work in read.started.values() if (link := work.joins or work.continues)
     }
     wanted |= {message.retry_of for message in read.users.values() if message.retry_of}
+    # A work item's retry target is the newest user message it answers.
+    wanted |= {answered for work in read.started.values() for answered in work.answers}
     present = {logged.entry.id for logged in (*window, *related)}
     return sorted(wanted - present), sorted(replies)
 

@@ -11,7 +11,16 @@ from app.models.conversation_log_models import (
     StepClaim,
 )
 from app.services.conversation.ports import ClaimLost, EntryRejected
-from tests.unit.services.conversation.log_helpers import barge, opened, settled, stop, user
+from tests.unit.services.conversation.log_helpers import (
+    barge,
+    finished,
+    notice,
+    opened,
+    settled,
+    started,
+    stop,
+    user,
+)
 from tests.unit.services.conversation.runtime_doubles import FakeClock, LogUnderTest, in_memory_log
 
 CID = "c1"
@@ -174,6 +183,64 @@ class ConversationLogContract:
             # The holder stays, and it still sees the input unsettled.
             assert (await subject.log.state(CID, UID)).unsettled_waking == (1,)
             assert await subject.log.claim(CID, UID) is None
+
+    async def _screen_chat(self, subject: LogUnderTest) -> None:
+        """Log a turn, work that answers the next message, then a reply quoting the first."""
+        quoting = settled("s2", ["u2"], 4, reply_id="r2").model_copy(update={"quote_target": "u1"})
+        answering = started("w1", "t1", 4).model_copy(update={"answers": ("u2",)})
+        for entry in (
+            user("u1"),
+            opened("o1", "r1"),
+            settled("s1", ["u1"], 1),
+            user("u2"),
+            answering,
+            notice("n1"),
+            finished("f1", "t1"),
+            opened("o2", "r2"),
+            quoting,
+        ):
+            await subject.log.append(CID, UID, entry)
+
+    async def _window(
+        self, subject: LogUnderTest, after: int | None, limit: int
+    ) -> tuple[list[int], int]:
+        window = await subject.log.read_screen(CID, UID, after=after, limit=limit)
+        return [logged.seq for logged in window.entries], window.start
+
+    async def test_a_screen_window_reads_after_the_head_back_to_the_newest_user_message(
+        self, subject: LogUnderTest
+    ) -> None:
+        await self._screen_chat(subject)
+        # The reply quotes u1, which is read beside the run and is not the run's to show.
+        assert await self._window(subject, after=8, limit=600) == ([1, 4, 5, 6, 7, 8, 9], 4)
+        # Past the limit the newest user message is not reached for, only read beside.
+        assert await self._window(subject, after=8, limit=3) == ([1, 4, 8, 9], 8)
+
+    async def test_a_screen_window_reaches_back_to_the_opener_of_what_it_completes(
+        self, subject: LogUnderTest
+    ) -> None:
+        await self._screen_chat(subject)
+        assert await self._window(subject, after=None, limit=2) == ([1, 4, 8, 9], 8)
+        assert await self._window(subject, after=6, limit=1) == ([1, 4, 5, 6, 7, 8, 9], 5)
+
+    async def test_a_screen_window_holds_the_start_of_running_work_and_never_less_than_the_head(
+        self, subject: LogUnderTest
+    ) -> None:
+        await self._screen_chat(subject)
+        for entry in (started("w2", "t2", 9), notice("n2")):
+            await subject.log.append(CID, UID, entry)
+        assert await self._window(subject, after=11, limit=1) == ([10, 11], 10)
+        assert await self._window(subject, after=99, limit=1) == ([10, 11], 10)
+
+    async def test_a_screen_window_holds_the_reply_still_being_written(
+        self, subject: LogUnderTest
+    ) -> None:
+        for entry in (user("u1"), opened("o1"), user("u2"), notice("n1")):
+            await subject.log.append(CID, UID, entry)
+        assert await self._window(subject, after=3, limit=1) == ([2, 3, 4], 2)
+
+    async def test_an_empty_log_s_screen_window_is_empty(self, subject: LogUnderTest) -> None:
+        assert await self._window(subject, after=None, limit=600) == ([], 1)
 
 
 class TestInMemoryConversationLog(ConversationLogContract):

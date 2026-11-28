@@ -29,6 +29,7 @@ from app.models.conversation_frame_models import (
 from app.models.conversation_log_models import (
     DisplayState,
     Entry,
+    ScreenWindow,
     WorkFinished,
     WorkOutcome,
     WorkStarted,
@@ -51,10 +52,12 @@ from app.services.conversation.ports import ConversationLog
 from shared.py.conversation_wire import (
     BubbleTextDelta,
     ReplyDeltaFrame,
+    ReplyItem,
+    ReplyOutcome,
     ToolDataEntry,
 )
 from tests.helpers import captured_wide_event
-from tests.unit.services.conversation.log_helpers import asked, opened, settled, user
+from tests.unit.services.conversation.log_helpers import asked, at, opened, settled, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
 pytestmark = pytest.mark.unit
@@ -301,20 +304,20 @@ async def test_another_conversation_s_stream_vouches_for_nothing(
 
 
 @pytest.mark.parametrize(
-    ("amended_seq", "placed_after_head", "resumed"),
+    ("amended_seq", "placed_after_head", "opening"),
     [
-        (2, True, False),
-        (1, True, False),
-        (3, True, True),
-        (2, False, True),
+        (2, True, ["u2", "u3"]),
+        (1, True, ["u1", "u3"]),
+        (3, True, ["u3"]),
+        (2, False, ["u3"]),
     ],
     ids=["the head entry", "an older entry", "a newer entry", "before the head was reached"],
 )
-async def test_an_amendment_since_the_head_to_an_entry_the_client_held_opens_on_the_whole_screen(
+async def test_an_amendment_since_the_head_to_an_entry_the_client_held_reopens_on_that_item_and_what_is_newer(
     fake_redis: fakeredis.aioredis.FakeRedis,
     amended_seq: int,
     placed_after_head: bool,
-    resumed: bool,
+    opening: list[str],
 ) -> None:
     runtime = Runtime()
     amended = EntryUpdatedFrame(seq=amended_seq, entry=user(f"u{amended_seq}"))
@@ -326,17 +329,112 @@ async def test_an_amendment_since_the_head_to_an_entry_the_client_held_opens_on_
         await _publish(fake_redis, amended)
     await _said(runtime, fake_redis, "u3")
 
-    assert await _opening(runtime, 2) == (["u3"] if resumed else ["u1", "u2", "u3"])
+    assert await _opening(runtime, 2) == opening
 
 
-async def test_an_amendment_two_frames_past_the_head_still_opens_on_the_whole_screen(
+async def test_an_amendment_two_frames_past_the_head_still_reopens_on_the_amended_item(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
     runtime = Runtime()
     await _said(runtime, fake_redis, "u1", "u2", "u3")
     await _publish(fake_redis, EntryUpdatedFrame(seq=1, entry=user("u1")))
 
-    assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
+    assert await _opening(runtime, 2) == ["u1", "u3"]
+
+
+@pytest.mark.parametrize(
+    ("after", "amended", "read_after"),
+    [(0, None, None), (2, None, 2), (2, 1, 0), (9, None, None)],
+    ids=["fresh", "resumed", "amended", "not held"],
+)
+async def test_an_open_reads_the_log_only_from_what_its_client_may_lack(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+    after: int,
+    amended: int | None,
+    read_after: int | None,
+) -> None:
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1", "u2", "u3")
+    if amended is not None:
+        await _publish(fake_redis, EntryUpdatedFrame(seq=amended, entry=user(f"u{amended}")))
+    reads: list[int | None] = []
+    read_screen = runtime.log.read_screen
+
+    async def recorded(
+        conversation_id: str, user_id: str, *, after: int | None, limit: int
+    ) -> ScreenWindow:
+        reads.append(after)
+        return await read_screen(conversation_id, user_id, after=after, limit=limit)
+
+    monkeypatch.setattr(runtime.log, "read_screen", recorded)
+
+    await _opening(runtime, after)
+
+    assert reads == [read_after]
+
+
+async def test_a_resume_past_the_open_reply_still_follows_it_to_its_settled_text(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for a bot resumed past a reply still being written posting its first words only."""
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1")
+    await _logged(runtime, fake_redis, opened("o1").model_copy(update={"text": "Added"}))
+    await _said(runtime, fake_redis, "u2")
+    written = opened("o1").model_copy(update={"text": "Added fast-yes.", "revision": 1})
+
+    async def follow(
+        log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
+    ) -> AsyncGenerator[StreamedFrame | None]:
+        yield StreamedFrame(stream_id="1-0", frame=EntryUpdatedFrame(seq=2, entry=written))
+        settle = EntryFrame(seq=4, at=at(4), entry=settled("s1", ["u1"], 1))
+        yield StreamedFrame(stream_id="2-0", frame=settle)
+
+    monkeypatch.setattr(event_stream, "follow", follow)
+    frames = follow_screen(runtime.log, CONVERSATION, USER, 3)
+    opening, *patches = [await anext(frames) for _ in range(3)]
+    await frames.aclose()
+
+    assert isinstance(opening, ScreenFrame)
+    replies = [
+        patch.item
+        for patch in patches
+        if isinstance(patch, ScreenUpdateFrame) and isinstance(patch.item, ReplyItem)
+    ]
+    assert [(reply.bubbles, reply.outcome) for reply in replies] == [
+        (("Added fast-yes.",), None),
+        (("Added fast-yes.",), ReplyOutcome.ANSWERED),
+    ]
+
+
+async def test_an_amendment_outside_the_window_reopens_from_the_head_on_the_amended_item(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(event_stream, "CONVERSATION_READ_LIMIT", 1)
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1", "u2", "u3")
+    amendment = EntryUpdatedFrame(seq=1, entry=user("u1"))
+    await _publish(fake_redis, amendment)
+    followed: list[int] = []
+
+    async def follow(
+        log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
+    ) -> AsyncGenerator[StreamedFrame | None]:
+        followed.append(after_seq)
+        if len(followed) == 1:
+            yield StreamedFrame(stream_id="1-0", frame=amendment)
+        yield None
+
+    monkeypatch.setattr(event_stream, "follow", follow)
+    frames = follow_screen(runtime.log, CONVERSATION, USER)
+    opening, reopened = await anext(frames), await anext(frames)
+    await frames.aclose()
+
+    assert isinstance(opening, ScreenFrame) and isinstance(reopened, ScreenFrame)
+    assert [item.id for item in opening.items] == ["u3"]
+    assert [item.id for item in reopened.items] == ["u1", "u3"]
+    assert (followed, reopened.head) == ([3], 3)
 
 
 async def test_a_reply_the_client_held_is_projected_with_its_conversation_s_links(
@@ -601,7 +699,7 @@ async def test_the_head_check_reads_further_back_until_it_meets_the_head(
     assert [count for count in pages_read if count != 1] == [EVENTS_RESUME_PAGE, grown]
 
 
-async def test_an_amendment_past_the_first_page_still_opens_on_the_whole_screen(
+async def test_an_amendment_past_the_first_page_still_reopens_on_the_amended_item(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
     runtime = Runtime()
@@ -610,7 +708,7 @@ async def test_an_amendment_past_the_first_page_still_opens_on_the_whole_screen(
     await _publish(fake_redis, *(_reply_text(index) for index in range(EVENTS_RESUME_PAGE + 5)))
     await _said(runtime, fake_redis, "u3")
 
-    assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
+    assert await _opening(runtime, 2) == ["u1", "u3"]
 
 
 async def test_a_head_older_than_everything_a_long_stream_holds_opens_on_the_whole_screen(

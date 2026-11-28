@@ -8,7 +8,7 @@ conversation_entries.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -165,10 +165,12 @@ def current_state(head: ConversationHead) -> ConversationState:
     return stored.model_copy(update={"head": head.log_head or 0})
 
 
-def openers_outside(page: Sequence[LoggedEntry]) -> dict[str, list[str]]:
-    """Return, by the field that names them, the openers page's entries complete but page lacks."""
-    replies: set[str] = set()
-    tasks: set[str] = set()
+def openers_outside(
+    page: Sequence[LoggedEntry], running: Iterable[str] = (), replying: str | None = None
+) -> dict[str, list[str]]:
+    """Return, by the field that names them, the openers page's entries complete, or of running tasks and the open reply, that page lacks."""
+    replies: set[str] = set() if replying is None else {replying}
+    tasks: set[str] = set(running)
     approvals: set[str] = set()
     held_replies: set[str] = set()
     held_tasks: set[str] = set()

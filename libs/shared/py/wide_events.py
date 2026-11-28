@@ -226,8 +226,8 @@ class EventsResume(StrEnum):
     RESUMED = "resumed"
     # The whole screen: the stream no longer holds the head's frame.
     FULL_NOT_HELD = "full_not_held"
-    # The whole screen: an entry at or below the head changed since.
-    FULL_AMENDED = "full_amended"
+    # The head was honoured, and entries at or below it amended since were sent again.
+    AMENDED = "amended"
     # The whole screen: a frame another deploy wrote stands where the head's would.
     FULL_UNREADABLE = "full_unreadable"
 
