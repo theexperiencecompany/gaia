@@ -112,7 +112,9 @@ async def _ask_executor(client: httpx.AsyncClient, api: str, email: str, tool: T
         "I will paste the key into the card."
     )
     response = await client.post(f"{api}/api/v1/dev/executor", json={"email": email, "task": task})
-    response.raise_for_status()
+    if response.is_error:
+        # The run itself failed (a gateway timeout on a long run): that is this tool's score.
+        return f"executor answered HTTP {response.status_code}"
     return str(response.json().get("message", ""))
 
 
