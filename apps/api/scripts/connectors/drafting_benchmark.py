@@ -42,7 +42,7 @@ _HTTP_TIMEOUT_SECONDS = 60
 # A drafting turn: retrieval, docs, maybe a release checksum fetch, then define_connector.
 _TURN_TIMEOUT_SECONDS = 600
 _POLL_SECONDS = 5
-_PARALLEL_TOOLS = 5
+_PARALLEL_TOOLS = 2
 
 
 class Preset(StrEnum):
