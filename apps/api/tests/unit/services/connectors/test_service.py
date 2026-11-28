@@ -6,12 +6,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.connectors import CONNECTOR_REDACTION, CONNECTOR_STDOUT_HEAD_BYTES
+from app.models.connector_models import ConnectorSpec
 from app.services.connectors.commands import plan_call
 from app.services.connectors.rest_helper import AUTH_HEADER_ENV, BASE_URL_ENV, SECRET_ENV
 from app.services.connectors.runner import RunOutcome, RunRequest, RunResult
 from app.services.connectors.service import (
     CallFailure,
     ConnectorCallResult,
+    bound_secrets,
     build_run_request,
     classify_failure,
     run_with_secret,
@@ -80,6 +82,46 @@ def test_a_credential_file_gets_the_secret_in_its_template() -> None:
 
     assert request.env == {}
     assert request.files[0].content == f"oauth_token: {SECRET}\n"
+
+
+_AWS_ID = "AKIAIOSFODNN7EXAMPLE"
+_AWS_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+
+def _two_part_spec() -> ConnectorSpec:
+    template = (
+        "[default]\naws_access_key_id = {secret_user}\naws_secret_access_key = {secret_password}\n"
+    )
+    return make_connector_spec(
+        "cli",
+        credential={"env": [], "files": [{"path": "~/.aws/credentials", "template": template}]},
+    )
+
+
+def test_a_two_part_key_is_split_into_the_halves_its_template_names() -> None:
+    spec = _two_part_spec()
+
+    request = build_run_request(spec, plan_call(spec, ["api", "user"]), f"{_AWS_ID}:{_AWS_SECRET}")
+
+    assert request.files[0].content == (
+        f"[default]\naws_access_key_id = {_AWS_ID}\naws_secret_access_key = {_AWS_SECRET}\n"
+    )
+
+
+async def test_each_half_of_a_two_part_key_is_scrubbed_on_its_own() -> None:
+    runner = _RecordingRunner(_ok(f"id={_AWS_ID} secret={_AWS_SECRET}"))
+
+    out = await run_with_secret(
+        _two_part_spec(), ["api", "user"], f"{_AWS_ID}:{_AWS_SECRET}", runner=runner
+    )
+
+    assert _AWS_ID not in out.stdout
+    assert _AWS_SECRET not in out.stdout
+    assert out.stdout.count(CONNECTOR_REDACTION) == 2
+
+
+def test_a_whole_key_template_binds_no_halves() -> None:
+    assert bound_secrets(make_connector_spec("cli"), "user:pass") == ["user:pass"]
 
 
 async def test_an_env_dump_prompt_injection_never_returns_the_key() -> None:

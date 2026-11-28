@@ -14,6 +14,7 @@ from pydantic.alias_generators import to_camel
 from app.constants.connectors import (
     CONNECTOR_GUIDANCE_MAX_CHARS,
     CONNECTOR_SECRET_PLACEHOLDER,
+    CONNECTOR_SECRET_PLACEHOLDERS,
     MAX_CONNECTOR_HOSTS,
     MAX_CONNECTOR_PACKAGES,
 )
@@ -108,8 +109,10 @@ class CredentialFile(BaseModel):
     @field_validator("template")
     @classmethod
     def _has_placeholder(cls, value: str) -> str:
-        if CONNECTOR_SECRET_PLACEHOLDER not in value:
-            raise ValueError(f"template must contain {CONNECTOR_SECRET_PLACEHOLDER}")
+        if not any(placeholder in value for placeholder in CONNECTOR_SECRET_PLACEHOLDERS):
+            raise ValueError(
+                f"template must contain one of {', '.join(CONNECTOR_SECRET_PLACEHOLDERS)}"
+            )
         return value
 
     @field_validator("path")

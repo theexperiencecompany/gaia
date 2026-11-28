@@ -7,7 +7,9 @@ import re
 from app.config.oauth_config import all_integrations, get_integration_by_id
 from app.constants.connectors import (
     CONNECTOR_CALL_TIMEOUT_SECONDS,
+    CONNECTOR_SECRET_PASSWORD_PLACEHOLDER,
     CONNECTOR_SECRET_PLACEHOLDER,
+    CONNECTOR_SECRET_USER_PLACEHOLDER,
     CONNECTOR_STDERR_HEAD_BYTES,
     CONNECTOR_STDERR_TAIL_BYTES,
     CONNECTOR_STDOUT_HEAD_BYTES,
@@ -28,7 +30,13 @@ from app.services.connectors.rest_helper import (
     BASE_URL_ENV,
     SECRET_ENV,
 )
-from app.services.connectors.runner import RunnerFile, RunOutcome, RunRequest, RunResult
+from app.services.connectors.runner import (
+    ConnectorRunner,
+    RunnerFile,
+    RunOutcome,
+    RunRequest,
+    RunResult,
+)
 from app.services.connectors.scrub import scrub, secret_pattern
 from app.services.connectors.selection import get_connector_runner
 from app.utils.output_limiter import truncate_head_tail
@@ -125,6 +133,28 @@ async def load_connector(user_id: str, connector_id: str) -> tuple[Integration, 
     return doc, doc.connector_config
 
 
+def _secret_halves(secret: str) -> dict[str, str]:
+    user, _, password = secret.partition(":")
+    return {
+        CONNECTOR_SECRET_USER_PLACEHOLDER: user,
+        CONNECTOR_SECRET_PASSWORD_PLACEHOLDER: password,
+    }
+
+
+def _render_template(template: str, secret: str) -> str:
+    for placeholder, half in _secret_halves(secret).items():
+        template = template.replace(placeholder, half)
+    return template.replace(CONNECTOR_SECRET_PLACEHOLDER, secret)
+
+
+def bound_secrets(spec: ConnectorSpec, secret: str) -> list[str]:
+    """Return every value of the secret a call holds: the whole key, plus each half a file takes."""
+    templates = " ".join(f.template for f in spec.credential.files)
+    return [secret] + [
+        half for placeholder, half in _secret_halves(secret).items() if placeholder in templates
+    ]
+
+
 def _secret_bindings(
     spec: ConnectorSpec, secret: str
 ) -> tuple[dict[str, str], tuple[RunnerFile, ...]]:
@@ -141,7 +171,7 @@ def _secret_bindings(
         return env, ()
     env = dict.fromkeys(spec.credential.env, secret)
     files = tuple(
-        RunnerFile(path=f.path, content=f.template.replace(CONNECTOR_SECRET_PLACEHOLDER, secret))
+        RunnerFile(path=f.path, content=_render_template(f.template, secret))
         for f in spec.credential.files
     )
     return env, files
@@ -180,12 +210,14 @@ def classify_failure(result: RunResult) -> CallFailure | None:
             return CallFailure.EXIT
 
 
-async def run_with_secret(spec: ConnectorSpec, args: list[str], secret: str) -> ConnectorCallResult:
-    """Run one call in a fresh runner and return its output with the secret scrubbed out."""
+async def run_with_secret(
+    spec: ConnectorSpec, args: list[str], secret: str, *, runner: ConnectorRunner | None = None
+) -> ConnectorCallResult:
+    """Run one call in a fresh runner (this deployment's, unless one is named) with the secret scrubbed out."""
     plan = plan_call(spec, args)
-    runner = await get_connector_runner()
-    result = await runner.run(build_run_request(spec, plan, secret))
-    pattern = secret_pattern([secret])
+    chosen = runner or await get_connector_runner()
+    result = await chosen.run(build_run_request(spec, plan, secret))
+    pattern = secret_pattern(bound_secrets(spec, secret))
     stdout = scrub(result.stdout, pattern)
     stderr = scrub(result.stderr, pattern)
     failure = classify_failure(result)
