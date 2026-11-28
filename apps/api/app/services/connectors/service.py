@@ -115,6 +115,17 @@ def catalog_connectors_for(provider_domain: str) -> list[OAuthIntegration]:
     ]
 
 
+def catalog_connectors_named(word: str) -> list[OAuthIntegration]:
+    """Return the catalog connectors a guessed id means: "vercel" is vercel-cli, "stripe" both Stripe's."""
+    word = word.lower().strip()
+    return [
+        i
+        for i in all_integrations()
+        if i.connector_config is not None
+        and word in (i.id.split("-")[0], i.connector_config.provider_domain.split(".")[0])
+    ]
+
+
 async def find_connector(connector_id: str) -> Integration | None:
     """Return the catalog or custom connector with this id, whoever owns it."""
     if (platform := get_integration_by_id(connector_id)) is not None:

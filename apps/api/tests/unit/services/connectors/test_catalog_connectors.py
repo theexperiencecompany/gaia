@@ -4,7 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.core.subagents.integration_activation import _activate_connector
+from app.agents.core.subagents.integration_activation import (
+    _activate_connector,
+    load_integration,
+)
 from app.agents.core.subagents.integration_target import (
     get_integration_target,
 )
@@ -152,3 +155,14 @@ async def test_defining_a_binary_with_no_arm64_build_is_refused_before_anything_
 
     assert "terraform has no arm64 build" in reply
     save.assert_not_awaited()
+
+
+async def test_activating_a_guessed_provider_name_points_at_the_catalog_connector() -> None:
+    with patch(
+        "app.agents.core.subagents.integration_target.integration_repository",
+        MagicMock(find_by_id_prefix_or_name=AsyncMock(return_value=None)),
+    ):
+        load = await load_integration("vercel", {"user_id": USER_ID}, [])
+
+    assert "Unknown integration 'vercel'" in load.text
+    assert "'vercel-cli' (Vercel CLI)" in load.text

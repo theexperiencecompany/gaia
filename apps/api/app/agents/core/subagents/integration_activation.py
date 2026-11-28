@@ -54,7 +54,7 @@ from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.subagent_models import Subagent
-from app.services.connectors.service import find_connector
+from app.services.connectors.service import catalog_connectors_named, find_connector
 from app.services.connectors.usage import render_connector_usage
 from app.services.integrations.integration_accounts import get_account_record
 from app.services.integrations.user_integrations import check_user_has_integration
@@ -498,7 +498,13 @@ async def load_integration(
     if target is None:
         log.set(activation={"integration": integration_id})
         log.warning(f"{LogTag.AGENT} Activation requested for unknown integration")
-        return IntegrationLoad(text=f"Unknown integration '{integration_id}'.")
+        shipped = catalog_connectors_named(integration_id)
+        hint = (
+            " GAIA ships: " + ", ".join(f"'{i.id}' ({i.name})" for i in shipped) + "."
+            if shipped
+            else ""
+        )
+        return IntegrationLoad(text=f"Unknown integration '{integration_id}'.{hint}")
 
     if _still_active(history, target.id):
         log.set(activation={"integration": target.id, "already_active": True})
