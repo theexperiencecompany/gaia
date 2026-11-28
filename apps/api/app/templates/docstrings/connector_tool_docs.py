@@ -13,7 +13,8 @@ of its tools this run after the card shows.
 
 Choose the preset:
 - cli: the provider's official CLI (gh, flyctl, vercel, stripe). Pin it: a
-  binary from its official release with its sha256, or npm/pip with an exact
+  binary from its official release with its sha256 (one package per arch,
+  amd64 and arm64, each with its own url and sha256), or npm/pip with an exact
   version. command is the executable; credential.env names the variable the CLI
   reads its token from (GH_TOKEN, FLY_API_TOKEN).
 - rest: plain HTTPS API. rest.base_url is the API root; the key goes in

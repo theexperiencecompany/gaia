@@ -113,7 +113,23 @@ async def test_huge_output_is_scrubbed_before_it_is_truncated() -> None:
             RunResult(RunOutcome.EXIT_NONZERO, 1, '{"message":"Invalid API key"}', ""),
             CallFailure.AUTH,
         ),
+        # The openai SDK's own words for a revoked key, seen live.
+        (
+            RunResult(
+                RunOutcome.EXIT_NONZERO,
+                1,
+                "",
+                "openai.AuthenticationError: Error code: 401 - {'error': {'message': "
+                "'Your API key has expired. Create a new API key to continue.'}}",
+            ),
+            CallFailure.AUTH,
+        ),
+        (RunResult(RunOutcome.EXIT_NONZERO, 1, "", "Error: API key is invalid"), CallFailure.AUTH),
         (RunResult(RunOutcome.EXIT_NONZERO, 1, "", "HTTP 404"), CallFailure.EXIT),
+        (
+            RunResult(RunOutcome.EXIT_NONZERO, 1, "", "HTTP 403 forbidden: missing scope"),
+            CallFailure.EXIT,
+        ),
         (RunResult(RunOutcome.INSTALL_FAILED, None, "", "sha256 mismatch"), CallFailure.INSTALL),
         (RunResult(RunOutcome.TIMEOUT, None, "", ""), CallFailure.TIMEOUT),
         (RunResult(RunOutcome.OK, 0, "{}", ""), None),

@@ -18,7 +18,9 @@ from app.constants.connectors import (
     NPM_REGISTRY_HOSTS,
     PIP_REGISTRY_HOSTS,
 )
-from app.models.connector_models import InstallPackage, PackageManager
+from app.models.connector_models import CpuArch, InstallPackage, PackageManager
+
+_UNAME_MACHINE = {CpuArch.AMD64: "x86_64", CpuArch.ARM64: "aarch64"}
 
 _SCRIPT_HEADER = ("set -euo pipefail", "export DEBIAN_FRONTEND=noninteractive")
 
@@ -74,9 +76,24 @@ def install_script(packages: Sequence[InstallPackage]) -> str:
     if pip := by_manager[PackageManager.PIP]:
         specs = " ".join(shlex.quote(f"{p.name}=={p.version}") for p in pip)
         lines.append(f"python3 -m pip install --no-input --no-cache-dir {specs}")
-    for package in by_manager[PackageManager.BINARY]:
-        lines += _binary_lines(package)
+    binaries = by_manager[PackageManager.BINARY]
+    for package in binaries:
+        lines += _for_arch(package.arch, _binary_lines(package))
+    for executable in dict.fromkeys(p.name for p in binaries):
+        # A spec listing no build for this runner's CPU must fail here, not at the call.
+        target = shlex.quote(f"{CONNECTOR_BINARY_DIR}/{executable}")
+        lines.append(
+            f'[ -x {target} ] || {{ echo "no {executable} build for $(uname -m)" >&2; exit 1; }}'
+        )
     return "\n".join(lines) + "\n"
+
+
+def _for_arch(arch: CpuArch | None, lines: list[str]) -> list[str]:
+    """Wrap lines so they run only on the runner CPU they are built for."""
+    if arch is None:
+        return lines
+    machine = shlex.quote(_UNAME_MACHINE[arch])
+    return [f'if [ "$(uname -m)" = {machine} ]; then', *lines, "fi"]
 
 
 def _binary_url_host(package: InstallPackage) -> str:

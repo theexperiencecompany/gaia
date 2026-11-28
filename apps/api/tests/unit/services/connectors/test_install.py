@@ -12,7 +12,7 @@ from app.constants.connectors import (
     NPM_REGISTRY_HOSTS,
     PIP_REGISTRY_HOSTS,
 )
-from app.models.connector_models import InstallPackage, PackageManager
+from app.models.connector_models import CpuArch, InstallPackage, PackageManager
 from app.services.connectors.install import install_hosts, install_script
 
 _SHA = "a" * 64
@@ -23,6 +23,7 @@ def _binary(
     name: str = "tool",
     sha256: str = _SHA,
     archive_member: str | None = "tool_dir/bin/tool",
+    arch: CpuArch | None = None,
 ) -> InstallPackage:
     return InstallPackage(
         manager=PackageManager.BINARY,
@@ -31,6 +32,7 @@ def _binary(
         url=url,
         sha256=sha256,
         archive_member=archive_member,
+        arch=arch,
     )
 
 
@@ -175,6 +177,8 @@ def test_a_matching_checksum_passes_the_gate(tmp_path: Path) -> None:
     )
     install_line = next(line for line in script.splitlines() if line.startswith("install "))
     script = script.replace(install_line, f"touch {marker}")
+    # The stand-in installs nothing, so drop the check that the executable landed.
+    script = "\n".join(line for line in script.splitlines() if not line.startswith("[ -x "))
 
     ran = subprocess.run(
         ["bash", "-c", script],
@@ -186,3 +190,35 @@ def test_a_matching_checksum_passes_the_gate(tmp_path: Path) -> None:
 
     assert ran.returncode == 0, ran.stderr
     assert marker.exists()
+
+
+def test_a_binary_for_another_cpu_is_skipped_and_the_install_fails_naming_the_gap(
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_uname = bin_dir / "uname"
+    fake_uname.write_text("#!/bin/bash\necho aarch64\n")
+    fake_uname.chmod(0o755)
+    script = install_script([_binary(arch=CpuArch.AMD64)])
+
+    ran = subprocess.run(
+        ["bash", "-c", script],
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin:/sbin", "HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert ran.returncode != 0
+    assert "no tool build for aarch64" in ran.stderr
+    # Skipped before any download: the amd64 build never ran on this CPU.
+    assert "curl" not in ran.stderr
+
+
+def test_each_arch_build_runs_only_on_its_own_cpu() -> None:
+    script = install_script([_binary(arch=CpuArch.AMD64), _binary(arch=CpuArch.ARM64)])
+
+    assert 'if [ "$(uname -m)" = x86_64 ]; then' in script
+    assert 'if [ "$(uname -m)" = aarch64 ]; then' in script
+    assert script.count("[ -x /usr/local/bin/tool ]") == 1

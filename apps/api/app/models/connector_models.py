@@ -38,6 +38,11 @@ class PackageManager(StrEnum):
     APT = "apt"
 
 
+class CpuArch(StrEnum):
+    AMD64 = "amd64"
+    ARM64 = "arm64"
+
+
 class CredentialKind(StrEnum):
     API_KEY = "api_key"
     OAUTH = "oauth"
@@ -63,6 +68,10 @@ class InstallPackage(BaseModel):
         description="Binary inside a .tar.gz/.zip: path of the executable within it",
         pattern=r"^[A-Za-z0-9._/-]+$",
     )
+    arch: CpuArch | None = Field(
+        default=None,
+        description="Binary: the CPU it is built for; list one package per arch (cloud is amd64)",
+    )
 
     @field_validator("version")
     @classmethod
@@ -78,7 +87,7 @@ class InstallPackage(BaseModel):
                 raise ValueError("a binary package needs an https url")
             if not self.sha256 or not _SHA256_RE.fullmatch(self.sha256):
                 raise ValueError("a binary package needs its lowercase hex sha256")
-        elif self.url or self.sha256 or self.archive_member:
+        elif self.url or self.sha256 or self.archive_member or self.arch:
             raise ValueError("url, sha256 and archive_member apply to binary packages only")
         return self
 

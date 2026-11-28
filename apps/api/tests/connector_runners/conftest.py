@@ -1,7 +1,8 @@
 """Live connector runners: real E2B sandboxes and the local docker daemon, opt-in only.
 
 Run: bash scripts/dev/infisical-run.sh mise test:one apps/api/tests/connector_runners/<file> -m connector_runners
-E2B_API_KEY must survive the hermetic fence, since these tests create real sandboxes;
+E2B_API_KEY must survive the hermetic fence, since these tests create real sandboxes, and so must
+the Resend and OpenAI keys the connector tests verify with;
 the GitHub token comes from the host's gh auth token and is only used for read-only calls.
 """
 
@@ -10,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("HERMETIC_ALLOW_KEYS", "E2B_API_KEY")
+os.environ.setdefault("HERMETIC_ALLOW_KEYS", "E2B_API_KEY,RESEND_API_KEY,OPENAI_API_KEY")
 
 _LIVE_TIER = Path(__file__).parent
 

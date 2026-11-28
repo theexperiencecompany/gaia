@@ -34,9 +34,10 @@ from shared.py.wide_events import log
 
 # What a CLI or API prints when the key itself is refused, as opposed to a missing permission.
 _AUTH_FAILURE_RE = re.compile(
-    r"\bHTTP 401\b|\b401 Unauthorized\b|bad credentials|invalid (api[ _-]?)?(key|token)"
-    r"|(token|key) (is )?(invalid|expired|revoked)|authentication (failed|required)"
-    r"|not logged in|unauthenticated|incorrect api key",
+    r"\bHTTP 401\b|\b401 Unauthorized\b|\bError code: 401\b|\bstatus(_code)?[ :=]+401\b"
+    r"|bad credentials|invalid (api[ _-]?)?(key|token)|AuthenticationError"
+    r"|(token|key) (is |has )?(invalid|expired|been revoked|revoked)"
+    r"|authentication (failed|required)|not logged in|unauthenticated|incorrect api key",
     re.IGNORECASE,
 )
 
