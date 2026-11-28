@@ -59,6 +59,8 @@ from shared.py.wide_events import log
 _IMAGE_LIB_DIR = "/usr/local/lib/gaia-connector"
 _ENTRYPOINT_PATH = f"{_IMAGE_LIB_DIR}/entrypoint.py"
 _INSTALL_PATH = f"{_IMAGE_LIB_DIR}/install.sh"
+_UID, _GID = CONNECTOR_DOCKER_USER.split(":")
+_RUN_AS = "user"
 # A build step's own output line: "#6 0.432 no gh build for aarch64".
 _STEP_TIMED_LINE = re.compile(r"^\d+\.\d+ ")
 _ENTRYPOINT_SOURCE = Path(docker_entrypoint.__file__).read_text(encoding="utf-8")
@@ -102,6 +104,9 @@ def _dockerfile() -> str:
         (
             f"FROM {LOCAL_SANDBOX_IMAGE}",
             f"LABEL {CONNECTOR_DOCKER_LABEL}=image",
+            # Node CLIs (heroku) read the user's passwd entry; the call's uid needs one.
+            f"RUN groupadd --gid {_GID} {_RUN_AS} && useradd --uid {_UID} --gid {_GID} "
+            f"--home-dir {SANDBOX_USER_HOME} --no-create-home --shell /bin/sh {_RUN_AS}",
             f"COPY install.sh {_INSTALL_PATH}",
             f"RUN bash {_INSTALL_PATH} && rm -f {_INSTALL_PATH}",
             f"COPY entrypoint.py {_ENTRYPOINT_PATH}",

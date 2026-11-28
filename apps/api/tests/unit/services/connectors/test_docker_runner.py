@@ -1,6 +1,8 @@
 """A failed docker install reports what the install script said, not docker's own build noise."""
 
-from app.services.connectors.docker_runner import install_step_output
+from app.constants.connectors import CONNECTOR_DOCKER_USER
+from app.constants.sandbox import SANDBOX_USER_HOME
+from app.services.connectors.docker_runner import _dockerfile, install_step_output
 
 # The tail of a real plain-progress build of an amd64-only terraform spec on an arm64 host.
 _BUILD_LOG = """#4 [1/5] FROM docker.io/library/gaia-local-sandbox:b5cb4e2a0d29
@@ -26,3 +28,10 @@ def test_a_build_that_failed_before_the_install_step_keeps_the_whole_log() -> No
     log = "#1 [internal] load build definition\nERROR: failed to read dockerfile"
 
     assert install_step_output(log) == log
+
+
+def test_the_image_gives_the_call_uid_a_passwd_entry_with_the_runner_home() -> None:
+    dockerfile = _dockerfile()
+
+    uid, gid = CONNECTOR_DOCKER_USER.split(":")
+    assert f"useradd --uid {uid} --gid {gid} --home-dir {SANDBOX_USER_HOME}" in dockerfile
