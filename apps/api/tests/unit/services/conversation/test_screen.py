@@ -1321,7 +1321,10 @@ def test_an_amendment_to_an_entry_outside_the_window_fails_naming_the_head_reach
 
     with pytest.raises(EntryNotHeld) as unheld:
         tracker.take(EntryUpdatedFrame(seq=2, entry=user("u2")))
-    assert unheld.value.head == 5
+    assert (unheld.value.head, str(unheld.value)) == (
+        5,
+        "entry 2 amended outside the window projected through 5",
+    )
 
 
 def test_a_work_item_reads_the_messages_it_answers_beside_it_for_its_retry_target() -> None:
