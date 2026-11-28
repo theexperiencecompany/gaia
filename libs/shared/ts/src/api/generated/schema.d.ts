@@ -10753,7 +10753,7 @@ export interface components {
          * DispatchErrorKind
          * @enum {string}
          */
-        DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "timeout";
+        DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "approval_required" | "timeout";
         /**
          * DisplayState
          * @description The one status a client shows for a conversation.

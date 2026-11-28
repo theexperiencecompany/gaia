@@ -18,7 +18,8 @@ from app.services.connectors.rest_helper import REST_HELPER_ARGV
 
 _SUBCOMMAND_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _WRITE_TYPE_WORDS = 2
-_HELP_FLAGS = frozenset({"--help", "-h", "help"})
+_HELP_FLAGS = frozenset({"--help", "-h"})
+_HELP_SUBCOMMAND = "help"
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _REST_METHODS = _READ_METHODS | frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _SDK_BINARIES = {SdkRuntime.PYTHON: "python3", SdkRuntime.NODE: "node"}
@@ -48,26 +49,49 @@ def _check_args(args: list[str]) -> None:
 
 
 def _subcommand_words(args: list[str]) -> list[str]:
-    """Return the leading subcommand words, skipping flags and a non-word value right after a flag."""
+    """Return the leading subcommand words, skipping flags and the arg after a bare flag.
+
+    The arg after a bare flag may be its value, so it never counts as a subcommand.
+    """
     words: list[str] = []
     after_flag = False
     for arg in args:
         if arg.startswith("-"):
             after_flag = "=" not in arg
             continue
+        if after_flag:
+            after_flag = False
+            continue
         if not _SUBCOMMAND_RE.fullmatch(arg):
-            if after_flag:
-                after_flag = False
-                continue
             break
-        after_flag = False
         words.append(arg)
     return words
 
 
+def _is_bare_flag(arg: str) -> bool:
+    return arg.startswith("-") and "=" not in arg
+
+
+def _is_help(args: list[str], words: list[str]) -> bool:
+    """Say whether the call asks for help: the help subcommand, or a help flag last and not a value."""
+    if words[:1] == [_HELP_SUBCOMMAND]:
+        return True
+    if not args or args[-1] not in _HELP_FLAGS:
+        return False
+    return len(args) < 2 or not _is_bare_flag(args[-2])
+
+
+def _is_write_flag(arg: str, flag: str) -> bool:
+    """Match a long flag as --flag or --flag=v, and a short one also with its value attached (-XPOST)."""
+    if flag.startswith("--"):
+        return arg.split("=", 1)[0] == flag
+    return arg.startswith(flag) and not arg.startswith("--")
+
+
 def _has_write_flag(args: list[str], write_flags: list[str]) -> bool:
-    flags = set(write_flags)
-    return any(arg.split("=", 1)[0] in flags for arg in args if arg.startswith("-"))
+    return any(
+        _is_write_flag(arg, flag) for arg in args if arg.startswith("-") for flag in write_flags
+    )
 
 
 def _listed_read(words: list[str], read_commands: list[str]) -> str | None:
@@ -83,7 +107,7 @@ def _listed_read(words: list[str], read_commands: list[str]) -> str | None:
 def _plan_cli(spec: ConnectorSpec, command: str, args: list[str]) -> CallPlan:
     argv = (command, *args)
     words = _subcommand_words(args)
-    if _HELP_FLAGS.intersection(args):
+    if _is_help(args, words):
         return CallPlan(argv=argv, is_write=False, command_type="help")
     read = _listed_read(words, spec.risk.read_commands)
     if read is not None and not _has_write_flag(args, spec.risk.write_flags):

@@ -484,7 +484,7 @@ class TestLedgerRegistration:
             result = await gate.decide_tool_call(gated_request())
 
         work.assert_awaited_once_with(CONVERSATION_ID, USER_ID, STREAM_ID)
-        asks.assert_awaited_once_with(GATED_TOOL, GATED_ARGS)
+        asks.assert_awaited_once_with(USER_ID, GATED_TOOL, GATED_ARGS)
         gate_seams.requested.assert_awaited_once_with(
             CONVERSATION_ID,
             USER_ID,
