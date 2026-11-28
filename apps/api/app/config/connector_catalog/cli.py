@@ -48,8 +48,7 @@ _RAILWAY_SHA256 = {
 _RAILWAY_TARGET = {"amd64": "x86_64", "arm64": "aarch64"}
 
 _VERCEL_VERSION = "68.0.0"
-# The last release that runs on Node 20: E2B's base image ships v20.9.
-_WRANGLER_VERSION = "4.86.0"
+_WRANGLER_VERSION = "4.169.0"
 _HEROKU_VERSION = "11.14.0"
 _AWSCLI_VERSION = "1.46.3"
 
