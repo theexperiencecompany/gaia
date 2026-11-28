@@ -180,6 +180,17 @@ async def test_a_nonexistent_npm_version_fails_the_install(backend: _Backend) ->
     assert "cowsay@999.999.999" in result.stdout + result.stderr
 
 
+async def test_an_npm_install_runs_on_node_24_or_newer(backend: _Backend) -> None:
+    cowsay = InstallPackage(manager=PackageManager.NPM, name="cowsay", version="1.6.0")
+
+    result = await backend.runner.run(
+        _request(("node", "-p", "process.versions.node"), install=(cowsay,))
+    )
+
+    assert result.outcome is RunOutcome.OK, result.stderr
+    assert int(result.stdout.split(".")[0]) >= 24, result.stdout
+
+
 @pytest.mark.parametrize("argv", [("cat",), ("bash", "-c", "read -r line; echo status=$?")])
 async def test_a_command_waiting_on_stdin_gets_eof_at_once(
     backend: _Backend, argv: tuple[str, ...]

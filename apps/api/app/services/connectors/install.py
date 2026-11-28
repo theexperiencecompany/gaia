@@ -15,21 +15,19 @@ from app.constants.connectors import (
     APT_REGISTRY_HOSTS,
     BINARY_REDIRECT_HOSTS,
     CONNECTOR_BINARY_DIR,
+    CONNECTOR_NODE_PREFIX,
+    CONNECTOR_NODE_SHA256,
+    CONNECTOR_NODE_VERSION,
+    NODE_DIST_HOSTS,
     NPM_REGISTRY_HOSTS,
     PIP_REGISTRY_HOSTS,
 )
 from app.models.connector_models import CpuArch, InstallPackage, PackageManager
 
 _UNAME_MACHINE = {CpuArch.AMD64: "x86_64", CpuArch.ARM64: "aarch64"}
+_NODE_DIST_ARCH = {CpuArch.AMD64: "x64", CpuArch.ARM64: "arm64"}
 
 _SCRIPT_HEADER = ("set -euo pipefail", "export DEBIAN_FRONTEND=noninteractive")
-
-# The base images carry npm on E2B but not in the docker runner's python image;
-# Debian's nodejs package brings npm along, so npm needs the apt hosts too.
-_ENSURE_NPM = (
-    "if ! command -v npm >/dev/null 2>&1; then "
-    "apt-get update && apt-get install -y --no-install-recommends nodejs npm; fi"
-)
 
 
 class _ArchiveKind(StrEnum):
@@ -50,7 +48,7 @@ def install_hosts(packages: Sequence[InstallPackage]) -> tuple[str, ...]:
     for package in packages:
         match package.manager:
             case PackageManager.NPM:
-                hosts.update(NPM_REGISTRY_HOSTS, APT_REGISTRY_HOSTS)
+                hosts.update(NPM_REGISTRY_HOSTS, NODE_DIST_HOSTS)
             case PackageManager.PIP:
                 hosts.update(PIP_REGISTRY_HOSTS)
             case PackageManager.APT:
@@ -72,7 +70,7 @@ def install_script(packages: Sequence[InstallPackage]) -> str:
         lines += ["apt-get update", f"apt-get install -y --no-install-recommends {specs}"]
     if npm := by_manager[PackageManager.NPM]:
         specs = " ".join(shlex.quote(f"{p.name}@{p.version}") for p in npm)
-        lines += [_ENSURE_NPM, f"npm install -g --no-fund --no-audit {specs}"]
+        lines += [*_node_lines(), f"npm install -g --no-fund --no-audit {specs}"]
     if pip := by_manager[PackageManager.PIP]:
         specs = " ".join(shlex.quote(f"{p.name}=={p.version}") for p in pip)
         lines.append(f"python3 -m pip install --no-input --no-cache-dir {specs}")
@@ -88,6 +86,43 @@ def install_script(packages: Sequence[InstallPackage]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _node_lines() -> list[str]:
+    """Install the pinned Node for this runner's CPU into /usr/local, replacing the base image's."""
+    lines: list[str] = []
+    for arch, dist_arch in _NODE_DIST_ARCH.items():
+        url = (
+            f"https://nodejs.org/dist/v{CONNECTOR_NODE_VERSION}/"
+            f"node-v{CONNECTOR_NODE_VERSION}-linux-{dist_arch}.tar.gz"
+        )
+        lines += _for_arch(
+            arch,
+            [
+                *_download_lines(url, CONNECTOR_NODE_SHA256[dist_arch]),
+                f"rm -rf {CONNECTOR_NODE_PREFIX}/lib/node_modules/npm",
+                f'tar -xzf "$work/download" -C {CONNECTOR_NODE_PREFIX} '
+                "--strip-components=1 --no-same-owner",
+                'rm -rf "$work"',
+            ],
+        )
+    node = f"{CONNECTOR_NODE_PREFIX}/bin/node"
+    return [
+        *lines,
+        f'[ "$({node} --version)" = v{CONNECTOR_NODE_VERSION} ] || '
+        '{ echo "no node build for $(uname -m)" >&2; exit 1; }',
+        # require() searches $PREFIX/lib/node, so an SDK script finds what npm -g installed.
+        f"ln -sfn node_modules {CONNECTOR_NODE_PREFIX}/lib/node",
+    ]
+
+
+def _download_lines(url: str, sha256: str) -> list[str]:
+    """Download url into "$work/download" over https, failing the script on a checksum mismatch."""
+    return [
+        'work="$(mktemp -d)"',
+        f'curl -fsSL --proto =https --tlsv1.2 -o "$work/download" {shlex.quote(url)}',
+        f'echo {shlex.quote(f"{sha256}  ")}"$work/download" | sha256sum -c -',
+    ]
+
+
 def _for_arch(arch: CpuArch | None, lines: list[str]) -> list[str]:
     """Wrap lines so they run only on the runner CPU they are built for."""
     if arch is None:
@@ -97,30 +132,28 @@ def _for_arch(arch: CpuArch | None, lines: list[str]) -> list[str]:
 
 
 def _binary_url_host(package: InstallPackage) -> str:
-    host = urlsplit(_binary_url(package)).hostname
+    url, _ = _binary_source(package)
+    host = urlsplit(url).hostname
     if not host:
         raise ValueError(f"binary package {package.name!r} has a url with no host")
     return host
 
 
-def _binary_url(package: InstallPackage) -> str:
+def _binary_source(package: InstallPackage) -> tuple[str, str]:
+    """Return a binary package's url and sha256, refusing one that lacks either."""
     if package.url is None or package.sha256 is None:
         raise ValueError(f"binary package {package.name!r} needs a url and a sha256")
-    return package.url
+    return package.url, package.sha256
 
 
 def _binary_lines(package: InstallPackage) -> list[str]:
     """Download, checksum, unpack and install one binary; a checksum mismatch fails the script."""
-    url = _binary_url(package)
+    url, sha256 = _binary_source(package)
     executable = package.name
     if posixpath.basename(executable) != executable:
         raise ValueError(f"binary package name {executable!r} must be a bare executable name")
     target = shlex.quote(f"{CONNECTOR_BINARY_DIR}/{executable}")
-    lines = [
-        'work="$(mktemp -d)"',
-        f'curl -fsSL --proto =https --tlsv1.2 -o "$work/download" {shlex.quote(url)}',
-        f'echo {shlex.quote(f"{package.sha256}  ")}"$work/download" | sha256sum -c -',
-    ]
+    lines = _download_lines(url, sha256)
     if package.archive_member is None:
         lines.append(f'install -m 0755 "$work/download" {target}')
     else:

@@ -27,7 +27,7 @@ _WILDCARD = "*."
 _HTTPS_PORT = 443
 _PROXY_ENV_NAMES = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
 _NO_PROXY_ENV_NAMES = ("NO_PROXY", "no_proxy")
-# Node's fetch ignores the proxy env unless told to (Node 24+); older Node fails closed.
+# Node's fetch reads the proxy env only when told to; needs Node 24+, which install.py ships.
 _NODE_PROXY_ENV = "NODE_USE_ENV_PROXY"
 
 
