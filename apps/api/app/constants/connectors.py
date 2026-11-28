@@ -46,8 +46,30 @@ APT_REGISTRY_HOSTS: Final = (
 # Where the runner keeps GAIA's own helpers (the REST request helper), under its home.
 CONNECTOR_HELPER_DIR: Final = "~/.gaia-connector"
 CONNECTOR_REST_HELPER: Final = f"{CONNECTOR_HELPER_DIR}/gaia_rest.py"
-# The env var the REST helper reads the secret from.
-CONNECTOR_REST_SECRET_ENV: Final = "GAIA_CONNECTOR_SECRET"
+# Where a binary download host redirects to: a GitHub release asset is served from these.
+BINARY_REDIRECT_HOSTS: Final[dict[str, tuple[str, ...]]] = {
+    "github.com": ("objects.githubusercontent.com", "release-assets.githubusercontent.com"),
+}
+# Where a binary package's executable is installed, on the runner's PATH.
+CONNECTOR_BINARY_DIR: Final = "/usr/local/bin"
+
+# E2B's plain base image (Debian, python3, node, npm, curl), not the user workspace template.
+CONNECTOR_E2B_TEMPLATE: Final = "base"
+CONNECTOR_E2B_PURPOSE: Final = "connector"
+
+# Self-host: one throwaway container per call, from an image with the install baked in.
+CONNECTOR_DOCKER_IMAGE_REPOSITORY: Final = "gaia-connector"
+CONNECTOR_DOCKER_CONTAINER_PREFIX: Final = "gaia-connector-"
+CONNECTOR_DOCKER_LABEL: Final = "gaia.connector"
+# Not the API's uid: a call's container shares no files with the host.
+CONNECTOR_DOCKER_USER: Final = "1000:1000"
+CONNECTOR_DOCKER_MEMORY_LIMIT: Final = "1g"
+CONNECTOR_DOCKER_CPUS: Final = "1"
+CONNECTOR_DOCKER_PIDS_LIMIT: Final = 256
+
+CONNECTOR_NO_SANDBOX_MESSAGE: Final = (
+    "Connectors need a code sandbox: add an E2B key or run `gaia up --code-sandbox`"
+)
 
 # How the HIL gate keys a connector call's remembered approval.
 CONNECTOR_HIL_KEY_PREFIX: Final = "connector:"

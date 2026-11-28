@@ -15,7 +15,7 @@ reach another's.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from encodings.utf_8 import IncrementalDecoder
@@ -82,8 +82,12 @@ __all__ = [
     "NotFoundException",
     "TimeoutException",
     "container_name_for",
+    "ensure_sandbox_image",
+    "ensure_sandbox_network",
     "get_local_sandbox",
     "pop_local_sandbox",
+    "run_docker",
+    "spawn_process",
 ]
 
 # Marker in coreutils' error output that maps to e2b's NotFoundException.
@@ -228,17 +232,60 @@ def _make_mount_sources(user_id: str) -> None:
             (user_root / nested).mkdir(exist_ok=True)
 
 
-async def _spawn_process(
-    argv: list[str], *, stdin: bytes | None = None
+async def spawn_process(
+    argv: list[str], *, stdin: bytes | None = None, extra_env: Mapping[str, str] | None = None
 ) -> asyncio.subprocess.Process:
-    """Spawn a host subprocess. Single seam tests patch instead of real Docker."""
+    """Spawn a host subprocess. Single seam tests patch instead of real Docker.
+
+    extra_env reaches the subprocess's environment, never its argv, so a value
+    passed to docker as a bare --env NAME stays out of the host's process list.
+    """
     return await asyncio.create_subprocess_exec(  # NOSONAR python:S603 — argv list is fully constructed, never a shell string
         *argv,
         stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
+        env={**os.environ, **extra_env} if extra_env else None,
     )
+
+
+async def run_docker(*args: str, stdin: bytes | None = None) -> tuple[int, bytes, str]:
+    """Run docker with the given args on the host and return exit code and output."""
+    proc = await spawn_process(["docker", *args], stdin=stdin)
+    stdout, stderr = await proc.communicate(stdin)
+    return proc.returncode or 0, stdout, stderr.decode(errors="replace")
+
+
+async def ensure_sandbox_network() -> None:
+    """Create the isolated sandbox bridge network unless an earlier start did."""
+    rc, _, stderr = await run_docker(
+        "network",
+        "create",
+        "--driver",
+        "bridge",
+        "--opt",
+        LOCAL_SANDBOX_NETWORK_ICC_OPTION,
+        LOCAL_SANDBOX_NETWORK,
+    )
+    if rc != 0 and _NETWORK_EXISTS_MARKER not in stderr:
+        raise LocalSandboxError(
+            f"docker network create failed for {LOCAL_SANDBOX_NETWORK}: {stderr.strip()}"
+        )
+
+
+async def ensure_sandbox_image() -> None:
+    """Build the sandbox image on the host daemon unless an earlier create did."""
+    rc, _, _ = await run_docker("image", "inspect", "--format", "{{.Id}}", LOCAL_SANDBOX_IMAGE)
+    if rc == 0:
+        return
+    build_args = [arg for value in _IMAGE_BUILD_ARGS for arg in ("--build-arg", value)]
+    rc, _, stderr = await run_docker(
+        "build", "--tag", LOCAL_SANDBOX_IMAGE, *build_args, "-", stdin=_DOCKERFILE
+    )
+    if rc != 0:
+        raise LocalSandboxError(f"docker build failed for {LOCAL_SANDBOX_IMAGE}: {stderr.strip()}")
+    log.info(f"{LogTag.SANDBOX} built the local sandbox image", image=LOCAL_SANDBOX_IMAGE)
 
 
 class LocalDockerSandbox:
@@ -272,12 +319,6 @@ class LocalDockerSandbox:
 
     # ── low-level docker plumbing ────────────────────────────────────────
 
-    async def _run_docker(self, *args: str, stdin: bytes | None = None) -> tuple[int, bytes, str]:
-        """Run docker with the given args on the host and return exit code and output."""
-        proc = await _spawn_process(["docker", *args], stdin=stdin)
-        stdout, stderr = await proc.communicate(stdin)
-        return proc.returncode or 0, stdout, stderr.decode(errors="replace")
-
     async def _exec_argv(
         self,
         cmd_args: list[str],
@@ -298,12 +339,12 @@ class LocalDockerSandbox:
 
     async def _exec_capture(self, cmd_args: list[str]) -> tuple[int, bytes, str]:
         """Run a command inside the container, capturing (exit_code, stdout, stderr)."""
-        return await self._run_docker(*await self._exec_argv(cmd_args))
+        return await run_docker(*await self._exec_argv(cmd_args))
 
     # ── container lifecycle ──────────────────────────────────────────────
 
     async def _container_state(self) -> _ContainerState:
-        rc, stdout, stderr = await self._run_docker(
+        rc, stdout, stderr = await run_docker(
             "container",
             "inspect",
             "-f",
@@ -331,45 +372,16 @@ class LocalDockerSandbox:
         await ensure_user_skills_dir(self.user_id)
         await asyncio.to_thread(_make_mount_sources, self.user_id)
 
-    async def _ensure_network(self) -> None:
-        """Create the isolated sandbox bridge network unless an earlier start did."""
-        rc, _, stderr = await self._run_docker(
-            "network",
-            "create",
-            "--driver",
-            "bridge",
-            "--opt",
-            LOCAL_SANDBOX_NETWORK_ICC_OPTION,
-            LOCAL_SANDBOX_NETWORK,
-        )
-        if rc != 0 and _NETWORK_EXISTS_MARKER not in stderr:
-            raise LocalSandboxError(
-                f"docker network create failed for {LOCAL_SANDBOX_NETWORK}: {stderr.strip()}"
-            )
-
-    async def _ensure_image(self) -> None:
-        """Build the sandbox image on the host daemon unless an earlier create did."""
-        rc, _, _ = await self._run_docker("image", "inspect", "--format", "{{.Id}}", self.image)
-        if rc == 0:
-            return
-        build_args = [arg for value in _IMAGE_BUILD_ARGS for arg in ("--build-arg", value)]
-        rc, _, stderr = await self._run_docker(
-            "build", "--tag", self.image, *build_args, "-", stdin=_DOCKERFILE
-        )
-        if rc != 0:
-            raise LocalSandboxError(f"docker build failed for {self.image}: {stderr.strip()}")
-        log.info(f"{LogTag.SANDBOX} built the local sandbox image", image=self.image)
-
     async def _create_container(self) -> tuple[int, str]:
-        await self._ensure_image()
+        await ensure_sandbox_image()
         await self._prepare_workspace()
-        await self._ensure_network()
+        await ensure_sandbox_network()
         mount_args = [
             arg
             for mount in _workspace_mounts(self.user_id)
             for arg in ("--mount", _mount_arg(mount))
         ]
-        rc, _, stderr = await self._run_docker(
+        rc, _, stderr = await run_docker(
             "run",
             "-d",
             "--name",
@@ -430,7 +442,7 @@ class LocalDockerSandbox:
                 state = _MISSING_CONTAINER
             if not state.running:
                 if state.exists:
-                    rc, _, stderr = await self._run_docker("start", self.container_name)
+                    rc, _, stderr = await run_docker("start", self.container_name)
                     action = "start"
                 else:
                     rc, stderr = await self._create_container()
@@ -480,7 +492,7 @@ class LocalDockerSandbox:
 
     async def pause(self) -> None:
         """Stop the container (its files survive on the workspace volume)."""
-        rc, _, stderr = await self._run_docker("stop", self.container_name)
+        rc, _, stderr = await run_docker("stop", self.container_name)
         if rc != 0:
             raise LocalSandboxError(
                 f"docker stop failed for {self.container_name}: {stderr.strip()}"
@@ -488,7 +500,7 @@ class LocalDockerSandbox:
 
     async def kill(self) -> bool:
         """Force-remove the container. False (never raises) if already gone."""
-        rc, stdout, stderr = await self._run_docker("rm", "-f", self.container_name)
+        rc, stdout, stderr = await run_docker("rm", "-f", self.container_name)
         if rc == 0:
             # Docker 29 exits 0 for a forced remove of a missing container, silently or
             # with "No such container"; only an actual removal echoes the name.
@@ -571,8 +583,8 @@ class LocalDockerSandbox:
         argv = ["docker", *await self._exec_argv(shell, user=user, envs=envs, cwd=cwd)]
         loop = asyncio.get_running_loop()
         started = loop.time()
-        proc = await _spawn_process(argv)
-        # _spawn_process always pipes both streams; this only narrows the types.
+        proc = await spawn_process(argv)
+        # spawn_process always pipes both streams; this only narrows the types.
         assert proc.stdout is not None and proc.stderr is not None  # pragma: no mutate
 
         stdout_parts: list[str] = []
@@ -672,7 +684,7 @@ class LocalDockerSandbox:
                 _raise_filetool_error("files.write(mkdir)", parent, exit_code, stderr)
             # docker cp is a host-side command (not an exec): stream the tar in
             # on stdin and unpack it straight into the parent directory.
-            exit_code, _, stderr = await sbx._run_docker(
+            exit_code, _, stderr = await run_docker(
                 "cp",
                 "--archive",
                 "-",

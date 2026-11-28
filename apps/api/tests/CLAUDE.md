@@ -17,7 +17,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 | E2E | `tests/e2e/` | real compiled graphs + fake LLM (`_harness/`), offline | user journey through the compiled graph |
 | Stress | `tests/stress/` | none — in-process fakes, no sleeps | race/retry/idempotency invariants |
 | Meta | `tests/meta/` | nothing | import fences, architecture invariants |
-| Live opt-in | `tests/composio/`, `tests/model_onboarding/` | real credentials | composio creds; model capability checks (bills tokens) |
+| Live opt-in | `tests/composio/`, `tests/model_onboarding/`, `tests/connector_runners/` | real credentials | composio creds; model capability checks (bills tokens); connector runners on real E2B and local docker |
 
 A bug ships a failing-then-passing test in the *natural* file for the tier that catches it, named `test_<subject>_<issue>.py` (e.g. `test_run_stop_4921.py`).
 

@@ -42,7 +42,7 @@ def _uid() -> str:
 
 
 async def _docker(*args: str) -> None:
-    """Drive the daemon directly, never through _spawn_process, which a test may break."""
+    """Drive the daemon directly, never through spawn_process, which a test may break."""
     proc = await asyncio.create_subprocess_exec(
         "docker", *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
@@ -286,7 +286,7 @@ async def test_a_broken_daemon_reads_as_not_running(
 
         return _Proc()
 
-    monkeypatch.setattr("app.services.sandbox.local_sandbox._spawn_process", broken_spawn)
+    monkeypatch.setattr("app.services.sandbox.local_sandbox.spawn_process", broken_spawn)
     sandbox = LocalDockerSandbox(_uid())
     assert await sandbox.is_running() is False
 
