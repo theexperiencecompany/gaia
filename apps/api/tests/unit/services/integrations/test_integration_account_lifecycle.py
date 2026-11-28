@@ -24,6 +24,7 @@ from app.models.integration_models import (
 )
 from app.services.integrations.integration_account_lifecycle import (
     composio_integration,
+    list_accounts,
     remove_account,
     update_account,
 )
@@ -337,3 +338,9 @@ class TestRemoveAccount:
         seams.capture.assert_called_once_with(
             UserId(USER_ID), IntegrationAccountRemoved(integration_id="gmail", account_count=0)
         )
+
+
+async def test_a_connector_lists_the_one_account_its_key_signed_in_as() -> None:
+    record = MagicMock(accounts=[MagicMock(label="heygaia.io")])
+    with patch(f"{LIFECYCLE}.get_account_record", AsyncMock(return_value=record)):
+        assert await list_accounts("u1", "c0ffee00-connector") is record

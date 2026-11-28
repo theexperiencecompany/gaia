@@ -8,7 +8,10 @@ from app.constants.connectors import RUN_CONNECTOR_TOOL
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILMode, HILPreferences
 from app.models.integration_models import Integration
+from app.services.hil.describe import describe_call
 from app.services.hil.policy import gated_tool_key, resolve_policy
+from app.services.hil.when import UserClock
+from app.utils.timezone import Timezone
 from tests.factories import make_connector_spec
 
 from .conftest import USER_ID, make_request
@@ -98,3 +101,15 @@ async def test_the_remembered_key_names_the_connector_and_command_type() -> None
     key = await gated_tool_key(_call(["pr", "create"]), USER_ID, RUN_CONNECTOR_TOOL)
 
     assert key == f"connector:{CONNECTOR_ID}:pr create"
+
+
+def test_the_approval_card_names_the_command_and_the_connector() -> None:
+    description = describe_call(
+        RUN_CONNECTOR_TOOL,
+        {"connector_id": CONNECTOR_ID, "argv": ["POST", "/audiences", "--json", "{}"]},
+        "Resend",
+        clock=UserClock.current(Timezone.parse("UTC")),
+    )
+
+    assert description.headline == "Run POST /audiences --json {} on Resend"
+    assert description.question.endswith("run POST /audiences --json {} on Resend?")

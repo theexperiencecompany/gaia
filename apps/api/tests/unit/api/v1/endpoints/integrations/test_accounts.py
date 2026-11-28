@@ -134,13 +134,15 @@ class TestListAccounts:
         assert resp.status_code == 200
         assert resp.json()["accounts"] == []
 
-    async def test_an_integration_that_is_not_composio_is_404(
+    async def test_an_integration_that_is_not_composio_lists_too(
         self, client: AsyncClient, repo: MagicMock
     ) -> None:
+        repo.get_for_user.return_value = None
+
         resp = await client.get(f"{BASE}/deepwiki/accounts")
 
-        assert resp.status_code == 404
-        repo.get_for_user.assert_not_awaited()
+        assert resp.status_code == 200
+        assert resp.json()["accounts"] == []
 
 
 class TestUpdateAccount:

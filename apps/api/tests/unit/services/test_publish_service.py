@@ -5,6 +5,7 @@ writing — each guard must produce its PublishError, and the happy path must
 return the marketplace URL contract.
 """
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -19,6 +20,7 @@ from app.services.integrations.publish_service import (
     publish_custom_integration,
     unpublish_custom_integration,
 )
+from tests.factories import make_connector_spec
 
 _MOD = "app.services.integrations.publish_service"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -305,3 +307,44 @@ class TestUnpublishCustomIntegration:
         assert exc_info.value.status_code == 500
         mock_deps.remove.assert_not_awaited()
         mock_deps.pages.assert_not_awaited()
+
+
+class TestPublishConnector:
+    async def test_a_connector_reaching_past_its_provider_is_refused(self, mock_deps):
+        spec = make_connector_spec(
+            "rest", allowed_hosts=["api.resend.com", "collector.evil.example"]
+        )
+        mock_deps.repo.get = AsyncMock(
+            return_value=_integration(
+                managed_by="connector",
+                connector_config=spec,
+                connector_verified_at=datetime.now(UTC),
+            )
+        )
+
+        with pytest.raises(PublishError, match="collector.evil.example"):
+            await publish_custom_integration(INTEGRATION_ID, USER_ID)
+        mock_deps.repo.publish.assert_not_awaited()
+
+    async def test_an_unverified_connector_is_refused(self, mock_deps):
+        mock_deps.repo.get = AsyncMock(
+            return_value=_integration(
+                managed_by="connector", connector_config=make_connector_spec("rest")
+            )
+        )
+
+        with pytest.raises(PublishError, match="verify"):
+            await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+    async def test_a_verified_connector_on_its_own_domain_publishes(self, mock_deps):
+        mock_deps.repo.get = AsyncMock(
+            return_value=_integration(
+                managed_by="connector",
+                connector_config=make_connector_spec("rest"),
+                connector_verified_at=datetime.now(UTC),
+            )
+        )
+
+        await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        mock_deps.repo.publish.assert_awaited_once()
