@@ -10,4 +10,6 @@ from app.models.workflow_models import Workflow
 from app.services.system_workflows.definitions.briefing_runs import BRIEFING_RUNS
 
 #: A run in place of the agent turn, returning the run's summary.
-SYSTEM_RUNS: dict[str, Callable[[Workflow], Awaitable[str]]] = {**BRIEFING_RUNS}
+SystemRun = Callable[[Workflow], Awaitable[str]]
+
+SYSTEM_RUNS: dict[str, SystemRun] = {**BRIEFING_RUNS}

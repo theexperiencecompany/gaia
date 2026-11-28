@@ -216,6 +216,34 @@ class TestTheFireTakesTheBriefingPath:
         harness.chat.assert_awaited_once()
         pipelines.run.assert_not_awaited()
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("key", [DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY])
+    async def test_a_briefing_fire_never_opens_a_workflow_conversation(
+        self, pipelines: _Pipelines, key: str
+    ) -> None:
+        """Every user's first brief left an empty chat titled after the workflow beside Briefings."""
+        harness = _FireHarness(_briefing_workflow(key))
+        open_conversation = AsyncMock(return_value="conv_1")
+
+        with patch(f"{MODULE}.get_or_create_workflow_conversation", open_conversation):
+            await _fire(harness, pipelines)
+
+        pipelines.run.assert_awaited_once()
+        open_conversation.assert_not_awaited()
+
+    async def test_an_ordinary_fire_is_admitted_to_its_workflow_conversation(
+        self, pipelines: _Pipelines
+    ) -> None:
+        harness = _FireHarness(_briefing_workflow(system_workflow_key="todo_followup"))
+        open_conversation = AsyncMock(return_value="conv_1")
+
+        with patch(f"{MODULE}.get_or_create_workflow_conversation", open_conversation):
+            await _fire(harness, pipelines)
+
+        open_conversation.assert_awaited_once_with(
+            workflow_id="wf_brief", user_id=USER_ID, workflow_title="Daily brief"
+        )
+
 
 @pytest.mark.unit
 class TestAFailedBrief:
