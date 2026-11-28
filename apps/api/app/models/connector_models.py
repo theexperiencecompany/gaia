@@ -9,6 +9,7 @@ import re
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic.alias_generators import to_camel
 
 from app.constants.connectors import (
     CONNECTOR_GUIDANCE_MAX_CHARS,
@@ -293,3 +294,30 @@ class ConnectorSpec(BaseModel):
         """What a published connector's verification vouches for: its hosts and its packages."""
         packages = tuple(f"{p.manager}:{p.name}@{p.version}:{p.sha256 or ''}" for p in self.install)
         return tuple(self.allowed_hosts), packages
+
+
+class ConnectorCardInfo(BaseModel):
+    """What a connector's connect card shows before the user hands over a key."""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    kind: ConnectorKind
+    capability: str
+    provider_domain: str
+    # Every host the key can reach; the card lists them verbatim.
+    allowed_hosts: list[str]
+    key_label: str
+    token_url: str | None = None
+    verified: bool = False
+
+    @classmethod
+    def from_spec(cls, spec: ConnectorSpec, *, verified: bool) -> "ConnectorCardInfo":
+        return cls(
+            kind=spec.kind,
+            capability=spec.capability,
+            provider_domain=spec.provider_domain,
+            allowed_hosts=spec.allowed_hosts,
+            key_label=spec.credential.label,
+            token_url=spec.credential.token_url,
+            verified=verified,
+        )

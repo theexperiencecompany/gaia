@@ -20,6 +20,7 @@ from app.agents.tools.execute.resolver import resolve_tool
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
+from app.services.hil.connector_risk import ConnectorCallRisk, connector_call_risk
 from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import raw_tool_call, tool_of, unpack_tool_call
@@ -114,6 +115,9 @@ async def _real_tool(user_id: str, tool_name: str) -> BaseTool | None:
 
 async def gated_tool_key(request: ToolCallRequest, user_id: str, tool_name: str) -> str:
     """Return the HIL key of the real tool behind a gated call (see tool_key)."""
+    risk = await connector_call_risk(user_id, tool_name, unpack_tool_call(request).args)
+    if risk is not None:
+        return risk.key
     tool = await gated_tool_object(request, user_id, tool_name)
     return hil_tool_key(tool_name, mcp_tool_identity(tool))
 
@@ -134,6 +138,9 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     call = unpack_tool_call(request)
     if await asks_every_time(tool_name, call.args):
         return "ask"
+    connector_risk = await connector_call_risk(user_id, tool_name, call.args)
+    if connector_risk is not None:
+        return await _connector_policy(user_id, connector_risk)
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow" and not prefs.tool_overrides:
         return "allow"  # nothing can ask, so skip resolving the tool
@@ -146,6 +153,21 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     if not await is_gated(prefs, tool_name, tool):  # args resolved above
         return "allow"
     return "auto" if prefs.mode == "auto" else "ask"
+
+
+async def _connector_policy(user_id: str, risk: ConnectorCallRisk) -> GatingPolicy:
+    """Allow reads; ask on a write until the user allows its command type, whatever the mode.
+
+    The read/write split comes from a spec the agent may have written, so a write
+    is never left to the intent judge: only the user's own choice lets one through.
+    """
+    if not risk.is_write:
+        return "allow"
+    prefs = await _preferences(user_id)
+    override = prefs.tool_overrides.get(risk.key)
+    if override is not None:
+        return "ask" if override else "allow"
+    return "allow" if prefs.mode == "always_allow" else "ask"
 
 
 def _tool_override(prefs: HILPreferences, tool_name: str, tool: BaseTool | None) -> bool | None:

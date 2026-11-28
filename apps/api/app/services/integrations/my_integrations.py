@@ -202,6 +202,7 @@ def _build_my_integrations_response(
                 creator=CommunityIntegrationCreator.model_validate(integ.creator)
                 if integ.creator
                 else None,
+                connector=integ.connector,
             )
         )
 

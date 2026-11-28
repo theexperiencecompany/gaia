@@ -365,6 +365,31 @@ class TestDeleteMongoData:
         users.delete_one.assert_called_once_with(object_id_filter(UID))
         assert "[mongo] todos: deleted 3" in capsys.readouterr().out
 
+    @pytest.mark.regression
+    def test_custom_integrations_are_deleted_by_their_creator(self, capsys: Any) -> None:
+        d = _footprint()
+        integrations = MagicMock()
+        integrations.delete_many.side_effect = [
+            MagicMock(deleted_count=0),
+            MagicMock(deleted_count=2),
+        ]
+        users = MagicMock()
+        users.delete_one.return_value.deleted_count = 1
+        empty_files = MagicMock()
+        empty_files.find.return_value = []
+        d.db.__getitem__.side_effect = lambda name: {"fs.files": empty_files}.get(
+            name, users if name == "users" else integrations
+        )
+        d.db.list_collection_names.return_value = ["integrations"]
+
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket"):
+            _delete_mongo_data(d)
+
+        # Custom MCP servers and connectors carry created_by, not user_id.
+        second = integrations.delete_many.call_args_list[1]
+        assert second.args[0] == {"source": "custom", "created_by": UID}
+        assert "[mongo] integrations: deleted 2" in capsys.readouterr().out
+
     def test_support_requests_are_deleted_by_email_too(self, capsys: Any) -> None:
         d = _footprint()
         support = MagicMock()

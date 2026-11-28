@@ -414,6 +414,7 @@ _EXPECTED_CATEGORY_METADATA: dict[str, tuple[str, bool, str | None, bool, bool]]
     "billing": ("general", False, None, False, False),
     "manual": ("general", False, None, False, False),
     "memory": ("general", False, None, False, False),
+    "connectors": ("general", True, "connector", False, False),
     "integrations": ("general", False, None, False, False),
     "instructions": ("general", False, None, False, True),
     "development": ("general", False, None, False, True),
@@ -467,6 +468,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         artifact_tool,
         browser_tool,
         coding,
+        connector_tools,
         context_tool,
         desktop_tools,
         download_tool,
@@ -515,8 +517,14 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "billing": {t.name for t in subscription_tool.tools},
         "manual": {t.name for t in manual_tool.tools},
         "memory": {t.name for t in memory_tools.tools},
+        "connectors": {connector_tools.run_connector.name},
         "integrations": {
-            t.name for t in [*integration_tool.tools, *integration_account_tools.tools]
+            t.name
+            for t in [
+                *integration_tool.tools,
+                *integration_account_tools.tools,
+                connector_tools.define_connector,
+            ]
         },
         "instructions": {t.name for t in instructions_tools.tools},
         "development": {t.name for t in coding.tools},
@@ -1005,6 +1013,7 @@ class TestInitializedCategoryContract:
         "billing": {},
         "manual": {},
         "memory": {},
+        "connectors": {"require_integration": True, "integration_name": "connector"},
         "integrations": {},
         "instructions": {"internal": True},
         "development": {"internal": True},
@@ -1087,6 +1096,8 @@ class TestInitializedCategoryContract:
             "disconnect_integration": False,
             # Force-gated (always_gate), not destructive — see the always_gate test.
             "add_custom_mcp_server": False,
+            # Saves a private connector and shows its card; the key is never handled here.
+            "define_connector": False,
             # Read-only device catalog lookup.
             "list_devices": False,
             # Emits the onboarding card; no mutation.

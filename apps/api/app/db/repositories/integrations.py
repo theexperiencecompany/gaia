@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 import re
 
 from app.constants.cache import INTEGRATION_CACHE_PREFIX
+from app.constants.connectors import MANAGED_BY_CONNECTOR
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.cached_base import CachedMongoRepository, cached_query
 from app.helpers.integration_helpers import dedup_server_url_key
@@ -109,6 +110,19 @@ class IntegrationsRepository(CachedMongoRepository[Integration, IntegrationUpdat
                 "source": "custom",
                 "created_by": created_by,
                 "mcp_config.server_url_normalized": key,
+            }
+        )
+
+    async def find_custom_connector(
+        self, created_by: str, provider_domain: str
+    ) -> Integration | None:
+        """Return the user's own connector for a provider; served by the created_by index."""
+        return await self._find_one(
+            {
+                "source": "custom",
+                "created_by": created_by,
+                "managed_by": MANAGED_BY_CONNECTOR,
+                "connector_config.provider_domain": provider_domain,
             }
         )
 

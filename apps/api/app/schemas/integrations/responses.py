@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.constants.integrations import IntegrationStatus, ToolsSetup
+from app.models.connector_models import ConnectorCardInfo
 from app.models.oauth_models import IntegrationContent, ManagedBy
 from app.schemas.common import ResponseModel, SuccessResponse
 
@@ -183,6 +184,7 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     published_at: datetime | None = None
     clone_count: int = 0
     creator: "CommunityIntegrationCreator | None" = None
+    connector: ConnectorCardInfo | None = None
 
 
 class MyIntegrationsResponse(ResponseModel):
@@ -210,6 +212,8 @@ class ConnectIntegrationResponse(ResponseModel, CamelModel):
     tools_count: int | None = None
     redirect_url: str | None = None
     error: str | None = None
+    # Who the key signed in as, when a connector's verify call named the account.
+    account_label: str | None = None
 
 
 class PublishIntegrationResponse(SuccessResponse, CamelModel):

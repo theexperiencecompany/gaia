@@ -6840,6 +6840,17 @@
       "ConnectIntegrationResponse": {
         "description": "The outcome of starting an integration's connect flow.",
         "properties": {
+          "accountLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountlabel"
+          },
           "error": {
             "anyOf": [
               {
@@ -6909,7 +6920,8 @@
           "message",
           "toolsCount",
           "redirectUrl",
-          "error"
+          "error",
+          "accountLabel"
         ],
         "title": "ConnectIntegrationResponse",
         "type": "object"
@@ -7081,6 +7093,67 @@
         ],
         "title": "ConnectOptionsData",
         "type": "object"
+      },
+      "ConnectorCardInfo": {
+        "description": "What a connector's connect card shows before the user hands over a key.",
+        "properties": {
+          "allowedHosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowedhosts",
+            "type": "array"
+          },
+          "capability": {
+            "title": "Capability",
+            "type": "string"
+          },
+          "keyLabel": {
+            "title": "Keylabel",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ConnectorKind"
+          },
+          "providerDomain": {
+            "title": "Providerdomain",
+            "type": "string"
+          },
+          "tokenUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokenurl"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "capability",
+          "providerDomain",
+          "allowedHosts",
+          "keyLabel"
+        ],
+        "title": "ConnectorCardInfo",
+        "type": "object"
+      },
+      "ConnectorKind": {
+        "enum": [
+          "cli",
+          "rest",
+          "sdk"
+        ],
+        "title": "ConnectorKind",
+        "type": "string"
       },
       "ContactCard": {
         "description": "A person flattened to their primary name, email and phone; People may send any as null.",
@@ -13558,7 +13631,8 @@
             "enum": [
               "composio",
               "mcp",
-              "internal"
+              "internal",
+              "connector"
             ],
             "title": "Managedby",
             "type": "string"
@@ -14110,6 +14184,16 @@
             "title": "Clonecount",
             "type": "integer"
           },
+          "connector": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectorCardInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "createdBy": {
             "anyOf": [
               {
@@ -14184,7 +14268,8 @@
             "enum": [
               "composio",
               "mcp",
-              "internal"
+              "internal",
+              "connector"
             ],
             "title": "Managedby",
             "type": "string"
@@ -17630,6 +17715,16 @@
             "title": "Clonecount",
             "type": "integer"
           },
+          "connector": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectorCardInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "createdBy": {
             "anyOf": [
               {
@@ -17712,7 +17807,8 @@
             "enum": [
               "composio",
               "mcp",
-              "internal"
+              "internal",
+              "connector"
             ],
             "title": "Managedby",
             "type": "string"

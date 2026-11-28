@@ -2,6 +2,7 @@
 
 from app.agents.core.subagents.integration_target import CustomMcpSubagent, get_integration_target
 from app.agents.core.subagents.registry import get_subagent_by_id
+from app.constants.connectors import MANAGED_BY_CONNECTOR
 from app.models.subagent_models import Subagent
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import check_integration_status
@@ -18,7 +19,9 @@ def _requires_auth(target: Subagent | CustomMcpSubagent) -> bool:
 
 def is_per_user_mcp(target: Subagent | CustomMcpSubagent) -> bool:
     """Whether the target's tools are issued per user by an MCP server (never registry-bound)."""
-    return isinstance(target, CustomMcpSubagent) or _requires_auth(target)
+    if isinstance(target, CustomMcpSubagent):
+        return target.managed_by != MANAGED_BY_CONNECTOR
+    return _requires_auth(target)
 
 
 async def check_integration_connection(

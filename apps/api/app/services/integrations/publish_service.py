@@ -8,6 +8,7 @@ from app.db.chroma.public_integrations_store import (
 )
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
+from app.models.integration_models import Integration
 from app.services.integrations.integration_content_fallback import build_fallback_content
 from app.services.integrations.integration_inference_service import (
     infer_integration_category,
@@ -28,6 +29,20 @@ class PublishError(Exception):
         super().__init__(message)
 
 
+def _refuse_unpublishable_connector(integration: Integration) -> None:
+    """Raise PublishError for a connector reaching past its provider's domains or never verified."""
+    spec = integration.connector_config
+    if spec is None:
+        return
+    if outside := spec.hosts_outside_provider():
+        raise PublishError(
+            f"A published connector may reach only {spec.provider_domain} and its "
+            f"subdomains; remove {', '.join(outside)}"
+        )
+    if integration.connector_verified_at is None:
+        raise PublishError("Connect it once so GAIA can verify it before publishing")
+
+
 async def publish_custom_integration(
     integration_id: str,
     user_id: str,
@@ -46,6 +61,8 @@ async def publish_custom_integration(
 
     if integration.source != "custom":
         raise PublishError("Only custom integrations can be published")
+
+    _refuse_unpublishable_connector(integration)
 
     if not await user_integration_repository.is_connected(user_id, integration_id):
         raise PublishError("Integration must be connected before publishing")

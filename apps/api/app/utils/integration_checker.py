@@ -18,6 +18,7 @@ from langgraph.config import get_config
 
 from app.agents.tools.run_record import block_integration
 from app.config.settings import settings
+from app.constants.connectors import MANAGED_BY_CONNECTOR
 from app.constants.integrations import (
     ACCOUNT_NEEDS_RECONNECT_HINT,
     MANAGED_BY_MCP,
@@ -88,6 +89,8 @@ async def _standalone_mcp_auth(
     """
     try:
         resolved = await IntegrationResolver.resolve(integration_id)
+        if resolved is not None and resolved.managed_by == MANAGED_BY_CONNECTOR:
+            return _StandaloneAuth(kind="token_only")
         if resolved is None or resolved.managed_by != MANAGED_BY_MCP or resolved.mcp_config is None:
             return _StandaloneAuth(kind="not_mcp")
         if resolved.auth_type == "bearer":

@@ -4,6 +4,7 @@ from typing import Final, Literal
 
 from typing_extensions import TypedDict
 
+from app.constants.connectors import RUN_CONNECTOR_TOOL
 from app.constants.general import FINISH_TASK_NAME
 
 
@@ -252,6 +253,8 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         # capped at BASH_MAX_TIMEOUT_SECONDS); bounding it here capped every command
         # at 120s while the tool advertised 300 and killed code-mode execute() calls.
         "bash",
+        # Its runner bounds the install and the call itself and always destroys the sandbox.
+        RUN_CONNECTOR_TOOL,
     }
 )
 # How much longer the tool node waits than the bound closer to the tool: it must

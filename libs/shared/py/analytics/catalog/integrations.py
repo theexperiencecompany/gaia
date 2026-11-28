@@ -11,6 +11,9 @@ __all__ = [
     "IntegrationAccountRenamed",
     "IntegrationConnectInitiated",
     "IntegrationConnected",
+    "IntegrationConnectorCallRan",
+    "IntegrationConnectorDefined",
+    "IntegrationConnectorVerifyFailed",
     "IntegrationCustomDeleted",
     "IntegrationCustomPublished",
     "IntegrationCustomUnpublished",
@@ -254,3 +257,42 @@ class SkillSearched(WebEvent):
 
     event: ClassVar[str] = "skill:searched"
     budget_per_user_day: ClassVar[int] = 50
+
+
+class IntegrationConnectorDefined(ServerEvent):
+    """The agent saved a connector (a CLI, REST API or SDK) for the user."""
+
+    event: ClassVar[str] = "integration:connector_defined"
+    budget_per_user_day: ClassVar[int] = 30
+
+    integration_id: Identifier
+    kind: Literal["cli", "rest", "sdk"]
+    created: bool
+    # The hosts or packages changed, so other users of a published connector must reconnect.
+    reach_changed: bool
+
+
+class IntegrationConnectorVerifyFailed(ServerEvent):
+    """A key the user entered for a connector failed its verify call."""
+
+    event: ClassVar[str] = "integration:connector_verify_failed"
+    budget_per_user_day: ClassVar[int] = 30
+
+    integration_id: Identifier
+    kind: Literal["cli", "rest", "sdk"]
+    reason: Literal["auth", "install", "timeout", "runner", "exit"]
+
+
+class IntegrationConnectorCallRan(ServerEvent):
+    """One run_connector call finished in its throwaway runner."""
+
+    event: ClassVar[str] = "integration:connector_call_ran"
+    budget_per_user_day: ClassVar[int] = 500
+
+    integration_id: Identifier
+    kind: Literal["cli", "rest", "sdk"]
+    is_write: bool
+    ok: bool
+    failure: Literal["auth", "install", "timeout", "runner", "exit"] | None = None
+    duration_ms: int
+    output_capped: bool

@@ -68,6 +68,9 @@ export type ServerEventName =
   | "integration:account_renamed"
   | "integration:connect_initiated"
   | "integration:connected"
+  | "integration:connector_call_ran"
+  | "integration:connector_defined"
+  | "integration:connector_verify_failed"
   | "integration:custom_deleted"
   | "integration:custom_published"
   | "integration:custom_unpublished"
@@ -943,6 +946,35 @@ export interface EventProperties {
     "provider"?: string;
     "is_new_link"?: boolean;
     "is_reconnect"?: boolean;
+  };
+  "integration:connector_call_ran": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
+    "kind": "cli" | "rest" | "sdk";
+    "is_write": boolean;
+    "ok": boolean;
+    "failure"?: "auth" | "install" | "timeout" | "runner" | "exit";
+    "duration_ms": number;
+    "output_capped": boolean;
+  };
+  "integration:connector_defined": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
+    "kind": "cli" | "rest" | "sdk";
+    "created": boolean;
+    "reach_changed": boolean;
+  };
+  "integration:connector_verify_failed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "integration_id": string;
+    "kind": "cli" | "rest" | "sdk";
+    "reason": "auth" | "install" | "timeout" | "runner" | "exit";
   };
   "integration:custom_deleted": {
     "actor": "user" | "agent";

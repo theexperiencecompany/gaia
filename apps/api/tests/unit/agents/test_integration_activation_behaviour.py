@@ -85,7 +85,7 @@ class TestActivateMcpTools:
 @pytest.mark.unit
 @pytest.mark.asyncio
 class TestOverviewSection:
-    @pytest.mark.parametrize("doc", [None, SimpleNamespace(description="")])
+    @pytest.mark.parametrize("doc", [None, SimpleNamespace(description="", connector_config=None)])
     async def test_a_custom_mcp_without_a_description_has_no_overview(
         self, doc: SimpleNamespace | None
     ) -> None:

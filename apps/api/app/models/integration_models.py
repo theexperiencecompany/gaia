@@ -21,6 +21,7 @@ from app.constants.integrations import (
     ToolsSetup,
 )
 from app.helpers.slug_helpers import generate_integration_slug
+from app.models.connector_models import ConnectorCardInfo, ConnectorSpec
 from app.models.document_models import MongoDocument, UserScopedDocument
 from app.models.mcp_config import AuthType, MCPConfig
 from app.models.oauth_models import IntegrationContent, ManagedBy, OAuthIntegration
@@ -181,6 +182,9 @@ class Integration(MongoDocument):
     # Configuration (one of these based on managed_by)
     mcp_config: MCPConfig | None = None
     composio_config: ComposioConfigDoc | None = None
+    connector_config: ConnectorSpec | None = None
+    # When a verify call last proved this connector's spec works; cleared when its hosts or packages change.
+    connector_verified_at: datetime | None = None
 
     # Legacy top-level auth mirror: mcp_config is authoritative, these duplicate
     # its flags for older documents (IntegrationResolver reconciles and self-heals
@@ -210,6 +214,14 @@ class Integration(MongoDocument):
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 
+    def connector_card(self) -> ConnectorCardInfo | None:
+        """What this connector's connect card shows; None for an MCP or Composio integration."""
+        if self.connector_config is None:
+            return None
+        return ConnectorCardInfo.from_spec(
+            self.connector_config, verified=self.connector_verified_at is not None
+        )
+
     model_config = ConfigDict(extra="ignore", json_encoders={datetime: lambda v: v.isoformat()})
 
 
@@ -226,6 +238,8 @@ class IntegrationUpdate(BaseModel):
     description: str | None = None
     is_public: bool | None = None
     mcp_config: MCPConfig | None = None
+    connector_config: ConnectorSpec | None = None
+    connector_verified_at: datetime | None = None
     updated_at: datetime | None = None
 
 
@@ -381,6 +395,7 @@ class IntegrationResponse(BaseModel):
     slug: str | None = None
     # Creator info (populated via aggregation from users collection)
     creator: dict[str, str | None] | None = None
+    connector: ConnectorCardInfo | None = None
 
     @field_validator("clone_count", mode="before")
     @classmethod
@@ -397,6 +412,9 @@ class IntegrationResponse(BaseModel):
         if integration.mcp_config:
             requires_auth = integration.mcp_config.requires_auth
             auth_type = integration.mcp_config.auth_type or ("oauth" if requires_auth else "none")
+        elif integration.connector_config:
+            requires_auth = True
+            auth_type = "bearer"
 
         # Compute slug at runtime (not stored in DB)
         slug = generate_integration_slug(
@@ -422,6 +440,7 @@ class IntegrationResponse(BaseModel):
             published_at=integration.published_at,
             clone_count=integration.clone_count or 0,
             slug=slug,
+            connector=integration.connector_card(),
         )
 
     @classmethod

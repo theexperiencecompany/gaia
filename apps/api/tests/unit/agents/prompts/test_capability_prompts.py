@@ -241,7 +241,10 @@ class TestGeneratedLines:
             "add any remote MCP server by its URL (a vendor's official server or the user's own; "
             "no auth, OAuth, or a token entered in a secure form, never in chat) and use its tools "
             "the same way, and custom servers can be published to a community marketplace that "
-            "integration search also covers."
+            "integration search also covers. Any service with a CLI, REST API or SDK connects as a "
+            "connector (define_connector): the user pastes their key into a card that shows the "
+            "exact hosts it goes to, GAIA verifies it, and every call runs in a throwaway sandbox "
+            "that holds the key for that call only."
         )
 
     def test_the_channels_line_names_every_bot_platform_in_display_order(self) -> None:

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.agents.tools.invocation import invoke_tool
 from app.config.oauth_config import all_integrations
+from app.constants.connectors import DEFINE_CONNECTOR_TOOL
 from app.constants.integrations import (
     CONNECT_INTEGRATION_TOOL,
     MAX_AVAILABLE_FOR_LLM,
@@ -351,7 +352,9 @@ async def connect_integration(
                 available = [i.id for i in all_integrations() if i.available]
                 results.append(
                     f"❌ '{integration_id}' not found. "
-                    f"Available IDs: {', '.join(available[:5])}{'...' if len(available) > 5 else ''}"
+                    f"Available IDs: {', '.join(available[:5])}{'...' if len(available) > 5 else ''}. "
+                    f"For a service with no integration, connect it with {DEFINE_CONNECTOR_TOOL} "
+                    "through its CLI, REST API or SDK."
                 )
                 continue
 

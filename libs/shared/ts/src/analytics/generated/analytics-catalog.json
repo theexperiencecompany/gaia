@@ -4565,6 +4565,178 @@
       }
     },
     {
+      "event": "integration:connector_call_ran",
+      "class": "IntegrationConnectorCallRan",
+      "owner": "server",
+      "domain": "integration",
+      "description": "One run_connector call finished in its throwaway runner.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "One run_connector call finished in its throwaway runner.",
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "cli",
+              "rest",
+              "sdk"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "is_write": {
+            "title": "Is Write",
+            "type": "boolean"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auth",
+                  "install",
+                  "timeout",
+                  "runner",
+                  "exit"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Failure"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "output_capped": {
+            "title": "Output Capped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "integration_id",
+          "kind",
+          "is_write",
+          "ok",
+          "duration_ms",
+          "output_capped"
+        ],
+        "title": "IntegrationConnectorCallRan",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:connector_defined",
+      "class": "IntegrationConnectorDefined",
+      "owner": "server",
+      "domain": "integration",
+      "description": "The agent saved a connector (a CLI, REST API or SDK) for the user.",
+      "previous_names": [],
+      "budget_per_user_day": 30,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The agent saved a connector (a CLI, REST API or SDK) for the user.",
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "cli",
+              "rest",
+              "sdk"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "reach_changed": {
+            "title": "Reach Changed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "integration_id",
+          "kind",
+          "created",
+          "reach_changed"
+        ],
+        "title": "IntegrationConnectorDefined",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:connector_verify_failed",
+      "class": "IntegrationConnectorVerifyFailed",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A key the user entered for a connector failed its verify call.",
+      "previous_names": [],
+      "budget_per_user_day": 30,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A key the user entered for a connector failed its verify call.",
+        "properties": {
+          "integration_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "cli",
+              "rest",
+              "sdk"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "auth",
+              "install",
+              "timeout",
+              "runner",
+              "exit"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration_id",
+          "kind",
+          "reason"
+        ],
+        "title": "IntegrationConnectorVerifyFailed",
+        "type": "object"
+      }
+    },
+    {
       "event": "integration:custom_deleted",
       "class": "IntegrationCustomDeleted",
       "owner": "server",

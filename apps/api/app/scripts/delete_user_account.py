@@ -128,6 +128,8 @@ def _mongo_inventory(db: MongoDatabase, uid: str, email: str) -> dict[str, int]:
             n = db[name].count_documents({"$or": [{"user_id": uid}, {"user_email": email}]})
         if name == "link_reports":
             n = db[name].count_documents({"$or": [{"user_id": uid}, {"reporter_key": uid}]})
+        if name == "integrations":
+            n += db[name].count_documents({"source": "custom", "created_by": uid})
         if n:
             counts[name] = n
     gridfs_count = sum(1 for _ in gridfs.GridFSBucket(db).find({"metadata.user_id": uid}))
@@ -331,6 +333,9 @@ def _delete_mongo_data(d: _Footprint) -> None:
                 n += d.db[name].delete_many({"user_email": d.email}).deleted_count
             if name == "link_reports":
                 n += d.db[name].delete_many({"reporter_key": d.uid}).deleted_count
+            if name == "integrations":
+                # Custom MCP servers and connectors are keyed by their creator, not user_id.
+                n += d.db[name].delete_many({"source": "custom", "created_by": d.uid}).deleted_count
             sessions = _platform_session_filters(d.platform_links)
             if name == "bot_sessions" and sessions:
                 n += d.db[name].delete_many({"$or": sessions}).deleted_count
