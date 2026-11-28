@@ -58,7 +58,7 @@ export function ConnectedActions({
             isPending={disconnect.isPending}
             isDisabled={disconnect.isPending}
             aria-label={disconnect.label}
-            variant="danger"
+            variant="danger-soft"
           >
             {!disconnect.isPending && disconnect.icon}
             {!useIconOnly && disconnect.label}
@@ -70,7 +70,7 @@ export function ConnectedActions({
       {publicSlug && (
         <Tooltip>
           <LinkButton
-            variant="primary"
+            variant="accent-soft"
             isIconOnly={useIconOnly}
             className="w-full"
             href={marketplacePath(publicSlug)}
@@ -92,7 +92,7 @@ export function ConnectedActions({
             isPending={publish.isPending}
             isDisabled={publish.isPending}
             aria-label="Unpublish"
-            variant="primary"
+            variant="warning-soft"
           >
             {!publish.isPending && (
               <RemoveCircleIcon
@@ -116,7 +116,7 @@ export function ConnectedActions({
             isPending={publish.isPending}
             isDisabled={publish.isPending}
             aria-label="Publish"
-            variant="primary"
+            variant="accent-soft"
           >
             {!publish.isPending && <GlobalIcon width={18} height={18} />}
             {!useIconOnly && "Publish"}
@@ -128,7 +128,7 @@ export function ConnectedActions({
       {publicSlug && (
         <Tooltip>
           <GaiaButton
-            variant="default-solid"
+            variant="default-soft"
             isIconOnly={useIconOnly}
             className="w-full"
             onPress={() => onShare(publicSlug)}

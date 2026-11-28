@@ -79,7 +79,7 @@ export function NotConnectedActions({
         onPress={connect.onConnect}
         isPending={connect.isPending}
         isDisabled={connect.isPending}
-        variant="primary"
+        variant="warning-soft"
       >
         {!connect.isPending && <RedoIcon width={18} height={18} />}
         Retry
@@ -90,7 +90,7 @@ export function NotConnectedActions({
           onPress={remove.onDelete}
           isPending={remove.isDeletePending}
           isDisabled={remove.isDeletePending}
-          variant="danger"
+          variant="danger-soft"
         >
           <RemoveCircleIcon width={18} height={18} className="outline-0!" />
           {remove.deleteText}
@@ -101,7 +101,7 @@ export function NotConnectedActions({
           onPress={remove.onDisconnect}
           isPending={remove.isDisconnectPending}
           isDisabled={remove.isDisconnectPending}
-          variant="danger"
+          variant="danger-soft"
         >
           <RemoveCircleIcon width={18} height={18} className="outline-0!" />
           {remove.labelText}

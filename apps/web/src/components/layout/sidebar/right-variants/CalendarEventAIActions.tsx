@@ -84,7 +84,7 @@ export default function CalendarEventAIActions({
   return (
     <ButtonGroup variant="secondary" fullWidth>
       <GaiaButton
-        variant="default-solid"
+        variant="accent-soft"
         onPress={handleAction}
         className="flex-1 cursor-pointer"
       >
@@ -97,11 +97,7 @@ export default function CalendarEventAIActions({
         {currentAction.label}
       </GaiaButton>
       <Dropdown>
-        <GaiaButton
-          aria-label="More options"
-          variant="default-solid"
-          isIconOnly
-        >
+        <GaiaButton aria-label="More options" variant="accent-soft" isIconOnly>
           <ArrowDown01Icon className="size-4" />
         </GaiaButton>
         <Dropdown.Popover placement="bottom end">
