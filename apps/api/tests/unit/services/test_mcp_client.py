@@ -8,7 +8,7 @@ retry/skip logic.
 
 import asyncio
 import base64
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 import contextlib
 from contextlib import asynccontextmanager, contextmanager
 import copy
@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, call, create_autospec, patch
 from urllib.parse import parse_qs, urlparse
 
 from cryptography.fernet import Fernet
+import httpx
 from langchain_core.tools import BaseTool
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from mcp.types import (
@@ -42,7 +43,15 @@ from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.integrations import IntegrationStatus, ToolsSetup
 from app.constants.log_tags import LogTag
-from app.constants.mcp import MCP_RENAMED_TOOL_NOTE, MCP_UNLISTED_CONNECT_MAX
+from app.constants.mcp import (
+    MCP_OAUTH_GRANT_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_LEASE_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_MAX_HOLD_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_PREFIX,
+    MCP_OAUTH_GRANT_LOCK_RENEW_SECONDS,
+    MCP_RENAMED_TOOL_NOTE,
+    MCP_UNLISTED_CONNECT_MAX,
+)
 from app.db.repositories.integrations import IntegrationsRepository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
@@ -53,7 +62,12 @@ from app.models.integration_models import (
     StoredIntegrationTool,
     UserIntegrationDocument,
 )
-from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
+from app.models.mcp_config import (
+    DCRClientRegistration,
+    MCPConfig,
+    OAuthDiscovery,
+    OidcTokenResponse,
+)
 from app.services.mcp import mcp_client, mcp_oauth, server_routing, tool_naming
 from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
@@ -71,24 +85,24 @@ from app.services.mcp.mcp_errors import (
     MCPAuthorizationRequiredError,
     MCPIntegrationNotFoundError,
     McpToolResultError,
+    OAuthGrantLockUnavailableError,
     StepUpAuthRequiredError,
     _extract_response_signal,
     is_terminal_auth_failure,
 )
 from app.services.mcp.mcp_oauth import (
     _build_oauth_scope_string,
-    _client_id_from_metadata_or_dcr,
     _exchange_code_for_tokens,
-    _metadata_document_candidate,
     _obtain_auth_client_id,
     _register_client,
-    _resolve_token_exchange_credentials,
     _TokenExchangeRequest,
     build_oauth_auth_url,
     handle_oauth_callback,
 )
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.services.mcp.oauth_client import OAuthClient, resolve_client_credentials
 from app.services.mcp.oauth_discovery import discover_oauth_config, probe_mcp_connection
+from app.services.mcp.oauth_session_auth import StoredOAuthTokenAuth
 from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
 from app.services.mcp.server_routing import (
     _connectable_candidate_ids,
@@ -105,7 +119,6 @@ from app.services.mcp.server_routing import (
     read_ui_resource_details,
 )
 from app.services.mcp.token_management import (
-    resolve_client_credentials,
     revoke_integration_tokens,
     revoke_tokens,
     try_refresh_token,
@@ -377,21 +390,52 @@ class TestMCPClientBuildConfig:
         assert srv["auth"] == "actual_token"
         assert srv["headers"]["Authorization"] == "Bearer actual_token"
 
-    async def test_build_config_oauth_token_when_auth_required(self):
+    async def test_build_config_oauth_session_reads_the_stored_token_per_request(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config(requires_auth=True)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value="oauth_tok")
         config = await client._build_config(INTEGRATION_ID, mcp_config)
-        assert config["mcpServers"][INTEGRATION_ID]["auth"] == "oauth_tok"
+        auth = config["mcpServers"][INTEGRATION_ID]["auth"]
+        assert isinstance(auth, StoredOAuthTokenAuth)
+
+        client.token_store.get_bearer_token.assert_awaited_once_with(INTEGRATION_ID)
+
+        client.token_store.get_oauth_token = AsyncMock(return_value="later_tok")
+        request = httpx.Request("POST", "https://mcp.example.com/mcp")
+        await anext(auth.async_auth_flow(request))
+        assert request.headers["Authorization"] == "Bearer later_tok"
+        client.token_store.get_oauth_token.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_a_session_refreshes_the_token_the_server_rejected_and_resends(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config(requires_auth=True)
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        client.token_store.get_oauth_token = AsyncMock(return_value="oauth_tok")
+        client.token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        config = await client._build_config(INTEGRATION_ID, mcp_config)
+        auth = config["mcpServers"][INTEGRATION_ID]["auth"]
+        assert isinstance(auth, StoredOAuthTokenAuth)
+        flow = auth.async_auth_flow(httpx.Request("POST", "https://mcp.example.com/mcp"))
+        sent = await anext(flow)
+
+        async def refresh(*_: object) -> bool:
+            client.token_store.get_oauth_token.return_value = "fresh_tok"
+            return True
+
+        client._try_refresh_token = AsyncMock(side_effect=refresh)
+        resent = await flow.asend(httpx.Response(401, request=sent))
+
+        assert resent.headers["Authorization"] == "Bearer fresh_tok"
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config, "oauth_tok")
+        client.token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_build_config_raises_when_auth_required_no_token(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config(requires_auth=True)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value=None)
+        client.token_store.get_refresh_token = AsyncMock(return_value=None)
         with pytest.raises(ValueError, match="No valid token"):
             await client._build_config(INTEGRATION_ID, mcp_config)
 
@@ -428,16 +472,44 @@ class TestMCPClientBuildConfig:
         config = await client._build_config(INTEGRATION_ID, mcp_config)
         assert config["mcpServers"][INTEGRATION_ID]["transport"] == "sse"
 
-    async def test_build_config_refreshes_expiring_token(self):
+    async def test_build_config_refreshes_an_expired_token(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config(requires_auth=True)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=True)
-        client.token_store.get_oauth_token = AsyncMock(return_value="refreshed_tok")
+        client.token_store.get_oauth_token = AsyncMock(side_effect=[None, "refreshed_tok"])
+        client.token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         client._try_refresh_token = AsyncMock(return_value=True)
         config = await client._build_config(INTEGRATION_ID, mcp_config)
-        client._try_refresh_token.assert_awaited_once()
-        assert config["mcpServers"][INTEGRATION_ID]["auth"] == "refreshed_tok"
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config, None)
+        assert isinstance(config["mcpServers"][INTEGRATION_ID]["auth"], StoredOAuthTokenAuth)
+
+    async def test_a_rejected_token_already_replaced_is_not_refreshed_again(self):
+        """Two requests 401 on one token; the second must reuse the first's refresh, not spend the rotated refresh token."""
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_oauth_token = AsyncMock(return_value="new_tok")
+        client._try_refresh_token = AsyncMock(return_value=True)
+
+        token = await client.oauth_access_token(INTEGRATION_ID, _make_mcp_config(), "old_tok")
+
+        assert token == "new_tok"
+        client._try_refresh_token.assert_not_awaited()
+
+    async def test_a_rejected_token_still_stored_is_refreshed(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        client.token_store.get_oauth_token = AsyncMock(side_effect=["old_tok", "new_tok"])
+        client.token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        client._try_refresh_token = AsyncMock(return_value=True)
+
+        token = await client.oauth_access_token(INTEGRATION_ID, mcp_config, "old_tok")
+
+        assert token == "new_tok"
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config, "old_tok")
+        assert client.token_store.get_oauth_token.await_args_list == [
+            call(INTEGRATION_ID),
+            call(INTEGRATION_ID),
+        ]
+        client.token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
 
 
 class TestMCPClientConnect:
@@ -594,7 +666,6 @@ class TestMCPClientDoConnect:
 
         client = MCPClient(user_id=USER_ID)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value="tok")
 
         with pytest.raises(StepUpAuthRequiredError) as exc_info:
@@ -679,7 +750,6 @@ class TestMCPClientDoConnect:
 
         client = MCPClient(user_id=USER_ID)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value="tok")
         client.token_store.store_unauthenticated = AsyncMock()
         client._try_refresh_token = AsyncMock(return_value=True)
@@ -1362,48 +1432,6 @@ class TestMCPTokenStoreGetOAuthToken:
         assert result is None
 
 
-class TestMCPTokenStoreIsTokenExpiringSoon:
-    async def test_true_when_expiring_soon(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        soon = datetime.now(UTC) + timedelta(seconds=60)
-        cred = _make_credential(token_expires_at=soon)
-        store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID, threshold_seconds=300)
-        assert result is True
-
-    async def test_false_when_not_expiring_soon(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        far_future = datetime.now(UTC) + timedelta(hours=2)
-        cred = _make_credential(token_expires_at=far_future)
-        store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID)
-        assert result is False
-
-    async def test_false_when_no_credential(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        store.get_credential = AsyncMock(return_value=None)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID)
-        assert result is False
-
-    async def test_stale_token_without_expiry(self):
-        """Token issued >1 hour ago with no expires_at should be treated as expiring."""
-        store = MCPTokenStore(user_id=USER_ID)
-        old = datetime.now(UTC) - timedelta(hours=2)
-        cred = _make_credential(token_expires_at=None, connected_at=old)
-        store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID)
-        assert result is True
-
-    async def test_fresh_token_without_expiry(self):
-        """Token issued <1 hour ago with no expires_at should NOT be treated as expiring."""
-        store = MCPTokenStore(user_id=USER_ID)
-        recent = datetime.now(UTC) - timedelta(minutes=5)
-        cred = _make_credential(token_expires_at=None, connected_at=recent)
-        store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(INTEGRATION_ID)
-        assert result is False
-
-
 class TestMCPTokenStoreStoreOAuthTokens:
     async def test_stores_new_oauth_tokens(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1541,6 +1569,7 @@ class TestMCPTokenStoreOAuthState:
             assert code_verifier is None
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestMCPTokenStoreDeleteCredentials:
     async def test_deletes_existing(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1767,6 +1796,135 @@ class TestMCPTokenStoreBatchLookup:
             assert await store.are_connected([]) == {}
 
 
+@pytest.mark.usefixtures("fake_redis")
+class TestOAuthGrantLock:
+    """One refresh or delete of a grant at a time, across replicas; a waiter reuses the winner's token."""
+
+    async def test_a_waiter_reuses_the_token_another_holder_refreshed(self):
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_oauth_token = AsyncMock(return_value="fresh_tok")
+        with (
+            patch(
+                "app.services.mcp.mcp_client.discover_oauth_config",
+                AsyncMock(return_value=_make_oauth_discovery()),
+            ),
+            patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh,
+        ):
+            refreshed = await client._try_refresh_token(
+                INTEGRATION_ID, _make_mcp_config(), "old_tok"
+            )
+
+        assert refreshed is True
+        refresh.assert_not_awaited()
+
+    async def test_the_holder_refreshes_when_the_failed_token_is_still_stored(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        discovery = _make_oauth_discovery()
+        client.token_store.get_oauth_token = AsyncMock(return_value="old_tok")
+        with (
+            patch(
+                "app.services.mcp.mcp_client.discover_oauth_config",
+                AsyncMock(return_value=discovery),
+            ) as discover,
+            patch(
+                "app.services.mcp.mcp_client.try_refresh_token", AsyncMock(return_value=True)
+            ) as refresh,
+        ):
+            refreshed = await client._try_refresh_token(INTEGRATION_ID, mcp_config)
+
+        assert refreshed is True
+        discover.assert_awaited_once_with(client.token_store, INTEGRATION_ID, mcp_config)
+        refresh.assert_awaited_once_with(client.token_store, INTEGRATION_ID, mcp_config, discovery)
+        assert client.token_store.get_oauth_token.await_args_list == [
+            call(INTEGRATION_ID),
+            call(INTEGRATION_ID),
+        ]
+
+    async def test_no_refresh_without_the_lease(self, monkeypatch: pytest.MonkeyPatch):
+        client = MCPClient(user_id=USER_ID)
+        monkeypatch.setattr(client.token_store, "get_oauth_token", AsyncMock(return_value=None))
+
+        @contextlib.asynccontextmanager
+        async def not_held() -> AsyncIterator[bool]:
+            yield False
+
+        lock = MagicMock()
+        lock.hold = not_held
+        grant_lock = MagicMock(return_value=lock)
+        monkeypatch.setattr(client.token_store, "grant_lock", grant_lock)
+        with (
+            patch(
+                "app.services.mcp.mcp_client.discover_oauth_config",
+                AsyncMock(return_value=_make_oauth_discovery()),
+            ),
+            patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh,
+            pytest.raises(OAuthGrantLockUnavailableError) as raised,
+        ):
+            await client._try_refresh_token(INTEGRATION_ID, _make_mcp_config())
+
+        assert str(raised.value) == f"OAuth grant lock for {INTEGRATION_ID} could not be taken"
+
+        refresh.assert_not_awaited()
+        grant_lock.assert_called_once_with(INTEGRATION_ID)
+
+    async def test_a_lease_not_taken_during_401_recovery_never_tears_the_grant_down(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        client = MCPClient(user_id=USER_ID)
+        reset = AsyncMock()
+        monkeypatch.setattr(client, "_reset_to_disconnected", reset)
+        monkeypatch.setattr(
+            client,
+            "_try_refresh_token",
+            AsyncMock(side_effect=OAuthGrantLockUnavailableError(INTEGRATION_ID)),
+        )
+
+        with (
+            patch("app.services.mcp.mcp_client.log"),
+            pytest.raises(OAuthGrantLockUnavailableError),
+        ):
+            await client._handle_connect_failure(
+                _api_error(401), INTEGRATION_ID, _make_mcp_config(requires_auth=True)
+            )
+
+        reset.assert_not_awaited()
+
+    async def test_a_delete_runs_inside_the_grant_lock_a_refresh_holds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = _make_credential()
+        ctx_fn, mock_session = _fake_db_session(existing)
+        inside: list[bool] = []
+        holding = {"now": False}
+
+        @contextlib.asynccontextmanager
+        async def hold() -> AsyncIterator[bool]:
+            holding["now"] = True
+            yield True
+            holding["now"] = False
+
+        lock = MagicMock()
+        lock.hold = hold
+        grant_lock = MagicMock(return_value=lock)
+        monkeypatch.setattr(store, "grant_lock", grant_lock)
+        mock_session.delete = AsyncMock(side_effect=lambda _cred: inside.append(holding["now"]))
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.delete_credentials(INTEGRATION_ID)
+
+        assert inside == [True]
+        grant_lock.assert_called_once_with(INTEGRATION_ID)
+
+    def test_the_grant_lock_is_keyed_per_user_and_integration_with_the_grant_timings(self):
+        lock = MCPTokenStore("u1").grant_lock("i1")
+        assert lock._key == f"{MCP_OAUTH_GRANT_LOCK_PREFIX}u1:i1"
+        assert lock._lease_seconds == MCP_OAUTH_GRANT_LOCK_LEASE_SECONDS
+        assert lock._acquire_timeout_seconds == MCP_OAUTH_GRANT_LOCK_ACQUIRE_TIMEOUT_SECONDS
+        assert lock._renew_seconds == MCP_OAUTH_GRANT_LOCK_RENEW_SECONDS
+        assert lock._max_hold_seconds == MCP_OAUTH_GRANT_LOCK_MAX_HOLD_SECONDS
+
+
 class TestMCPTokenStoreDCRClient:
     async def test_get_dcr_client(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1775,7 +1933,7 @@ class TestMCPTokenStoreDCRClient:
         )
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.get_dcr_client(INTEGRATION_ID)
-        assert result == {"client_id": "dcr_123", "client_secret": "sec"}
+        assert result == DCRClientRegistration(client_id="dcr_123", client_secret="sec")
 
     async def test_get_dcr_client_none(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1849,7 +2007,11 @@ class TestForgetRejectedGrant:
         ctx_fn, mock_session = _fake_db_session(existing)
         with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
             await store.forget_rejected_grant(INTEGRATION_ID, "old_refresh", client_id="old_client")
-        assert existing.refresh_token is None
+        assert (existing.access_token, existing.refresh_token, existing.token_expires_at) == (
+            None,
+            None,
+            None,
+        )
         assert existing.client_registration is None
         mock_session.commit.assert_awaited_once()
 
@@ -2138,6 +2300,42 @@ class TestTryRefreshToken:
         )
         assert result is False
         token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        # A missing client can be a config gap, so the grant survives for when it is fixed.
+        token_store.forget_rejected_grant.assert_not_awaited()
+
+    async def test_a_metadata_document_client_refreshes_as_its_document_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "HOST", "https://api.gaia.test")
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_dcr_client = AsyncMock(return_value=None)
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"access_token": "new_access", "expires_in": 3600}
+
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(),
+                _make_oauth_discovery(
+                    metadata_overrides={"client_id_metadata_document_supported": True}
+                ),
+            )
+
+        assert result is True
+        posted = mock_client.post.await_args.kwargs
+        assert posted["data"]["client_id"] == (
+            "https://api.gaia.test/api/v1/oauth/client-metadata.json"
+        )
+        assert "Authorization" not in posted["headers"]
 
     async def test_refresh_http_error(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -2231,7 +2429,9 @@ class TestTryRefreshToken:
         token_store = AsyncMock(spec=MCPTokenStore)
         token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-        token_store.get_dcr_client = AsyncMock(return_value={"client_id": "forgotten"})
+        token_store.get_dcr_client = AsyncMock(
+            return_value=DCRClientRegistration(client_id="forgotten")
+        )
 
         result = await self._refresh_rejected_as_invalid_client(
             token_store, _make_mcp_config(client_id=None)
@@ -2302,7 +2502,7 @@ class TestTryRefreshToken:
         token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+            return_value=DCRClientRegistration(client_id="dcr_cid", client_secret="dcr_sec")
         )
         token_store.store_oauth_tokens = AsyncMock()
 
@@ -2355,6 +2555,36 @@ class TestTryRefreshToken:
 
 
 class TestRevokeTokens:
+    async def test_a_metadata_document_client_revokes_as_its_document_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "HOST", "https://api.gaia.test")
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_oauth_token = AsyncMock(return_value=None)
+        token_store.get_dcr_client = AsyncMock(return_value=None)
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={
+                "revocation_endpoint": "https://auth.example.com/revoke",
+                "client_id_metadata_document_supported": True,
+            }
+        )
+
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock()
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            await revoke_tokens(token_store, INTEGRATION_ID, _make_mcp_config(), oauth_config)
+
+        posted = mock_client.post.await_args.kwargs
+        assert posted["data"] == {
+            "token": "refresh_tok",
+            "token_type_hint": "refresh_token",
+            "client_id": "https://api.gaia.test/api/v1/oauth/client-metadata.json",
+        }
+
     async def test_revokes_both_tokens(self):
         token_store = AsyncMock(spec=MCPTokenStore)
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
@@ -2381,7 +2611,7 @@ class TestRevokeTokens:
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_oauth_token = AsyncMock(return_value=None)
         token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+            return_value=DCRClientRegistration(client_id="dcr_cid", client_secret="dcr_sec")
         )
 
         oauth_config = _make_oauth_discovery(
@@ -4223,7 +4453,9 @@ class TestMCPClientBuildOauthAuthUrl:
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "dcr_id"})
+            client.token_store.get_dcr_client = AsyncMock(
+                return_value=DCRClientRegistration(client_id="dcr_id")
+            )
             client.token_store.create_oauth_state = AsyncMock(return_value="state")
 
             url = await build_oauth_auth_url(
@@ -5200,9 +5432,6 @@ class TestHandleConnectFailureExact:
     ) -> None:
         client = MCPClient(user_id=USER_ID)
         monkeypatch.setattr(client.token_store, "get_bearer_token", AsyncMock(return_value=None))
-        monkeypatch.setattr(
-            client.token_store, "is_token_expiring_soon", AsyncMock(return_value=False)
-        )
         monkeypatch.setattr(client.token_store, "get_oauth_token", AsyncMock(return_value=None))
         monkeypatch.setattr(client.token_store, "get_refresh_token", AsyncMock(return_value=None))
         mcp_config = _make_mcp_config(requires_auth=True)
@@ -5377,28 +5606,6 @@ class TestHandleConnectFailureExact:
 
 
 class TestSmallOauthHelpersExact:
-    def test_the_metadata_document_candidate_is_computed_from_the_api_base(self) -> None:
-        """All three values describe the same base URL; computing the localhost flag from anything else mismatches what the auth server can fetch."""
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url", return_value="http://localhost:8000"
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=True) as is_local,
-            patch(
-                "app.services.mcp.mcp_oauth.get_client_metadata_document_url",
-                return_value="http://localhost:8000/.well-known/mcp-client",
-            ) as doc_url,
-        ):
-            result = _metadata_document_candidate()
-
-        assert result == (
-            "http://localhost:8000",
-            True,
-            "http://localhost:8000/.well-known/mcp-client",
-        )
-        is_local.assert_called_once_with("http://localhost:8000")
-        doc_url.assert_called_once_with("http://localhost:8000")
-
     def test_scopes_are_joined_by_a_single_space(self) -> None:
         """RFC 6749 scope is space-delimited; any other separator makes the whole string one unknown scope."""
         oauth_config = _make_oauth_discovery(
@@ -5420,15 +5627,17 @@ class TestSmallOauthHelpersExact:
     ) -> None:
         """A dropped redirect_uri registers a client the auth server will then refuse to redirect back to."""
         client = MCPClient(user_id=USER_ID)
-        oauth_config = _make_oauth_discovery()
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"registration_endpoint": "https://auth.example.com/register"}
+        )
         monkeypatch.setattr(client.token_store, "get_dcr_client", AsyncMock(return_value=None))
 
         with (
             patch(
-                "app.services.mcp.mcp_oauth._client_id_from_metadata_or_dcr",
+                "app.services.mcp.mcp_oauth._register_client",
                 new_callable=AsyncMock,
                 return_value="dcr_client",
-            ) as fallback,
+            ) as register,
             patch("app.services.mcp.mcp_oauth.log"),
         ):
             client_id = await _obtain_auth_client_id(
@@ -5440,8 +5649,11 @@ class TestSmallOauthHelpersExact:
             )
 
         assert client_id == "dcr_client"
-        fallback.assert_awaited_once_with(
-            client.token_store, INTEGRATION_ID, oauth_config, "https://myapp.com/callback"
+        register.assert_awaited_once_with(
+            client.token_store,
+            INTEGRATION_ID,
+            oauth_config.as_metadata,
+            "https://myapp.com/callback",
         )
 
 
@@ -6729,153 +6941,6 @@ class TestBuildOauthAuthUrlExactParams:
         )
 
 
-class TestClientIdFromMetadataOrDcrExact:
-    async def test_metadata_doc_returned_when_supported_and_api_is_public(self):
-        client = MCPClient(user_id=USER_ID)
-        discovery = _make_oauth_discovery(
-            metadata_overrides={"client_id_metadata_document_supported": True}
-        )
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url",
-                return_value="https://api.gaia.dev",
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=False),
-            patch(
-                "app.services.mcp.mcp_oauth.get_client_metadata_document_url",
-                return_value="https://api.gaia.dev/.well-known/oauth-client",
-            ) as mock_doc_url,
-            patch("app.services.mcp.mcp_oauth.log") as mock_log,
-        ):
-            result = await _client_id_from_metadata_or_dcr(
-                client.token_store, INTEGRATION_ID, discovery, "https://cb"
-            )
-
-        assert result == "https://api.gaia.dev/.well-known/oauth-client"
-        mock_doc_url.assert_called_once_with("https://api.gaia.dev")
-        mock_log.info.assert_called_once_with(
-            f"{LogTag.MCP} Using client metadata document URL as client_id for",
-            integration_id=INTEGRATION_ID,
-            client_id="https://api.gaia.dev/.well-known/oauth-client",
-        )
-
-    async def test_falls_back_to_dcr_on_localhost_even_when_supported(self):
-        client = MCPClient(user_id=USER_ID)
-        discovery = _make_oauth_discovery(
-            metadata_overrides={
-                "client_id_metadata_document_supported": True,
-                "registration_endpoint": "https://auth.example.com/register",
-            }
-        )
-        as_metadata = discovery.as_metadata
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url",
-                return_value="http://localhost:8000",
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=True),
-            patch(
-                "app.services.mcp.mcp_oauth._register_client",
-                new_callable=AsyncMock,
-                return_value="dcr_cid",
-            ) as mock_register,
-            patch("app.services.mcp.mcp_oauth.log"),
-        ):
-            result = await _client_id_from_metadata_or_dcr(
-                client.token_store, INTEGRATION_ID, discovery, "https://cb"
-            )
-
-        assert result == "dcr_cid"
-        mock_register.assert_awaited_once_with(
-            client.token_store, INTEGRATION_ID, as_metadata, "https://cb"
-        )
-
-
-class TestResolveTokenExchangeCredentialsExact:
-    async def test_preconfigured_credentials_win_before_dcr_lookup(self):
-        client = MCPClient(user_id=USER_ID)
-        mcp_config = _make_mcp_config(client_id="cfg_client", client_secret="cfg_secret")
-        client.token_store.get_dcr_client = AsyncMock()
-
-        result = await _resolve_token_exchange_credentials(
-            client.token_store, INTEGRATION_ID, mcp_config, _make_oauth_discovery()
-        )
-
-        assert result == ("cfg_client", "cfg_secret")
-        client.token_store.get_dcr_client.assert_not_awaited()
-
-    async def test_stored_dcr_client_used_when_no_preconfigured_credentials(self):
-        client = MCPClient(user_id=USER_ID)
-        mcp_config = _make_mcp_config()
-        client.token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
-        )
-
-        result = await _resolve_token_exchange_credentials(
-            client.token_store, INTEGRATION_ID, mcp_config, _make_oauth_discovery()
-        )
-
-        assert result == ("dcr_cid", "dcr_sec")
-        client.token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
-
-    async def test_metadata_document_returns_url_without_secret(self):
-        client = MCPClient(user_id=USER_ID)
-        mcp_config = _make_mcp_config()
-        discovery = _make_oauth_discovery(
-            metadata_overrides={"client_id_metadata_document_supported": True}
-        )
-        client.token_store.get_dcr_client = AsyncMock(return_value=None)
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url",
-                return_value="https://api.gaia.dev",
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=False),
-            patch(
-                "app.services.mcp.mcp_oauth.get_client_metadata_document_url",
-                return_value="https://api.gaia.dev/.well-known/oauth-client",
-            ),
-            patch("app.services.mcp.mcp_oauth.log") as mock_log,
-        ):
-            result = await _resolve_token_exchange_credentials(
-                client.token_store, INTEGRATION_ID, mcp_config, discovery
-            )
-
-        assert result == ("https://api.gaia.dev/.well-known/oauth-client", None)
-        mock_log.info.assert_called_once_with(
-            f"{LogTag.MCP} Using client metadata document URL as client_id for token exchange",
-            client_id="https://api.gaia.dev/.well-known/oauth-client",
-        )
-
-    async def test_localhost_never_uses_metadata_document(self):
-        client = MCPClient(user_id=USER_ID)
-        mcp_config = _make_mcp_config()
-        discovery = _make_oauth_discovery(
-            metadata_overrides={"client_id_metadata_document_supported": True}
-        )
-        client.token_store.get_dcr_client = AsyncMock(return_value=None)
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url",
-                return_value="http://localhost:8000",
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=True),
-            patch(
-                "app.services.mcp.mcp_oauth.get_client_metadata_document_url",
-                return_value="http://localhost:8000/.well-known/oauth-client",
-            ) as mock_doc_url,
-            patch("app.services.mcp.mcp_oauth.log"),
-        ):
-            result = await _resolve_token_exchange_credentials(
-                client.token_store, INTEGRATION_ID, mcp_config, discovery
-            )
-
-        # Supported or not, a localhost API base can never serve the metadata
-        # document — no client_id may come out of this branch.
-        assert result == (None, None)
-        mock_doc_url.assert_called_once_with("http://localhost:8000")
-
-
 class TestExchangeCodeForTokensExact:
     def _exchange(
         self, *, client_secret: str | None = None, code_verifier: str | None = "verifier123"
@@ -7164,9 +7229,9 @@ class TestHandleOauthCallbackNonceEnforcement:
                 return_value=tokens,
             ) as exchange,
             patch(
-                "app.services.mcp.mcp_oauth._resolve_token_exchange_credentials",
+                "app.services.mcp.mcp_oauth.resolve_oauth_client",
                 new_callable=AsyncMock,
-                return_value=("cid", None),
+                return_value=OAuthClient("cid", None),
             ) as credentials,
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)

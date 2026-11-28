@@ -468,7 +468,7 @@ def advice(verdict: ModuleVerdict) -> list[str]:
             if line is not None
         ]
         out.append(
-            "Reproduce any of them without a lane run: python3 scripts/ci/mutation.py replay "
+            "Reproduce any of them without a lane run: mise mutation:replay "
             f"shard.verdict.json {verdict.path}:{first_surviving_line(verdict)}"
         )
         return out
@@ -634,7 +634,7 @@ def render_report(verdict: ModuleVerdict) -> str:
             lines.append(f"      {entry.name.rsplit('.', 1)[-1]} — {entry.reason}")
     lines.append("")
     lines.append("  The bracketed id is mutmut's name for that one edit. Reproduce it with:")
-    lines.append("      python3 scripts/ci/mutation.py replay shard.verdict.json <id>")
+    lines.append("      mise mutation:replay shard.verdict.json <id>")
     lines.append(
         "  Every survivor's full diff is in shard.verdict.json, beside this log in the "
         "shard's artifact (no cap)."
@@ -699,7 +699,7 @@ def _survivor_block(
         else [survivor.name for survivor in group]
     )
     for selector in selectors:
-        lines.append(f"      replay: python3 scripts/ci/mutation.py replay {source} {selector}")
+        lines.append(f"      replay: mise mutation:replay {source} {selector}")
     return lines
 
 

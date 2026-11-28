@@ -10,6 +10,7 @@ Principle: if MCPClient._tools dict handling logic changes, these tests break.
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 from langchain_core.tools import BaseTool
 import pytest
 
@@ -116,7 +117,6 @@ def _build_client_with_no_auth(user_id: str = "test-user") -> MCPClient:
     client.token_store = MagicMock()
     client.token_store.get_bearer_token = AsyncMock(return_value=None)
     client.token_store.get_oauth_token = AsyncMock(return_value=None)
-    client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
     client.token_store.get_refresh_token = AsyncMock(return_value=None)
     client.token_store.store_unauthenticated = AsyncMock()
     client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
@@ -485,21 +485,18 @@ class TestMCPConnectionFlow:
             # No bearer token; OAuth token present
             client.token_store.get_bearer_token = AsyncMock(return_value=None)
             client.token_store.get_oauth_token = AsyncMock(return_value=oauth_token)
-            client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
 
             tools = await client.connect("oauth-integration")
 
         assert len(tools) == 1
         assert "oauth-integration" in client._tools
 
-        # Verify the OAuth token was threaded through to BaseMCPClient
+        # The session's requests carry the stored OAuth token, read when each is sent.
         assert len(captured_configs) == 1
-        server_cfg = captured_configs[0]["mcpServers"]["oauth-integration"]
-        assert server_cfg["auth"] == oauth_token, (
-            f"Expected auth='{oauth_token}' in BaseMCPClient config, "
-            f"got: {server_cfg.get('auth')!r}"
-        )
-        assert server_cfg["headers"]["Authorization"] == f"Bearer {oauth_token}"
+        session_auth = captured_configs[0]["mcpServers"]["oauth-integration"]["auth"]
+        request = httpx.Request("POST", "http://test-server")
+        await anext(session_auth.async_auth_flow(request))
+        assert request.headers["Authorization"] == f"Bearer {oauth_token}"
 
     # ------------------------------------------------------------------
     # 9. connect() raises when requires_auth=True but no token stored
@@ -522,7 +519,6 @@ class TestMCPConnectionFlow:
             # Explicitly return no tokens
             client.token_store.get_bearer_token = AsyncMock(return_value=None)
             client.token_store.get_oauth_token = AsyncMock(return_value=None)
-            client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
 
             with (
                 patch(
@@ -675,7 +671,6 @@ class TestMCPConnectionFlow:
             # After refresh the token store returns a valid OAuth token
             client.token_store.get_bearer_token = AsyncMock(return_value=None)
             client.token_store.get_oauth_token = AsyncMock(return_value=oauth_token_after_refresh)
-            client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
 
             # Patch _try_refresh_token directly on the instance to avoid the real
             # OAuth discovery HTTP call while still exercising the retry branch.

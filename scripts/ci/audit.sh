@@ -490,23 +490,30 @@ cmd_semgrep() {
   [ -n "$lane" ] || ci_die "semgrep: --lane <job>/<check> is required"
   command -v docker >/dev/null || ci_die "semgrep: docker is not installed; it runs the pinned image $SEMGREP_IMAGE"
 
-  local root="${SEMGREP_ROOT:-$REPO_ROOT}" common work status=0 scanned
+  local root="${SEMGREP_ROOT:-$REPO_ROOT}" common work container status=0 scanned report
   root="$(git -C "$root" rev-parse --show-toplevel)"
   common="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)"
   work="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/semgrep.XXXXXX")"
-  # shellcheck disable=SC2064 # expand now: work is local to this function
-  trap "rm -rf '$work'" EXIT
-  local mounts=(-v "$root:$root")
+  local mounts=(-v "$root:$root:ro")
   [[ "$common" == "$root"/* ]] || mounts+=(-v "$common:$common:ro")
 
-  ci_group "semgrep ($SEMGREP_RULES over $SEMGREP_TARGET)"
-  docker run --rm "${mounts[@]}" -v "$work:/out" -w "$root" \
-    --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  # The container writes nothing to the host: its user maps to a different host uid
+  # under rootless docker (the box), so the reports stay inside it and `docker cp`
+  # brings them out owned by whoever runs this.
+  container="$(docker create "${mounts[@]}" -w "$root" -e HOME=/tmp \
     -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="$root" \
     "$SEMGREP_IMAGE" semgrep scan --config "$SEMGREP_RULES" "$SEMGREP_TARGET" \
-    --error --metrics=off --sarif-output=/out/semgrep.sarif --json-output=/out/semgrep.json \
-    || status=$?
+    --error --metrics=off --sarif-output=/tmp/semgrep.sarif --json-output=/tmp/semgrep.json)"
+  # shellcheck disable=SC2064 # expand now: work and container are local to this function
+  trap "rm -rf '$work'; docker rm -f '$container' >/dev/null" EXIT
+
+  ci_group "semgrep ($SEMGREP_RULES over $SEMGREP_TARGET)"
+  docker start -a "$container" || status=$?
   ci_endgroup
+  # A scan that died before writing a report leaves nothing to copy; the check below says so.
+  for report in semgrep.json semgrep.sarif; do
+    docker cp "$container:/tmp/$report" "$work/$report" || true
+  done
 
   [ -f "$work/semgrep.json" ] || ci_die "semgrep: the scan itself failed (exit $status, no report written)"
   scanned="$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))["paths"]["scanned"]))' "$work/semgrep.json")"

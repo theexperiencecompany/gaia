@@ -753,21 +753,24 @@ def test_evlog_takes_its_base_as_a_branch_a_remote_ref_or_a_commit(
 def _semgrep(
     tmp_path: Path, root: Path, *, scanned: int, exit_code: int = 0, lane: bool = True
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    """Run `audit.sh semgrep` against a docker stub; return the run and the docker argv."""
+    """Run `audit.sh semgrep` against a docker stub; return the run and the `docker create` argv."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    reports = tmp_path / "container-tmp"
+    reports.mkdir()
     paths = {"scanned": [f"f{i}.py" for i in range(scanned)]}
-    (tmp_path / "report.json").write_text(json.dumps({"results": [], "paths": paths}))
-    (tmp_path / "report.sarif").write_text(json.dumps(SARIF_FINDING))
+    (reports / "semgrep.json").write_text(json.dumps({"results": [], "paths": paths}))
+    (reports / "semgrep.sarif").write_text(json.dumps(SARIF_FINDING))
     stub = bin_dir / "docker"
     stub.write_text(
         textwrap.dedent(f"""\
         #!/usr/bin/env bash
-        printf '%s\\n' "$@" > {tmp_path}/docker-argv
-        out="$(printf '%s\\n' "$@" | sed -n 's|^\\(.*\\):/out$|\\1|p')"
-        cp {tmp_path}/report.json "$out/semgrep.json"
-        cp {tmp_path}/report.sarif "$out/semgrep.sarif"
-        exit {exit_code}
+        echo "$1" >> {tmp_path}/docker-calls
+        case "$1" in
+          create) shift; printf '%s\\n' "$@" > {tmp_path}/docker-argv; echo cid ;;
+          start) exit {exit_code} ;;
+          cp) cp "{reports}/${{2#cid:/tmp/}}" "$3" ;;
+        esac
         """)
     )
     stub.chmod(0o755)
@@ -817,6 +820,18 @@ def test_semgrep_runs_the_pinned_image_with_ci_rules_and_target(
     assert {"--error", "--metrics=off"} <= set(argv)
 
 
+def test_semgrep_container_never_writes_to_a_host_mount(tmp_path: Path, semgrep_repo: Path) -> None:
+    """Regression: on the box's rootless docker the container uid could not write a mounted dir."""
+    proc, argv = _semgrep(tmp_path, semgrep_repo, scanned=1)
+
+    assert proc.returncode == 0, proc.stderr
+    mounts = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
+    assert mounts and all(m.endswith(":ro") for m in mounts), mounts
+    assert "--user" not in argv
+    calls = (tmp_path / "docker-calls").read_text().split()
+    assert calls == ["create", "start", "cp", "cp", "rm"]
+
+
 def test_semgrep_that_scanned_zero_files_fails(tmp_path: Path, semgrep_repo: Path) -> None:
     """Regression: from a worktree the image saw no git dir, scanned 0 files and exited 0."""
     proc, _ = _semgrep(tmp_path, semgrep_repo, scanned=0)
@@ -836,7 +851,7 @@ def test_semgrep_in_a_worktree_mounts_the_main_git_dir_at_its_own_path(
     assert proc.returncode == 0, proc.stderr
     mounts = {argv[i + 1] for i, a in enumerate(argv) if a == "-v"}
     git_dir = semgrep_repo / ".git"
-    assert {f"{worktree}:{worktree}", f"{git_dir}:{git_dir}:ro"} <= mounts
+    assert {f"{worktree}:{worktree}:ro", f"{git_dir}:{git_dir}:ro"} <= mounts
     assert argv[argv.index("-w") + 1] == str(worktree)
 
 

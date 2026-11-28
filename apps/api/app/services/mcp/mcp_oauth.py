@@ -26,9 +26,8 @@ from app.constants.mcp import (
     GAIA_OAUTH_TOS_PATH,
     MAX_OAUTH_INVALID_SCOPE_DROPS,
 )
-from app.helpers.mcp_helpers import get_api_base_url, get_frontend_url
+from app.helpers.mcp_helpers import get_frontend_url
 from app.models.mcp_config import (
-    DCRClientRegistration,
     McpAuthChallenge,
     MCPConfig,
     OAuthDiscovery,
@@ -41,14 +40,12 @@ from app.services.integrations.user_integration_status import (
 )
 from app.services.mcp.mcp_errors import DCRNotSupportedError, DCRRegistrationError
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.services.mcp.oauth_client import resolve_oauth_client
 from app.services.mcp.oauth_discovery import discover_oauth_config
-from app.services.mcp.token_management import resolve_client_credentials
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
     OAuthSecurityError,
     basic_auth_header,
-    get_client_metadata_document_url,
-    is_localhost_url,
     mcp_http_client,
     oauth_token_expiry,
     parse_oauth_error_response,
@@ -96,51 +93,6 @@ class _ClientBranding(TypedDict, total=False):
     policy_uri: AnyHttpUrl
 
 
-def _metadata_document_candidate() -> tuple[str, bool, str]:
-    """Compute (api_base, is_localhost, client metadata document URL).
-
-    Shared by auth-URL building and token exchange so client_id can't
-    drift between them. Per draft-ietf-oauth-client-id-metadata-document,
-    client_id can be that document's URL, but only when the auth server
-    can fetch it (non-localhost API base).
-    """
-    api_base = get_api_base_url()
-    return api_base, is_localhost_url(api_base), get_client_metadata_document_url(api_base)
-
-
-async def _client_id_from_metadata_or_dcr(
-    token_store: MCPTokenStore,
-    integration_id: str,
-    oauth_config: OAuthDiscovery,
-    redirect_uri: str,
-) -> str | None:
-    """Fallback client_id sources: metadata document URL (priority 3) or fresh DCR (priority 4)."""
-    _, is_localhost, metadata_doc_url = _metadata_document_candidate()
-
-    if oauth_config.as_metadata.client_id_metadata_document_supported and not is_localhost:
-        log.info(
-            f"{LogTag.MCP} Using client metadata document URL as client_id for",
-            integration_id=integration_id,
-            client_id=metadata_doc_url,
-        )
-        return metadata_doc_url
-
-    # Fall back to Dynamic Client Registration (DCR). Also required when
-    # running locally since the auth server cannot reach localhost to
-    # validate the client metadata document.
-    if oauth_config.as_metadata.registration_endpoint:
-        client_id = await _register_client(
-            token_store,
-            integration_id,
-            oauth_config.as_metadata,
-            redirect_uri,
-        )
-        log.info(f"{LogTag.MCP} Registered new client via DCR for", integration_id=integration_id)
-        return client_id
-
-    return None
-
-
 async def _obtain_auth_client_id(
     token_store: MCPTokenStore,
     integration_id: str,
@@ -148,24 +100,18 @@ async def _obtain_auth_client_id(
     oauth_config: OAuthDiscovery,
     redirect_uri: str,
 ) -> str:
-    """Resolve client_id per MCP spec priority: configured creds → stored DCR → metadata doc → DCR."""
-    # Priority order per MCP spec: pre-configured credentials, then stored
-    # DCR client, then Client Metadata Document URL (non-localhost only),
-    # then Dynamic Client Registration (DCR) as last resort.
-    client_id, _ = resolve_client_credentials(mcp_config)
+    """Resolve the client to authorize as, registering one via DCR when none exists yet."""
+    client = await resolve_oauth_client(token_store, integration_id, mcp_config, oauth_config)
+    client_id = client.client_id if client else None
 
-    if not client_id:
-        # Priority 2: Check for stored DCR client from a previous registration.
-        # This is effectively "pre-registered" for this specific integration.
-        dcr_data: DCRClientRegistration | None = await token_store.get_dcr_client(integration_id)
-        if dcr_data:
-            client_id = dcr_data.get("client_id")
-            log.debug(f"{LogTag.MCP} Using stored DCR client for", integration_id=integration_id)
-
-    if not client_id:
-        client_id = await _client_id_from_metadata_or_dcr(
-            token_store, integration_id, oauth_config, redirect_uri
+    if client_id is None and oauth_config.as_metadata.registration_endpoint:
+        client_id = await _register_client(
+            token_store,
+            integration_id,
+            oauth_config.as_metadata,
+            redirect_uri,
         )
+        log.info(f"{LogTag.MCP} Registered new client via DCR for", integration_id=integration_id)
 
     if not client_id:
         raise ValueError(
@@ -425,35 +371,6 @@ async def _register_client(
         raise ValueError(f"Dynamic Client Registration failed: {e}") from e
 
 
-async def _resolve_token_exchange_credentials(
-    token_store: MCPTokenStore,
-    integration_id: str,
-    mcp_config: MCPConfig,
-    oauth_config: OAuthDiscovery,
-) -> tuple[str | None, str | None]:
-    """Resolve client credentials using the same priority as build_oauth_auth_url."""
-    # 1. Pre-configured credentials
-    resolved_id, resolved_secret = resolve_client_credentials(mcp_config)
-    if resolved_id:
-        return resolved_id, resolved_secret
-
-    # 2. Stored DCR client
-    dcr_data: DCRClientRegistration | None = await token_store.get_dcr_client(integration_id)
-    if dcr_data:
-        return dcr_data.get("client_id"), dcr_data.get("client_secret")
-
-    # 3. Client Metadata Document URL (must match build_oauth_auth_url logic)
-    _, is_localhost, metadata_doc_url = _metadata_document_candidate()
-    if oauth_config.as_metadata.client_id_metadata_document_supported and not is_localhost:
-        log.info(
-            f"{LogTag.MCP} Using client metadata document URL as client_id for token exchange",
-            client_id=metadata_doc_url,
-        )
-        return metadata_doc_url, None
-
-    return None, None
-
-
 async def _exchange_code_for_tokens(
     integration_id: str,
     token_endpoint: str,
@@ -582,12 +499,8 @@ async def handle_oauth_callback(
             integration_id=integration_id,
         )
 
-    # Resolve client credentials using same priority as build_oauth_auth_url
-    # to ensure the same client_id is used for both authorization and token exchange.
-    client_id, client_secret = await _resolve_token_exchange_credentials(
-        token_store, integration_id, mcp_config, oauth_config
-    )
-    if not client_id:
+    client = await resolve_oauth_client(token_store, integration_id, mcp_config, oauth_config)
+    if client is None:
         raise ValueError(
             f"Could not resolve client_id for token exchange ({integration_id}). "
             "No pre-configured credentials, no DCR registration, "
@@ -597,7 +510,7 @@ async def handle_oauth_callback(
     log.info(
         f"{LogTag.MCP} client_id resolved for token exchange",
         integration_id=integration_id,
-        has_secret=client_secret is not None,
+        has_secret=client.client_secret is not None,
     )
 
     # Get resource for token binding (RFC 8707)
@@ -610,8 +523,8 @@ async def handle_oauth_callback(
             "code": code,
             "redirect_uri": redirect_uri,
             "resource": resource,
-            "client_id": client_id,
-            "client_secret": client_secret,
+            "client_id": client.client_id,
+            "client_secret": client.client_secret,
             "code_verifier": code_verifier,
         },
     )

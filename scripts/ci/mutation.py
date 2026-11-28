@@ -443,15 +443,17 @@ def changed_matrix() -> str:
             "(diff-based check; already gated on the originating PR)"
         )
         return "[]"
-    # Entry points and __init__ files are not mutation targets.
-    candidates = [
-        path
-        for path in changed.splitlines()
-        if path.startswith("apps/api/app/")
+    candidates = [path for path in changed.splitlines() if is_mutation_target(path)]
+    return _detector_output(candidates).strip()
+
+
+def is_mutation_target(path: str) -> bool:
+    """Whether CI mutates this repo path: an app module, not an entry point or __init__."""
+    return (
+        path.startswith("apps/api/app/")
         and path.endswith(".py")
         and not path.endswith(("app/main.py", "app/worker.py", "__init__.py"))
-    ]
-    return _detector_output(candidates).strip()
+    )
 
 
 def cmd_matrix(_args: list[str]) -> int:
@@ -899,8 +901,22 @@ def _local_status(work: ModuleWork, rc: int, log_dir: Path) -> str:
     return "error"
 
 
+def _repo_paths(args: list[str]) -> list[str]:
+    """Spell each module the way the diff does, whether given as app/... or apps/api/app/..."""
+    return [f"apps/api/{a.removeprefix('apps/api/')}" for a in args]
+
+
 def cmd_local(args: list[str]) -> int:
     os.chdir(REPO_ROOT)
+    refused = [p for p in _repo_paths(args) if not is_mutation_target(p)]
+    if refused:
+        print(
+            f"ERROR: not a mutation target: {' '.join(refused)}. CI only mutates modules under "
+            "apps/api/app/ (not app/main.py, app/worker.py or __init__.py), so there is "
+            "nothing to run for these; cover them with a test instead.",
+            file=sys.stderr,
+        )
+        return 2
     LOCAL_LOCK.parent.mkdir(parents=True, exist_ok=True)
     with LOCAL_LOCK.open("a") as lock:
         try:
@@ -923,9 +939,7 @@ def _run_local(args: list[str]) -> int:
     shutil.rmtree(verdict_root() / "mutation", ignore_errors=True)
 
     if args:
-        modules = _parse_matrix(
-            _detector_output([f"apps/api/{a.removeprefix('apps/api/')}" for a in args])
-        )
+        modules = _parse_matrix(_detector_output(_repo_paths(args)))
     else:
         modules = _parse_matrix(changed_matrix())
     if not modules:

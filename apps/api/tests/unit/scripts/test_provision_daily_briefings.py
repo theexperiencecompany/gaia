@@ -41,14 +41,14 @@ async def test_every_user_is_rolled_out_under_a_bound_analytics_context(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with (
-        patch(f"{MODULE}.register_lazy_providers") as register,
+        patch(f"{MODULE}.boot_process") as register,
         patch(f"{MODULE}.user_repository.list_all_ids", AsyncMock(return_value=["u1", "u2"])),
         patch(f"{MODULE}.provision_existing_user", side_effect=_path_needing_a_context),
     ):
         await rollout(apply=True)
 
-    # A script has no app lifespan: it registers the providers capture() and the
-    # workflow provisioning read, or every user fails on "Provider not found".
+    # A script has no app lifespan: it boots (loop + the providers capture() and the
+    # workflow provisioning read), or every user fails on "Provider not found".
     register.assert_called_once_with("main_app")
     assert "[APPLY] done: 2/2; breakdown={'normal': 2}" in capsys.readouterr().out
 
@@ -72,7 +72,7 @@ async def test_every_user_is_rolled_out_with_the_job_queue_open(job_queue: Async
         return RolloutPath.NORMAL
 
     with (
-        patch(f"{MODULE}.register_lazy_providers"),
+        patch(f"{MODULE}.boot_process"),
         patch(f"{MODULE}.user_repository.list_all_ids", AsyncMock(return_value=["u1", "u2"])),
         patch(f"{MODULE}.provision_existing_user", side_effect=_path_recording_the_queue),
     ):

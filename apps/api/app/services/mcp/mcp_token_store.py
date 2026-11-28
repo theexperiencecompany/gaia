@@ -14,7 +14,7 @@ import secrets
 from typing import cast
 
 from cryptography.fernet import Fernet
-from pydantic import TypeAdapter, ValidationError
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.config.settings import settings
@@ -26,7 +26,15 @@ from app.constants.cache import (
     OAUTH_STATE_TTL,
 )
 from app.constants.log_tags import LogTag
-from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE, OAUTH_BROWSER_NONCE_BYTES
+from app.constants.mcp import (
+    MCP_OAUTH_BROWSER_COOKIE,
+    MCP_OAUTH_GRANT_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_LEASE_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_MAX_HOLD_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_PREFIX,
+    MCP_OAUTH_GRANT_LOCK_RENEW_SECONDS,
+    OAUTH_BROWSER_NONCE_BYTES,
+)
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
@@ -37,9 +45,8 @@ from app.models.mcp_config import (
     OAuthStateOwner,
 )
 from app.utils.mcp_oauth_utils import TokenIntrospectionResponse, introspect_token as do_introspect
+from app.utils.redis_lock import DistributedLock
 from shared.py.wide_events import log
-
-_DCR_CLIENT_REGISTRATION: TypeAdapter[DCRClientRegistration] = TypeAdapter(DCRClientRegistration)
 
 
 class OAuthStateStoreError(RuntimeError):
@@ -218,37 +225,6 @@ class MCPTokenStore:
             return self._decrypt(cred.refresh_token)
         return None
 
-    async def is_token_expiring_soon(
-        self, integration_id: str, threshold_seconds: int = 300
-    ) -> bool:
-        """Check if token expires within threshold (default 5 minutes).
-
-        Also returns True when token_expires_at is not set but the token
-        was issued more than max_age_seconds ago — servers can revoke
-        tokens at any time, so proactively refreshing stale tokens avoids
-        connection failures from expired-but-unknown-expiry tokens.
-        """
-        cred = await self.get_credential(integration_id)
-        if not cred:
-            return False
-
-        if cred.token_expires_at:
-            # Deferred import: stdlib import kept local to this expiry branch
-            from datetime import timedelta  # noqa: PLC0415 -- stdlib import kept local
-
-            return cred.token_expires_at < datetime.now(UTC) + timedelta(seconds=threshold_seconds)
-
-        # No expires_at stored — treat tokens older than 1 hour as stale
-        # so we proactively refresh them rather than discovering they're
-        # expired only when mcp-use fails to connect.
-        max_age_seconds = 3600
-        if cred.connected_at:
-            from datetime import timedelta  # noqa: PLC0415 -- stdlib import kept local
-
-            return cred.connected_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds)
-
-        return False
-
     async def store_bearer_token(self, integration_id: str, token: str) -> None:
         """Store encrypted bearer token."""
         encrypted = self._encrypt(token)
@@ -408,9 +384,20 @@ class MCPTokenStore:
             return True, pending.code_verifier
         return False, None
 
+    def grant_lock(self, integration_id: str) -> DistributedLock:
+        """Return the cross-replica lock a refresh and a delete of this OAuth grant both hold."""
+        return DistributedLock(
+            f"{MCP_OAUTH_GRANT_LOCK_PREFIX}{self.user_id}:{integration_id}",
+            lease_seconds=MCP_OAUTH_GRANT_LOCK_LEASE_SECONDS,
+            acquire_timeout_seconds=MCP_OAUTH_GRANT_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+            renew_seconds=MCP_OAUTH_GRANT_LOCK_RENEW_SECONDS,
+            max_hold_seconds=MCP_OAUTH_GRANT_LOCK_MAX_HOLD_SECONDS,
+        )
+
     async def delete_credentials(self, integration_id: str) -> None:
-        """Delete credentials for integration (disconnect)."""
-        async with get_db_session() as session:
+        """Delete credentials for integration (disconnect), after any refresh in flight has stored."""
+        # A disconnect must win even when the lease cannot be taken; hold() logs that case.
+        async with self.grant_lock(integration_id).hold(), get_db_session() as session:
             result = await session.execute(
                 select(MCPCredential).where(
                     MCPCredential.user_id == self.user_id,
@@ -426,10 +413,11 @@ class MCPTokenStore:
     async def forget_rejected_grant(
         self, integration_id: str, refresh_token: str, client_id: str | None = None
     ) -> None:
-        """Drop the refresh token a refresh had rejected, and its client when client_id names it.
+        """Drop a grant its refresh had rejected, and the registered client when client_id names it.
 
-        Each is cleared only if it is still the one the refresh sent, so a reconnect
-        that stored new credentials while the request was in flight keeps them.
+        A refresh runs only once the access token expired or was rejected, so the access
+        token goes with the refresh token. Each is cleared only if it is still what the
+        refresh sent, so a reconnect that stored new credentials meanwhile keeps them.
         """
         async with get_db_session() as session:
             result = await session.execute(
@@ -445,12 +433,12 @@ class MCPTokenStore:
                 return
             if self._decrypt(cred.refresh_token) != refresh_token:
                 return
+            cred.access_token = None
             cred.refresh_token = None
+            cred.token_expires_at = None
             if client_id is not None and cred.client_registration:
-                stored: DCRClientRegistration = _DCR_CLIENT_REGISTRATION.validate_json(
-                    cred.client_registration
-                )
-                if stored.get("client_id") == client_id:
+                stored = DCRClientRegistration.model_validate_json(cred.client_registration)
+                if stored.client_id == client_id:
                     cred.client_registration = None
             session.add(cred)
             await session.commit()
@@ -496,7 +484,7 @@ class MCPTokenStore:
             try:
                 # Written by store_dcr_client from an RFC 7591 registration
                 # response; only the credential fields are ever read back.
-                return _DCR_CLIENT_REGISTRATION.validate_json(cred.client_registration)
+                return DCRClientRegistration.model_validate_json(cred.client_registration)
             except ValidationError:
                 return None
         return None
