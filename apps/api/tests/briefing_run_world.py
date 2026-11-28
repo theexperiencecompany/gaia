@@ -9,7 +9,8 @@ frozen. Everything between runs for real. The stand-in model answers from what t
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import re
@@ -630,6 +631,9 @@ class World:
     replies: list[Reply] = field(default_factory=lambda: [VOICE])
     #: The voice model, answering replies from the facts it is held to.
     voice: AsyncMock = field(default_factory=AsyncMock)
+    #: Every run lock taken, as its key and timing, and the keys held right now.
+    locks: list[tuple[str, dict[str, float]]] = field(default_factory=list)
+    locks_held: set[str] = field(default_factory=set)
     #: The heading check's model; by default every heading fits its items.
     headings: AsyncMock = field(default_factory=lambda: AsyncMock(side_effect=_every_heading_fits))
     #: What the user's calendar holds, as Google sends it, or why it went unread.
@@ -924,6 +928,28 @@ def _install_stores(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
         install(monkeypatch, repository, fake)
 
 
+class _InProcessLock:
+    """DistributedLock's contract in one process: a held key is refused, and freed on exit.
+
+    fakeredis here has no Lua, so redis-py's lock could never release; the real lock has its own real-Redis test.
+    """
+
+    def __init__(self, key: str, held: set[str]) -> None:
+        self.key = key
+        self.held = held
+
+    @contextlib.asynccontextmanager
+    async def hold(self) -> AsyncIterator[bool]:
+        if self.key in self.held:
+            yield False
+            return
+        self.held.add(self.key)
+        try:
+            yield True
+        finally:
+            self.held.discard(self.key)
+
+
 def _install_seams(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     """Fake what the run reaches beyond the process: the model, memory, apps, delivery and analytics."""
 
@@ -965,6 +991,13 @@ def _install_seams(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     monkeypatch.setattr(daily, "build_briefing_voice_prompt", w.voice_prompt)
     monkeypatch.setattr(weekly, "build_weekly_voice_prompt", w.weekly_prompt)
     monkeypatch.setattr(settings, "INSTANCE_SECRET", "s" * 48)
+
+    def run_lock(key: str, **timing: float) -> _InProcessLock:
+        w.locks.append((key, timing))
+        return _InProcessLock(key, w.locks_held)
+
+    # raising=False: regression-proof runs this harness against base, whose pipeline has no lock.
+    monkeypatch.setattr(pipeline, "DistributedLock", run_lock, raising=False)
 
 
 def run_world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:

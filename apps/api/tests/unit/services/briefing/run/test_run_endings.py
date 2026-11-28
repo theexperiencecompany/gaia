@@ -34,6 +34,7 @@ from tests.briefing_run_world import (
 from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
+from app.constants import briefing as briefing_constants
 from app.constants.briefing import (
     BRIEF_NOTIFICATION_PRIORITY,
     IDLE_DORMANT_DAYS,
@@ -115,6 +116,50 @@ class TestHowARunEnds:
         world.notify.assert_not_awaited()
         world.post.assert_not_awaited()
         assert world.today(kind) == sent
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("kind", [BriefingKind.DAILY, BriefingKind.WEEKLY])
+    async def test_a_run_started_while_one_is_writing_the_same_brief_is_skipped(
+        self, world: World, kind: BriefingKind
+    ) -> None:
+        """Two fires for one brief both passed the delivered check and stored over each other."""
+        writing, finish = asyncio.Event(), asyncio.Event()
+        speaks = world.voice.side_effect
+
+        async def held_voice(*args: object, **kwargs: object) -> object:
+            if not writing.is_set():
+                writing.set()
+                await finish.wait()
+            return await speaks(*args, **kwargs)
+
+        world.voice.side_effect = held_voice
+        first = asyncio.ensure_future(run_brief(USER, kind))
+        await writing.wait()
+
+        second = await run_brief(USER, kind)
+        finish.set()
+
+        assert second is BriefingRunOutcome.ALREADY_RUNNING
+        assert await first is BriefingRunOutcome.SENT
+        world.voice.assert_awaited_once()
+
+    @pytest.mark.parametrize("kind", [BriefingKind.DAILY, BriefingKind.WEEKLY])
+    async def test_a_run_locks_its_own_brief_and_never_waits_for_the_lock(
+        self, world: World, kind: BriefingKind
+    ) -> None:
+        await run_brief(USER, kind)
+
+        assert world.locks == [
+            (
+                f"{briefing_constants.BRIEF_RUN_LOCK_PREFIX}{USER}:{kind}",
+                {
+                    "lease_seconds": briefing_constants.BRIEF_RUN_LOCK_LEASE_SECONDS,
+                    "acquire_timeout_seconds": 0,
+                    "renew_seconds": briefing_constants.BRIEF_RUN_LOCK_RENEW_SECONDS,
+                    "max_hold_seconds": briefing_constants.BRIEF_RUN_LOCK_MAX_HOLD_SECONDS,
+                },
+            )
+        ]
 
     async def test_a_failed_delivery_records_no_channels_and_clears_nothing(
         self, world: World

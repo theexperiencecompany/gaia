@@ -11,6 +11,10 @@ from datetime import UTC, datetime
 from app.agents.prompts.brief_fact_prompts import UNNAMED_READER
 from app.agents.prompts.briefing_prompts import RecentLines
 from app.constants.briefing import (
+    BRIEF_RUN_LOCK_LEASE_SECONDS,
+    BRIEF_RUN_LOCK_MAX_HOLD_SECONDS,
+    BRIEF_RUN_LOCK_PREFIX,
+    BRIEF_RUN_LOCK_RENEW_SECONDS,
     GAIA_SOURCE,
     RECENT_BRIEFS_RECALLED,
     BriefingKind,
@@ -68,6 +72,7 @@ from app.services.briefing.sections import (
 from app.services.briefing.slots import SlotValues
 from app.services.briefing.standing import Standing, VoiceInputs
 from app.services.briefing.work import BriefReads, OwnTodos, TrackedWork, count_week, read_work
+from app.utils.redis_lock import DistributedLock
 from app.utils.user_display import display_first_name, display_name
 from shared.py.wide_events import log
 
@@ -112,6 +117,20 @@ async def run_brief(user_id: str, kind: BriefingKind) -> BriefingRunOutcome:
 
 
 async def _run(user_id: str, spec: BriefKindSpec) -> BriefingRunOutcome:
+    lock = DistributedLock(
+        f"{BRIEF_RUN_LOCK_PREFIX}{user_id}:{spec.kind}",
+        lease_seconds=BRIEF_RUN_LOCK_LEASE_SECONDS,
+        acquire_timeout_seconds=0,
+        renew_seconds=BRIEF_RUN_LOCK_RENEW_SECONDS,
+        max_hold_seconds=BRIEF_RUN_LOCK_MAX_HOLD_SECONDS,
+    )
+    async with lock.hold() as held:
+        if not held:
+            return BriefingRunOutcome.ALREADY_RUNNING
+        return await _run_held(user_id, spec)
+
+
+async def _run_held(user_id: str, spec: BriefKindSpec) -> BriefingRunOutcome:
     user = await user_repository.get(user_id)
     if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")

@@ -116,7 +116,7 @@ from app.services.scheduler_metrics import (
     observe_scheduled_fire,
 )
 from app.services.system_workflows.registry import behaviour_of
-from app.services.system_workflows.runs import SYSTEM_RUNS
+from app.services.system_workflows.runs import SYSTEM_RUNS, SystemRun
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -1312,14 +1312,21 @@ class _Admission:
         return f"{WORKFLOW_FIRE_ADMISSION_PREFIX}{self.conversation_id}"
 
 
-async def _admit_fire_to_conversation(workflow: Workflow, workflow_id: str) -> _Admission:
+def _system_run_of(workflow: Workflow) -> SystemRun | None:
+    """Return the pipeline a system workflow runs in place of the agent turn; it delivers itself."""
+    key = workflow.system_workflow_key
+    return SYSTEM_RUNS.get(key) if key else None
+
+
+async def _admit_fire_to_conversation(workflow: Workflow, workflow_id: str) -> _Admission | None:
     """Admit the fire to its workflow's one conversation before it spends anything, or drop it.
 
-    The conversation log keeps the fire's run apart from other work: a fire or a replay is
-    refused beside live work. That refusal comes after the cost wall, quota charge and batch
-    drain, so this check comes before them; its key makes two fires admitted at once take turns.
-    Raises WorkflowFireOverlapped when the conversation is busy.
+    A fire or replay is refused beside live work; that refusal comes after the cost wall, quota
+    charge and batch drain, so this runs before them, its key making concurrent fires take turns.
+    Raises WorkflowFireOverlapped when busy; None for a workflow running its own pipeline (no chat).
     """
+    if _system_run_of(workflow):
+        return None
     conversation_id = await get_or_create_workflow_conversation(
         workflow_id=workflow.id,
         user_id=workflow.user_id,
@@ -1399,9 +1406,7 @@ async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: 
     # path delivers from the background path; a replay via _finish_after_replay.
     conversation_id: str | None
     trace: list[RecordedCall]
-    # A system workflow with its own pipeline delivers itself: no workflow conversation.
-    key = workflow.system_workflow_key
-    if run := SYSTEM_RUNS.get(key) if key else None:
+    if run := _system_run_of(workflow):
         conversation_id, trace, summary = None, [], await run(workflow)
     else:
         conversation_id, trace, summary = await _run_workflow(fire)

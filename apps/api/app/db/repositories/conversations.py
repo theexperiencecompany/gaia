@@ -620,6 +620,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Delete the user's chats, keeping each tracked todo's, which goes only with its todo."""
         return await self._delete_conversations({"todo_id": None}, user_id)
 
+    async def delete_if_never_written(self, conversation_id: str, *, user_id: str) -> bool:
+        """Delete the conversation only while no entry was ever committed to it, outbox included."""
+        never_written = {"conversation_id": conversation_id, "log_head": {"$in": [0, None]}}
+        return bool(await self._delete_conversations(never_written, user_id))
+
     async def delete_onboarding_demos(self, user_id: str) -> int:
         """Delete the user's onboarding-demo conversations."""
         return len(await self._delete_conversations({"is_onboarding_demo": True}, user_id))
