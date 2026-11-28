@@ -25,10 +25,7 @@ from app.services.connectors.service import (
 )
 from app.services.integrations.integration_accounts import save_accounts
 from app.services.integrations.user_integration_status import publish_connected
-from app.services.integrations.user_integrations import (
-    invalidate_user_integration_caches,
-    remove_user_integration,
-)
+from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnectorVerifyFailed
@@ -147,7 +144,7 @@ async def _verify_and_store(
 
 
 async def disconnect_connector(user_id: str, connector_id: str) -> None:
-    """Forget the user's key and the account it named; the connector stays to reconnect."""
+    """Forget the user's key and the account it named; the connector stays to reconnect or delete."""
     await MCPTokenStore(user_id).delete_credentials(connector_id)
-    await remove_user_integration(user_id, connector_id)
+    await save_accounts(user_id, connector_id, [], None)
     log.set_ns("connector", id=connector_id, action="disconnect")

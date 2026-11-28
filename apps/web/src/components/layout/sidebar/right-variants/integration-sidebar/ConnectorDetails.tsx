@@ -5,7 +5,7 @@ import { CheckmarkCircle02Icon } from "@icons";
 import type { ConnectorCardInfo } from "@shared/api/generated";
 
 import { ConnectorKeyInfo } from "@/features/integrations/components/ConnectorKeyInfo";
-import { useIntegrationAccounts } from "@/features/integrations/hooks/useIntegrationAccounts";
+import { usePrimaryAccountName } from "@/features/integrations/hooks/usePrimaryAccountName";
 
 interface ConnectorDetailsProps {
   integrationId: string;
@@ -14,14 +14,13 @@ interface ConnectorDetailsProps {
 }
 
 function ConnectedAs({ integrationId }: { integrationId: string }) {
-  const { accounts, isLoading } = useIntegrationAccounts(integrationId);
+  const { name, isLoading } = usePrimaryAccountName(integrationId);
   if (isLoading) return <Skeleton className="mt-3 h-10 w-full rounded-2xl" />;
-  const account = accounts.find((a) => a.isPrimary) ?? accounts[0];
-  if (!account) return null;
+  if (!name) return null;
   return (
     <p className="mt-3 flex items-center gap-2 rounded-2xl bg-zinc-800 p-3 text-sm text-zinc-300">
       <CheckmarkCircle02Icon className="size-4 shrink-0 text-success" />
-      Connected as {account.displayName}
+      Connected as {name}
     </p>
   );
 }

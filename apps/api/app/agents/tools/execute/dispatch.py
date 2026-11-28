@@ -36,6 +36,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.execute_models import AccountChoice, DispatchError, DispatchErrorKind
 from app.services.analytics_service import capture
+from app.services.hil.connector_risk import connector_call_risk
 from app.services.tool_shape_service import record_observed_shape
 from app.utils.prometheus_registry import register_once
 from shared.py.analytics import UserId
@@ -121,6 +122,21 @@ class ToolSpace:
     tool_names: Container[str] | None = None
 
 
+async def _unasked_connector_write(
+    user_id: str, tool_name: str, args: dict[str, object]
+) -> DispatchError | None:
+    """Refuse a connector write from a sandbox script: only the conversation can ask the user."""
+    risk = await connector_call_risk(user_id, tool_name, args)
+    if risk is None or not (risk.is_write or risk.always_asks):
+        return None
+    log.warning(f"{LogTag.TOOL} execute: connector write refused from a sandbox script")
+    return DispatchError(
+        kind=DispatchErrorKind.APPROVAL_REQUIRED,
+        detail=f"'{tool_name}' would change something, which needs the user's approval.",
+        hint="Make this call from the conversation with execute, where the user is asked first.",
+    )
+
+
 def _refusal(resolved: ResolvedTool, space: ToolSpace) -> DispatchError | None:
     if space.integration_only and not resolved.is_integration:
         log.warning(
@@ -168,6 +184,10 @@ async def _admit(
             f"{LogTag.TOOL} execute: args failed schema validation", tool_name=resolved.name
         )
         return validated
+    if space.integration_only and user_id is not None:
+        unasked = await _unasked_connector_write(user_id, resolved.name, validated)
+        if unasked is not None:
+            return unasked
     choice = await choose_account(user_id, resolved.name, account)
     if isinstance(choice, DispatchError):
         log.warning(f"{LogTag.TOOL} execute: account not usable", tool_name=resolved.name)

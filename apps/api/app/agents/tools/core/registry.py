@@ -7,7 +7,7 @@ from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import all_integrations
 from app.config.settings import settings
-from app.constants.connectors import MANAGED_BY_CONNECTOR
+from app.constants.connectors import DEFINE_CONNECTOR_TOOL, MANAGED_BY_CONNECTOR
 from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -515,10 +515,12 @@ class ToolRegistry:
             ],
             risk=CategoryRisk(
                 destructive_tools={CONNECT_INTEGRATION_TOOL},
-                # Ask in every HIL mode (hil/policy): an untrusted MCP server, a device linked to
+                # Ask in every HIL mode (hil/policy): an untrusted MCP server, a connector spec (what
+                # runs with a key, where it goes, notes riding every later run), a device linked to
                 # the account, and a revoked account only a new sign-in restores.
                 always_gate_tools={
                     "add_custom_mcp_server",
+                    DEFINE_CONNECTOR_TOOL,
                     "approve_device_pairing",
                     DISCONNECT_INTEGRATION_TOOL,
                 },

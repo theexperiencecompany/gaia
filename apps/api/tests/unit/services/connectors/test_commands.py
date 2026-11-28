@@ -82,3 +82,35 @@ def test_too_many_args_or_a_nul_byte_is_refused() -> None:
         plan_call(GH, ["x"] * (MAX_CONNECTOR_ARGS + 1))
     with pytest.raises(InvalidConnectorCallError):
         plan_call(GH, ["api", "a\0b"])
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["issue", "create", "--title", "help"],
+        ["issue", "create", "-h", "--title", "x"],
+        ["issue", "create", "--title", "--help"],
+    ],
+)
+def test_a_help_word_anywhere_but_the_help_position_is_still_a_write(args: list[str]) -> None:
+    plan = plan_call(GH, args)
+
+    assert (plan.is_write, plan.command_type) == (True, "issue create")
+
+
+@pytest.mark.parametrize("args", [["pr", "merge", "--help"], ["pr", "merge", "-h"], ["help", "pr"]])
+def test_help_in_the_help_position_is_a_read(args: list[str]) -> None:
+    assert not plan_call(GH, args).is_write
+
+
+@pytest.mark.parametrize("flag", ["-XDELETE", "-XPOST", "-ftitle=x"])
+def test_an_attached_short_write_flag_makes_a_listed_read_a_write(flag: str) -> None:
+    plan = plan_call(GH, ["api", "/repos/o/r", flag])
+
+    assert (plan.is_write, plan.command_type) == (True, "api")
+
+
+def test_a_flag_value_that_names_a_read_does_not_hide_the_write_after_it() -> None:
+    plan = plan_call(GH, ["--repo", "api", "issue", "create"])
+
+    assert (plan.is_write, plan.command_type) == (True, "issue create")

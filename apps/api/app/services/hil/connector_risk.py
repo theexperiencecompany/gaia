@@ -3,7 +3,11 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from app.constants.connectors import CONNECTOR_HIL_KEY_PREFIX, RUN_CONNECTOR_TOOL
+from app.constants.connectors import (
+    CONNECTOR_HIL_KEY_PREFIX,
+    RUN_CONNECTOR_TOOL,
+    SDK_SCRIPT_COMMAND_TYPE,
+)
 from app.services.connectors.commands import InvalidConnectorCallError, plan_call
 from app.services.connectors.service import ConnectorNotFoundError, load_connector
 
@@ -13,6 +17,8 @@ class ConnectorCallRisk:
     # connector:<connector id>:<command type>; one "always allow" covers exactly this.
     key: str
     is_write: bool
+    # A script cannot be classified, so no remembered approval may cover it.
+    always_asks: bool
 
 
 def connector_hil_key(connector_id: str, command_type: str) -> str:
@@ -52,5 +58,7 @@ async def connector_call_risk(
         # The tool itself refuses these calls before anything runs.
         return None
     return ConnectorCallRisk(
-        key=connector_hil_key(connector_id, plan.command_type), is_write=plan.is_write
+        key=connector_hil_key(connector_id, plan.command_type),
+        is_write=plan.is_write,
+        always_asks=plan.command_type == SDK_SCRIPT_COMMAND_TYPE,
     )

@@ -16,6 +16,7 @@ import { ConnectorKeyInfo } from "@/features/integrations/components/ConnectorKe
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useInlineIntegrationConnect } from "@/features/integrations/hooks/useInlineIntegrationConnect";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { usePrimaryAccountName } from "@/features/integrations/hooks/usePrimaryAccountName";
 import type { IntegrationConnectionData } from "@/features/integrations/types";
 
 interface IntegrationConnectionPromptProps {
@@ -70,6 +71,18 @@ function cardSubtitle(
   if (isConnected && accountLabel) return `Connected as ${accountLabel}`;
   if (isConnected && toolsCount != null) return `${toolsCount} tools available`;
   return integration.connector?.capability ?? integration.description;
+}
+
+/** A connected connector's subtitle read from its stored account, as after a reload. */
+function StoredAccountSubtitle({
+  integrationId,
+  fallback,
+}: {
+  integrationId: string;
+  fallback: string;
+}) {
+  const { name } = usePrimaryAccountName(integrationId);
+  return <>{name ? `Connected as ${name}` : fallback}</>;
 }
 
 interface InlineConnectActionProps {
@@ -202,7 +215,19 @@ function IntegrationConnectCard({
               />
             </div>
             <p className="text-xs font-light text-zinc-400">
-              {cardSubtitle(integration, isConnected, toolsCount, accountLabel)}
+              {connector && isConnected && !accountLabel ? (
+                <StoredAccountSubtitle
+                  integrationId={integration.id}
+                  fallback={cardSubtitle(
+                    integration,
+                    isConnected,
+                    toolsCount,
+                    accountLabel,
+                  )}
+                />
+              ) : (
+                cardSubtitle(integration, isConnected, toolsCount, accountLabel)
+              )}
             </p>
           </div>
         </div>

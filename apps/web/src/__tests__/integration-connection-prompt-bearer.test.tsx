@@ -19,6 +19,15 @@ vi.mock("@/features/integrations/hooks/useIntegrations", () => ({
   useIntegrations: () => ({ integrations, connectIntegration }),
 }));
 
+let storedAccounts: Record<string, unknown>[] = [];
+
+vi.mock("@/features/integrations/hooks/useIntegrationAccounts", () => ({
+  useIntegrationAccounts: () => ({
+    accounts: storedAccounts,
+    isLoading: false,
+  }),
+}));
+
 vi.mock("@/components/shared/CollapsibleListWrapper", () => ({
   default: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
@@ -298,5 +307,14 @@ describe("IntegrationConnectionPrompt — connector key entry", () => {
     expect(await screen.findByText(fix)).toBeDefined();
     expect(screen.getByLabelText("API token")).toBeDefined();
     expect(screen.getByRole("button", { name: /retry/i })).toBeDefined();
+  });
+
+  it("still names the connected account after the chat is reloaded", () => {
+    integrations = [{ ...connectorIntegration(), status: "connected" }];
+    storedAccounts = [{ id: "a1", displayName: "ada@fly.io", isPrimary: true }];
+
+    renderCard("fly");
+
+    expect(screen.getByText("Connected as ada@fly.io")).toBeDefined();
   });
 });

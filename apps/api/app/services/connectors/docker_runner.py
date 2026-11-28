@@ -26,8 +26,9 @@ from app.constants.connectors import (
     CONNECTOR_INSTALL_TIMEOUT_SECONDS,
 )
 from app.constants.log_tags import LogTag
-from app.constants.sandbox import LOCAL_SANDBOX_NETWORK, SANDBOX_USER_HOME
+from app.constants.sandbox import SANDBOX_USER_HOME
 from app.models.connector_models import InstallPackage
+from app.services.connectors.docker_egress import EgressProxy, egress_proxy
 from app.services.connectors.install import install_script
 from app.services.connectors.rest_helper import REST_HELPER_PATH, REST_HELPER_SOURCE
 from app.services.connectors.runner import (
@@ -70,11 +71,9 @@ _build_locks: dict[str, asyncio.Lock] = {}
 
 
 class DockerConnectorRunner:
-    """Run each connector call in its own throwaway local container.
+    """Run each connector call in its own throwaway local container, reaching only call_hosts.
 
-    Docker has no per-host egress allowlist, so a call reaches any host the
-    sandbox network does and call_hosts is not enforced here. The REST helper's
-    own host lock is what keeps a REST connector's key on its base URL's host.
+    The container's only way out is its own egress proxy (see docker_egress).
     """
 
     async def run(self, request: RunRequest) -> RunResult:
@@ -188,7 +187,8 @@ def install_step_output(build_log: str) -> str:
     return "\n".join(lines) or build_log
 
 
-def _run_argv(name: str, image: str, call_argv: tuple[str, ...]) -> list[str]:
+def _run_argv(name: str, image: str, call_argv: tuple[str, ...], egress: EgressProxy) -> list[str]:
+    egress_env = [arg for key, value in egress.env.items() for arg in ("--env", f"{key}={value}")]
     return [
         "docker",
         "run",
@@ -198,7 +198,7 @@ def _run_argv(name: str, image: str, call_argv: tuple[str, ...]) -> list[str]:
         "--label",
         f"{CONNECTOR_DOCKER_LABEL}=call",
         "--network",
-        LOCAL_SANDBOX_NETWORK,
+        egress.network,
         "--cap-drop",
         "ALL",
         "--security-opt",
@@ -217,6 +217,7 @@ def _run_argv(name: str, image: str, call_argv: tuple[str, ...]) -> list[str]:
         SANDBOX_USER_HOME,
         "--env",
         f"HOME={SANDBOX_USER_HOME}",
+        *egress_env,
         # Bare name: docker reads the value from its own environment, never from argv.
         "--env",
         PAYLOAD_ENV,
@@ -229,14 +230,27 @@ def _run_argv(name: str, image: str, call_argv: tuple[str, ...]) -> list[str]:
 
 
 async def _call(image: str, request: RunRequest, started: float) -> RunResult:
-    """Run argv in a fresh container; a timeout or the output cap removes it."""
+    """Run argv in a fresh container behind its own egress proxy, both removed when it ends."""
     name = f"{CONNECTOR_DOCKER_CONTAINER_PREFIX}{uuid.uuid4().hex[:12]}"
+    try:
+        async with egress_proxy(name, request.call_hosts) as egress:
+            return await _run_container(name, image, request, egress, started)
+    except LocalSandboxError as error:
+        return failed_before_call(
+            RunOutcome.RUNNER_UNAVAILABLE, f"connector egress proxy failed: {error}", started
+        )
+
+
+async def _run_container(
+    name: str, image: str, request: RunRequest, egress: EgressProxy, started: float
+) -> RunResult:
+    """Run argv in a fresh container; a timeout or the output cap removes it."""
     payload = encode_payload(
         request.env,
         (PayloadFile(path=runner_path(f.path), content=f.content) for f in request.files),
     )
     proc = await spawn_process(
-        _run_argv(name, image, request.argv), extra_env={PAYLOAD_ENV: payload}
+        _run_argv(name, image, request.argv, egress), extra_env={PAYLOAD_ENV: payload}
     )
     # spawn_process always pipes both streams; this only narrows the types.
     assert proc.stdout is not None and proc.stderr is not None  # pragma: no mutate

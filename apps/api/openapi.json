@@ -10019,6 +10019,7 @@
           "out_of_scope",
           "unknown_account",
           "account_expired",
+          "approval_required",
           "timeout"
         ],
         "title": "DispatchErrorKind",
