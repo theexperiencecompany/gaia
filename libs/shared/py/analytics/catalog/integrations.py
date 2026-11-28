@@ -268,7 +268,7 @@ class IntegrationConnectorDefined(ServerEvent):
     integration_id: Identifier
     kind: Literal["cli", "rest", "sdk"]
     created: bool
-    # The hosts or packages changed, so other users of a published connector must reconnect.
+    # The spec changed what runs with the key or where it goes, so every connected user reconnects.
     reach_changed: bool
 
 

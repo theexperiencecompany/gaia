@@ -17,6 +17,7 @@ import ssl
 import sys
 from typing import NoReturn
 from urllib.parse import urlencode, urlsplit
+from urllib.request import getproxies_environment
 
 BASE_URL_ENV = "GAIA_CONNECTOR_BASE_URL"
 SECRET_ENV = "GAIA_CONNECTOR_SECRET"
@@ -165,14 +166,24 @@ def _split_pair(item: str, sep: str, flag: str) -> tuple[str, str]:
     return key.strip(), value
 
 
+def _connection(request: PreparedRequest, proxy_url: str | None) -> http.client.HTTPSConnection:
+    """Connect to the host, or tunnel through the runner's egress proxy when one is set."""
+    context = ssl.create_default_context()
+    if not proxy_url:
+        return http.client.HTTPSConnection(
+            request.host, request.port, timeout=REQUEST_TIMEOUT_SECONDS, context=context
+        )
+    proxy = urlsplit(proxy_url)
+    connection = http.client.HTTPSConnection(
+        proxy.hostname or "", proxy.port, timeout=REQUEST_TIMEOUT_SECONDS, context=context
+    )
+    connection.set_tunnel(request.host, request.port)
+    return connection
+
+
 def send(request: PreparedRequest) -> int:
     """Send the request, print the body and status, and return the exit code."""
-    connection = http.client.HTTPSConnection(
-        request.host,
-        request.port,
-        timeout=REQUEST_TIMEOUT_SECONDS,
-        context=ssl.create_default_context(),
-    )
+    connection = _connection(request, getproxies_environment().get("https"))
     try:
         connection.request(request.method, request.target, request.body, dict(request.headers))
         response = connection.getresponse()

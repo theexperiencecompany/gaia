@@ -9,7 +9,7 @@ from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILMode, HILPreferences
 from app.models.integration_models import Integration
 from app.services.hil.describe import describe_call
-from app.services.hil.policy import gated_tool_key, resolve_policy
+from app.services.hil.policy import asks_every_time, gated_tool_key, resolve_policy
 from app.services.hil.when import UserClock
 from app.utils.timezone import Timezone
 from tests.factories import make_connector_doc, make_connector_spec
@@ -101,3 +101,31 @@ def test_the_approval_card_names_the_command_and_the_connector() -> None:
 
     assert description.headline == "Run POST /audiences --json {} on Resend"
     assert description.question.endswith("run POST /audiences --json {} on Resend?")
+
+
+def _script_connector():
+    spec = make_connector_spec("sdk")
+    doc = make_connector_doc(CONNECTOR_ID, USER_ID, spec, name="OpenAI")
+    return patch(f"{RISK_MODULE}.load_connector", AsyncMock(return_value=(doc, spec)))
+
+
+@pytest.mark.parametrize("mode", ["always_ask", "auto", "always_allow"])
+async def test_a_script_asks_every_time_even_after_always_allow(mode: HILMode) -> None:
+    allowed = {f"connector:{CONNECTOR_ID}:script": False}
+    with (
+        _script_connector(),
+        patch(f"{POLICY_MODULE}.get_hil_preferences", _prefs(mode, **allowed)),
+    ):
+        policy = await resolve_policy(_call(["-c", "print(1)"]), USER_ID, RUN_CONNECTOR_TOOL)
+
+    assert policy == "ask"
+
+
+async def test_a_script_offers_no_always_allow_but_a_command_type_does() -> None:
+    script = {"connector_id": CONNECTOR_ID, "argv": ["-c", "print(1)"]}
+    write = {"connector_id": CONNECTOR_ID, "argv": ["pr", "create"]}
+    with _script_connector():
+        script_always_asks = await asks_every_time(USER_ID, RUN_CONNECTOR_TOOL, script)
+    write_always_asks = await asks_every_time(USER_ID, RUN_CONNECTOR_TOOL, write)
+
+    assert (script_always_asks, write_always_asks) == (True, False)

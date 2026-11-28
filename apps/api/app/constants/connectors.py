@@ -46,6 +46,11 @@ APT_REGISTRY_HOSTS: Final = (
 # Where the runner keeps GAIA's own helpers (the REST request helper), under its home.
 CONNECTOR_HELPER_DIR: Final = "~/.gaia-connector"
 CONNECTOR_REST_HELPER: Final = f"{CONNECTOR_HELPER_DIR}/gaia_rest.py"
+# A credential file lives in its tool's own dot-directory (~/.config/gh/hosts.yml) or is one of
+# these home files. Other home paths may be read as code: ~/.profile by the runner's login
+# shell, ~/.local by python's site and PATH, the helper dir by GAIA itself.
+CREDENTIAL_HOME_FILES: Final = frozenset({".netrc", ".npmrc", ".pypirc"})
+CREDENTIAL_DENIED_DIRS: Final = frozenset({".local", CONNECTOR_HELPER_DIR.removeprefix("~/")})
 # Where a binary download host redirects to: a GitHub release asset is served from these.
 BINARY_REDIRECT_HOSTS: Final[dict[str, tuple[str, ...]]] = {
     "github.com": ("objects.githubusercontent.com", "release-assets.githubusercontent.com"),
@@ -66,6 +71,17 @@ CONNECTOR_DOCKER_USER: Final = "1000:1000"
 CONNECTOR_DOCKER_MEMORY_LIMIT: Final = "1g"
 CONNECTOR_DOCKER_CPUS: Final = "1"
 CONNECTOR_DOCKER_PIDS_LIMIT: Final = 256
+
+# Self-host egress: each call gets its own internal network with no route out, and one
+# allowlisting forward proxy (CONNECT to the spec's hosts only, no TLS interception) as
+# its only way out. Canonical's ubuntu/squid:7.2-26.04_stable, pinned by its index digest.
+CONNECTOR_EGRESS_PROXY_IMAGE: Final = (
+    "ubuntu/squid@sha256:51e524f1b8c72b5ce15c288ba0b1618771cee09dc1a317b0dd7d81dc4f441312"
+)
+CONNECTOR_EGRESS_PROXY_BINARY: Final = "/usr/sbin/squid-gnutls"
+CONNECTOR_EGRESS_PROXY_PORT: Final = 3128
+CONNECTOR_EGRESS_PROXY_MEMORY_LIMIT: Final = "256m"
+CONNECTOR_EGRESS_PROXY_PIDS_LIMIT: Final = 64
 
 CONNECTOR_NO_SANDBOX_MESSAGE: Final = (
     "Connectors need a code sandbox: add an E2B key or run `gaia up --code-sandbox`"

@@ -31,7 +31,7 @@ def render_connector_usage(doc: Integration, spec: ConnectorSpec) -> str:
         f"## {doc.name}: how to use it",
         doc.description or spec.capability,
         f'Run it with execute(tool_name="{RUN_CONNECTOR_TOOL}", data={{"connector_id": '
-        f'"{doc.integration_id}", "argv": [...]}}), or gaia.execute from a script.',
+        f'"{doc.integration_id}", "argv": [...]}}) from the conversation; a script may only read.',
         _call_shape(spec),
         "Each call runs in a fresh sandbox holding the key for that call only; nothing persists "
         "between calls, so pass everything a call needs in its argv.",

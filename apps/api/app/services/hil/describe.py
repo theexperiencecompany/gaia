@@ -39,6 +39,8 @@ _Scalar = str | int | float
 _EACH = "[]."
 _BROWSER_ACTION = "Start a browser task"
 _BROWSER_LEAD_CHARS = 140
+# How much of a connector call's command line the approval card's headline shows.
+_CONNECTOR_COMMAND_CHARS = 140
 
 
 class _BrowserTaskArgs(BaseModel):
@@ -225,7 +227,9 @@ def _describe_connector_call(
     args: Mapping[str, object], connector: str | None
 ) -> ApprovalDescription:
     """Describe a connector call by the command it runs, on the connector the user named."""
-    command = clip_text(" ".join(_ConnectorCallArgs.model_validate(args).argv), _BROWSER_LEAD_CHARS)
+    command = clip_text(
+        " ".join(_ConnectorCallArgs.model_validate(args).argv), _CONNECTOR_COMMAND_CHARS
+    )
     place = f" on {connector}" if connector else ""
     phrase = f"run {command}{place}" if command else f"run a command{place}"
     return ApprovalDescription(

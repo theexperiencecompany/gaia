@@ -30,6 +30,7 @@ from app.scripts.delete_user_account import (
     _delete_link_content,
     _delete_local_stores,
     _delete_mongo_data,
+    _delete_owned_integrations,
     _delete_postgres_data,
     _delete_workos_identity,
     _failures,
@@ -281,6 +282,7 @@ def _footprint(**overrides: Any) -> Any:
         "jfs_path": JFS_USERS_ROOT / UID,
         "link_snapshots": [],
         "edition_keys": [],
+        "owned_integration_ids": [],
     }
     defaults.update(overrides)
     return _Footprint(**defaults)
@@ -365,30 +367,44 @@ class TestDeleteMongoData:
         users.delete_one.assert_called_once_with(object_id_filter(UID))
         assert "[mongo] todos: deleted 3" in capsys.readouterr().out
 
-    @pytest.mark.regression
-    def test_custom_integrations_are_deleted_by_their_creator(self, capsys: Any) -> None:
+    def test_the_raw_sweep_leaves_owned_integrations_to_their_cascade(self) -> None:
         d = _footprint()
         integrations = MagicMock()
-        integrations.delete_many.side_effect = [
-            MagicMock(deleted_count=0),
-            MagicMock(deleted_count=2),
-        ]
+        integrations.delete_many.return_value.deleted_count = 0
         users = MagicMock()
         users.delete_one.return_value.deleted_count = 1
-        empty_files = MagicMock()
-        empty_files.find.return_value = []
-        d.db.__getitem__.side_effect = lambda name: {"fs.files": empty_files}.get(
-            name, users if name == "users" else integrations
-        )
+        d.db.__getitem__.side_effect = lambda name: users if name == "users" else integrations
         d.db.list_collection_names.return_value = ["integrations"]
 
         with patch("app.scripts.delete_user_account.gridfs.GridFSBucket"):
             _delete_mongo_data(d)
 
-        # Custom MCP servers and connectors carry created_by, not user_id.
-        second = integrations.delete_many.call_args_list[1]
-        assert second.args[0] == {"source": "custom", "created_by": UID}
-        assert "[mongo] integrations: deleted 2" in capsys.readouterr().out
+        integrations.delete_many.assert_called_once_with({"user_id": UID})
+
+
+@pytest.mark.unit
+class TestDeleteOwnedIntegrations:
+    async def test_owned_custom_integrations_go_through_the_owner_cascade(self) -> None:
+        d = _footprint(owned_integration_ids=["mcp-1", "conn-1"])
+        with patch(
+            "app.scripts.delete_user_account.delete_custom_integration",
+            AsyncMock(return_value=True),
+        ) as cascade:
+            await _delete_owned_integrations(d)
+
+        assert cascade.await_args_list == [call(UID, "mcp-1"), call(UID, "conn-1")]
+
+    async def test_a_failed_cascade_is_recorded_and_the_rest_still_run(self) -> None:
+        d = _footprint(owned_integration_ids=["boom", "conn-1"])
+        with patch(
+            "app.scripts.delete_user_account.delete_custom_integration",
+            AsyncMock(side_effect=[RuntimeError("chroma down"), True]),
+        ) as cascade:
+            await _delete_owned_integrations(d)
+
+        assert cascade.await_count == 2
+        assert len(_failures) == 1
+        assert "integrations:boom" in _failures[0]
 
     def test_support_requests_are_deleted_by_email_too(self, capsys: Any) -> None:
         d = _footprint()
@@ -1197,6 +1213,17 @@ class TestBuildFootprint:
     async def test_aborts_when_the_jfs_path_escapes_the_users_root(self) -> None:
         with pytest.raises(SystemExit, match="refusing to touch"):
             await _run_build_footprint(MagicMock(), _user_doc(), uid="../escape")
+
+    async def test_collects_the_custom_integrations_the_user_created(self) -> None:
+        db = MagicMock()
+        db.integrations.distinct.return_value = ["conn-1"]
+
+        d, _ = await _run_build_footprint(db, _user_doc())
+
+        db.integrations.distinct.assert_called_once_with(
+            "integration_id", {"source": "custom", "created_by": UID}
+        )
+        assert d.owned_integration_ids == ["conn-1"]
 
 
 @pytest.mark.unit

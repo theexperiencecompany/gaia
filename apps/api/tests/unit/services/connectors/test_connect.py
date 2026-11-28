@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.connector_models import IdentityExtractor
 from app.models.integration_models import Integration
-from app.services.connectors.connect import connect_connector, extract_identity
+from app.services.connectors.connect import (
+    connect_connector,
+    disconnect_connector,
+    extract_identity,
+)
 from app.services.connectors.runner import RunOutcome
 from app.services.connectors.service import CallFailure, ConnectorCallResult
 from tests.factories import make_connector_doc, make_connector_spec
@@ -96,3 +100,22 @@ async def test_a_refused_key_is_never_stored_and_the_card_says_how_to_fix_it() -
     assert "https://github.com/settings/tokens" in (response.error or "")
     patched.store.store_bearer_token.assert_not_awaited()
     patched.publish_connected.assert_not_awaited()
+
+
+async def test_disconnect_forgets_the_key_and_account_but_keeps_the_connector_to_reconnect() -> (
+    None
+):
+    store = MagicMock(delete_credentials=AsyncMock())
+    save_accounts = AsyncMock()
+    remove = AsyncMock()
+    with (
+        patch(f"{MODULE}.MCPTokenStore", MagicMock(return_value=store)),
+        patch(f"{MODULE}.save_accounts", save_accounts),
+        patch(f"{MODULE}.remove_user_integration", remove, create=True),
+        patch(f"{MODULE}.log"),
+    ):
+        await disconnect_connector(USER_ID, CONNECTOR_ID)
+
+    store.delete_credentials.assert_awaited_once_with(CONNECTOR_ID)
+    save_accounts.assert_awaited_once_with(USER_ID, CONNECTOR_ID, [], None)
+    remove.assert_not_awaited()

@@ -441,6 +441,7 @@ _EXPECTED_DESTRUCTIVE_TOOL_NAMES = {
 #: later conversation: text planted in an email must never persist without a yes.
 _EXPECTED_ALWAYS_GATE_TOOL_NAMES = {
     "add_custom_mcp_server",
+    "define_connector",
     "approve_device_pairing",
     "disconnect_integration",
     "set_briefing_schedule",
@@ -1119,6 +1120,7 @@ class TestInitializedCategoryContract:
         }
         assert gated == {
             "add_custom_mcp_server",
+            "define_connector",
             "approve_device_pairing",
             "disconnect_integration",
         }

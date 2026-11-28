@@ -73,9 +73,16 @@ def _argument_gate_hit(tool_name: str, args: Mapping[str, object] | None) -> boo
     return all(args.get(key) == value for key, value in required.items())
 
 
-async def asks_every_time(tool_name: str, args: Mapping[str, object] | None) -> bool:
-    """Whether this call asks in every mode, beyond any per-tool override's reach."""
+async def _forced_ask(tool_name: str, args: Mapping[str, object] | None) -> bool:
     return await _is_always_gated(tool_name) or _argument_gate_hit(tool_name, args)
+
+
+async def asks_every_time(user_id: str, tool_name: str, args: Mapping[str, object] | None) -> bool:
+    """Whether this call asks in every mode, beyond any per-tool override's reach."""
+    if await _forced_ask(tool_name, args):
+        return True
+    connector_risk = await connector_call_risk(user_id, tool_name, args)
+    return connector_risk is not None and connector_risk.always_asks
 
 
 async def gated_tool_object(
@@ -136,7 +143,7 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     "always ask" asks even in always_allow or auto, "never ask" runs in every mode.
     """
     call = unpack_tool_call(request)
-    if await asks_every_time(tool_name, call.args):
+    if await _forced_ask(tool_name, call.args):
         return "ask"
     connector_risk = await connector_call_risk(user_id, tool_name, call.args)
     if connector_risk is not None:
@@ -160,7 +167,10 @@ async def _connector_policy(user_id: str, risk: ConnectorCallRisk) -> GatingPoli
 
     The read/write split comes from a spec the agent may have written, so a write
     is never left to the intent judge: only the user's own choice lets one through.
+    A script has no command type to remember, so it asks every time.
     """
+    if risk.always_asks:
+        return "ask"
     if not risk.is_write:
         return "allow"
     prefs = await _preferences(user_id)
@@ -188,7 +198,7 @@ async def is_gated(
     Otherwise the user's per-tool choice wins in both directions — even over an
     MCP destructiveHint — since it is a deliberate setting on their own account.
     """
-    if await asks_every_time(tool_name, args):
+    if await _forced_ask(tool_name, args):
         return True
     override = _tool_override(prefs, tool_name, tool)
     if override is not None:
