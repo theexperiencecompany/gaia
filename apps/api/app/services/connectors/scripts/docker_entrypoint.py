@@ -8,14 +8,21 @@ from collections.abc import Iterable, Mapping
 import json
 import os
 from pathlib import Path
+import socket
 import sys
+import time
 from typing import TypedDict
+from urllib.parse import urlsplit
 
 PAYLOAD_ENV = "GAIA_CONNECTOR_PAYLOAD"
 FILE_MODE = 0o600
 DIR_MODE = 0o700
 EXIT_NOT_FOUND = 127
 EXIT_USAGE = 2
+EXIT_NO_PROXY = 3
+PROXY_ENV = "HTTPS_PROXY"
+PROXY_READY_SECONDS = 15
+_PROXY_POLL_SECONDS = 0.05
 
 
 class PayloadFile(TypedDict):
@@ -49,12 +56,31 @@ def _write_private(entry: PayloadFile) -> None:
         handle.write(entry["content"])
 
 
+def proxy_ready(proxy_url: str, deadline_seconds: float) -> bool:
+    """Wait until the call's egress proxy accepts connections, its only way out."""
+    parts = urlsplit(proxy_url)
+    address = (parts.hostname or "", parts.port or 0)
+    deadline = time.monotonic() + deadline_seconds
+    while True:
+        try:
+            socket.create_connection(address, timeout=1).close()
+            return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(_PROXY_POLL_SECONDS)
+
+
 def main(argv: list[str]) -> int:
     """Apply the payload, close stdin, and replace this process with argv."""
     if not argv:
         print("docker_entrypoint.py: no command to run", file=sys.stderr)
         return EXIT_USAGE
     apply_payload(os.environ.pop(PAYLOAD_ENV))
+    proxy_url = os.environ.get(PROXY_ENV)
+    if proxy_url and not proxy_ready(proxy_url, PROXY_READY_SECONDS):
+        print(f"docker_entrypoint.py: egress proxy {proxy_url} never came up", file=sys.stderr)
+        return EXIT_NO_PROXY
     devnull = os.open(os.devnull, os.O_RDONLY)
     os.dup2(devnull, sys.stdin.fileno())
     os.close(devnull)
