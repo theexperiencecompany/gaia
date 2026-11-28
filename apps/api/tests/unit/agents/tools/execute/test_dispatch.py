@@ -26,12 +26,14 @@ from app.agents.tools.execute.dispatch import (
 )
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.config.oauth_config import get_integration_by_id
+from app.constants.connectors import RUN_CONNECTOR_TOOL
 from app.constants.integrations import ConnectMode, IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolExecuteFailed, ToolUsed
+from tests.factories import make_connector_doc, make_connector_spec
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.execute.dispatch"
@@ -1068,3 +1070,61 @@ class TestArgsValidation:
         assert error["msg"] == "Value error, title is blank"
         assert error["ctx"] == {"error": "title is blank"}
         assert "url" not in error
+
+
+class _RunConnectorArgs(BaseModel):
+    connector_id: str
+    argv: list[str]
+
+
+@pytest.mark.unit
+class TestSandboxConnectorWrites:
+    """A connector write asks the user, and a sandbox script has no one to ask."""
+
+    @pytest.fixture(autouse=True)
+    def gh_connector(self) -> Iterator[None]:
+        spec = make_connector_spec("cli")
+        doc = make_connector_doc("c-1", USER_ID, spec, name="GitHub CLI")
+        with patch(
+            "app.services.hil.connector_risk.load_connector",
+            AsyncMock(return_value=(doc, spec)),
+        ):
+            yield
+
+    async def _dispatch(
+        self, argv: list[str], *, integration_only: bool
+    ) -> tuple[ToolExecutionResult, MagicMock]:
+        tool = _tool(name=RUN_CONNECTOR_TOOL, schema=_RunConnectorArgs)
+        resolved = ResolvedTool(RUN_CONNECTOR_TOOL, tool, is_integration=True)
+        with (
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=resolved)),
+            patch(f"{MODULE}.capture"),
+        ):
+            result = await dispatch_tool(
+                user_id=USER_ID,
+                tool_name=RUN_CONNECTOR_TOOL,
+                data={"connector_id": "c-1", "argv": argv},
+                config=CONFIG,
+                space=ToolSpace(integration_only=integration_only),
+            )
+        return result, tool
+
+    async def test_a_write_from_a_sandbox_script_is_refused_before_it_runs(self) -> None:
+        result, tool = await self._dispatch(["pr", "create", "-t", "x"], integration_only=True)
+
+        assert result.ok is False
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.APPROVAL_REQUIRED
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_a_read_from_a_sandbox_script_runs(self) -> None:
+        result, tool = await self._dispatch(["api", "user"], integration_only=True)
+
+        assert result.ok is True
+        tool.ainvoke.assert_awaited_once()
+
+    async def test_a_write_from_the_conversation_runs_since_the_gate_already_asked(self) -> None:
+        result, tool = await self._dispatch(["pr", "create", "-t", "x"], integration_only=False)
+
+        assert result.ok is True
+        tool.ainvoke.assert_awaited_once()

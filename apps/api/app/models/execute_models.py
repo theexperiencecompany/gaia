@@ -21,6 +21,9 @@ class DispatchErrorKind(StrEnum):
     UNKNOWN_ACCOUNT = "unknown_account"
     # The chosen account's grant died while another account still works.
     ACCOUNT_EXPIRED = "account_expired"
+    # A call that needs the user's approval reached a surface (the sandbox route)
+    # with no one to ask: a connector write from a script.
+    APPROVAL_REQUIRED = "approval_required"
     # The tool did not return within the host's bound. Its own outcome is
     # unknown, so this is the one failure a retry can duplicate.
     TIMEOUT = "timeout"

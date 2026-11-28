@@ -255,7 +255,7 @@ async def _decide_ledger(
                 integration_name=integration_name,
                 args_preview=to_jsonable_python(call.args),
                 auto_reason=AUTO_ASK_NOTE if auto.asked else None,
-                always_asks=await asks_every_time(call.name, call.args),
+                always_asks=await asks_every_time(context.user_id, call.name, call.args),
             ),
         )
         registered = await approval_ledger_repository.register(proposal, ap_id)

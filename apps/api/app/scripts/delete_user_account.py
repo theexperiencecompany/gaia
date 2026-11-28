@@ -10,6 +10,9 @@ identity last (so a re-login cannot resurrect the account mid-teardown):
 2. E2B           — kill the user's sandboxes
 3. Link content  — the bytes of every snapshot the user's shared links pinned,
                    and every brief's edition image
+3b. Integrations — each custom MCP server or connector the user created, through
+                   the app's owner cascade (public index, other users' links
+                   and credentials, Chroma tool index)
 4. MongoDB       — every collection with a matching ``user_id`` (+ GridFS,
                    ``support_requests`` by email, ``bot_sessions`` by platform
                    link, ``link_reports`` by reporter, ``users`` doc last)
@@ -73,6 +76,7 @@ from app.models.platform_models import PlatformLinkEntry
 from app.models.short_link_models import LinkSnapshot
 from app.models.user_models import UserDocument
 from app.services.briefing.edition_image import delete_edition
+from app.services.integrations.custom_crud import delete_custom_integration
 from app.services.links.content import delete_snapshot
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.email_utils import canonical_email
@@ -200,6 +204,8 @@ class _Footprint:
     jfs_path: Path
     link_snapshots: list[LinkSnapshot]
     edition_keys: list[str]
+    # Custom MCP servers and connectors the user created; created_by, not user_id, names them.
+    owned_integration_ids: list[str]
 
 
 async def _build_footprint(
@@ -237,6 +243,10 @@ async def _build_footprint(
             "edition.key", {"user_id": uid, "edition.key": {"$ne": None}}
         )
     ]
+    owned_integration_ids = [
+        str(i)
+        for i in db.integrations.distinct("integration_id", {"source": "custom", "created_by": uid})
+    ]
     workos_users = (await workos.user_management.list_users(email=args.email)).data
 
     print("mongo:", mongo_counts or "none")
@@ -250,6 +260,7 @@ async def _build_footprint(
     print(f"platform_links: {list(platform_links) or 'none'}")
     print(f"shared-link snapshots: {len(link_snapshots)}")
     print(f"brief edition images: {len(edition_keys)}")
+    print(f"custom integrations created: {owned_integration_ids or 'none'}")
     print(f"workos: {[(u.id, u.email) for u in workos_users]}")
 
     return _Footprint(
@@ -271,6 +282,7 @@ async def _build_footprint(
         jfs_path=jfs_path,
         link_snapshots=link_snapshots,
         edition_keys=edition_keys,
+        owned_integration_ids=owned_integration_ids,
     )
 
 
@@ -309,6 +321,16 @@ async def _delete_link_content(d: _Footprint) -> None:
             _fail(f"link_content:edition:{key}", e)
 
 
+async def _delete_owned_integrations(d: _Footprint) -> None:
+    """Delete each custom integration the user created through the owner cascade the app runs."""
+    for integration_id in d.owned_integration_ids:
+        try:
+            await delete_custom_integration(d.uid, integration_id)
+            _step("integrations", f"deleted {integration_id} and its other users' links")
+        except Exception as e:
+            _fail(f"integrations:{integration_id}", e)
+
+
 def _platform_session_filters(
     platform_links: dict[str, PlatformLinkEntry],
 ) -> list[dict[str, str]]:
@@ -333,9 +355,6 @@ def _delete_mongo_data(d: _Footprint) -> None:
                 n += d.db[name].delete_many({"user_email": d.email}).deleted_count
             if name == "link_reports":
                 n += d.db[name].delete_many({"reporter_key": d.uid}).deleted_count
-            if name == "integrations":
-                # Custom MCP servers and connectors are keyed by their creator, not user_id.
-                n += d.db[name].delete_many({"source": "custom", "created_by": d.uid}).deleted_count
             sessions = _platform_session_filters(d.platform_links)
             if name == "bot_sessions" and sessions:
                 n += d.db[name].delete_many({"$or": sessions}).deleted_count
@@ -485,6 +504,7 @@ async def _run(args: argparse.Namespace) -> int:
     # the login identity last (see module docstring).
     await _revoke_external_access(d)
     await _delete_link_content(d)
+    await _delete_owned_integrations(d)
     _delete_mongo_data(d)
     _delete_postgres_data(d)
     _delete_local_stores(d)
