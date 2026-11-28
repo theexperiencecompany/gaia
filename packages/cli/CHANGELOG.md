@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.8.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.7.0...cli-v0.8.0) (2026-11-28)
+
+
+### Features
+
+* **briefing:** daily and weekly briefs, heygaia.link sharing, and OpenUI artifacts ([#1853](https://github.com/theexperiencecompany/gaia/issues/1853)) ([b0c7d7c](https://github.com/theexperiencecompany/gaia/commit/b0c7d7c38edec5d4d4e7a1b497b792efe5b925ec))
+* **ci:** nx decides what CI runs; stop the self-made flakes and silent passes ([#1569](https://github.com/theexperiencecompany/gaia/issues/1569)) ([c722c9c](https://github.com/theexperiencecompany/gaia/commit/c722c9c021df2a050773dfe34cb2d9040bed2aeb))
+* **conversation:** the conversation-runtime redesign (stack [#1716](https://github.com/theexperiencecompany/gaia/issues/1716)–[#1723](https://github.com/theexperiencecompany/gaia/issues/1723), landed as one) ([#1723](https://github.com/theexperiencecompany/gaia/issues/1723)) ([8ff2293](https://github.com/theexperiencecompany/gaia/commit/8ff2293d14eb97e6fba582ba1b1fdb9dc3a99730))
+
+
+### Bug Fixes
+
+* **cli:** verify GAIA answers before pairing a device ([#1856](https://github.com/theexperiencecompany/gaia/issues/1856)) ([62c4429](https://github.com/theexperiencecompany/gaia/commit/62c442944677644a9a48f63a1b98fb621e316956))
+* **cli:** verify GAIA answers before pairing this device ([62c4429](https://github.com/theexperiencecompany/gaia/commit/62c442944677644a9a48f63a1b98fb621e316956))
+* **deps:** close the open npm Dependabot alerts ([#1630](https://github.com/theexperiencecompany/gaia/issues/1630)) ([7b2c8cd](https://github.com/theexperiencecompany/gaia/commit/7b2c8cdfb6e9b7553ea0d025a139368a46a30b53))
+* **seo:** full-crawl Links and URL Structure to 100, family pages ship half the CSS ([#1797](https://github.com/theexperiencecompany/gaia/issues/1797)) ([dad3377](https://github.com/theexperiencecompany/gaia/commit/dad3377db52ed03387c354463b07094c22c7f935))
+* **web:** rebuild public pages the moment a published integration or workflow changes ([#1937](https://github.com/theexperiencecompany/gaia/issues/1937)) ([0d88b89](https://github.com/theexperiencecompany/gaia/commit/0d88b89feec14b2c66a9321da614ce353e004dc4))
+
+
+### Performance Improvements
+
+* **ci:** self-host e2e runs only when the change reaches the self-host stack ([#1900](https://github.com/theexperiencecompany/gaia/issues/1900)) ([a94e063](https://github.com/theexperiencecompany/gaia/commit/a94e06334391e548a837c4c6361e02c8de16206e))
+
 ## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.6.0...cli-v0.7.0) (2026-10-26)
 
 
