@@ -18,7 +18,7 @@ from app.services.connectors.rest_helper import REST_HELPER_ARGV
 
 _SUBCOMMAND_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _WRITE_TYPE_WORDS = 2
-_HELP_FLAGS = frozenset({"--help", "-h", "help"})
+_HELP_FLAGS = frozenset({"--help", "-h", "help", "--version"})
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _REST_METHODS = _READ_METHODS | frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _SDK_BINARIES = {SdkRuntime.PYTHON: "python3", SdkRuntime.NODE: "node"}
