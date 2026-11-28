@@ -25,6 +25,7 @@ from app.services.connectors.runner import ConnectorRunner
 from scripts.connectors.fakes import FakeName, running_fakes
 from scripts.connectors.journeys import JOURNEYS, Journey, real_key
 from scripts.connectors.stages import (
+    BAD_KEY,
     Outcome,
     Stage,
     StageResult,
@@ -114,7 +115,7 @@ async def check(
     runner = _RUNNERS[runner_name]()
     journey = JOURNEYS.get(connector_id, Journey())
     results = {Stage.INSTALL: await install_stage(spec, runner)}
-    results[Stage.BAD_KEY] = await bad_key_stage(spec, runner)
+    results[Stage.BAD_KEY] = await bad_key_stage(spec, runner, journey.bad_key or BAD_KEY)
     target, label = _target_for(journey, runner_name, runner, fakes_up)
     run_name = f"gaia-conformance-{int(time.time())}-{runner_name}"
     if target is None:

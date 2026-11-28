@@ -103,9 +103,11 @@ async def install_stage(spec: ConnectorSpec, runner: ConnectorRunner) -> StageRe
     return StageResult(Stage.INSTALL, Outcome.PASS, " ".join(output.stdout.split())[:60])
 
 
-async def bad_key_stage(spec: ConnectorSpec, runner: ConnectorRunner) -> StageResult:
+async def bad_key_stage(
+    spec: ConnectorSpec, runner: ConnectorRunner, bad_key: str = BAD_KEY
+) -> StageResult:
     """Run the verify call with a key the provider has never issued; it must read as an auth failure."""
-    output = await call(spec, spec.verify.args, Target(runner, BAD_KEY))
+    output = await call(spec, spec.verify.args, Target(runner, bad_key))
     if output.failure is CallFailure.AUTH:
         return StageResult(Stage.BAD_KEY, Outcome.PASS, "refused as auth")
     return StageResult(Stage.BAD_KEY, Outcome.FAIL, _why(output))

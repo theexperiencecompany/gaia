@@ -41,6 +41,9 @@ class Journey:
     fake_write: WriteJourney | None = None
     # Why a real key would not pass today, when the team's known key is known to be dead.
     known_dead_key: str | None = None
+    # A provider that checks a key's shape before the key answers a shapeless one differently;
+    # a revoked key keeps its shape, so the bad-key stage uses one shaped like the real thing.
+    bad_key: str | None = None
 
 
 def real_key(journey: Journey) -> tuple[str | None, str]:
@@ -215,7 +218,10 @@ JOURNEYS: dict[str, Journey] = {
         read_expect='"accounts"',
     ),
     "sendgrid": Journey(
-        key_env=("SENDGRID_API_KEY",), read=["GET", "/scopes"], read_expect='"scopes"'
+        key_env=("SENDGRID_API_KEY",),
+        read=["GET", "/scopes"],
+        read_expect='"scopes"',
+        bad_key=f"SG.{'a' * 22}.{'b' * 43}",
     ),
     "postmark": Journey(
         key_env=("POSTMARK_SERVER_TOKEN",), read=["GET", "/server"], read_expect='"Name"'
