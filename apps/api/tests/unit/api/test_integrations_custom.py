@@ -14,6 +14,7 @@ from app.models.integration_models import (
 )
 from app.schemas.integrations.responses import CustomIntegrationConnectionResult
 from app.services.integrations.publish_service import PublishError
+from app.utils.url_safety import CredentialsNeedHttpsError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
 
@@ -274,6 +275,20 @@ class TestUpdateCustomIntegration:
 
         assert resp.status_code == 500
         assert resp.json()["message"] == "Failed to update integration"
+
+    @pytest.mark.asyncio
+    async def test_a_sign_in_over_public_plain_http_returns_400_with_the_https_message(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(
+            f"{_CUSTOM}.update_custom_integration",
+            new_callable=AsyncMock,
+            side_effect=CredentialsNeedHttpsError(),
+        ):
+            resp = await client.patch(f"{BASE}/i1", json={"server_url": "http://93.184.216.34"})
+
+        assert resp.status_code == 400
+        assert resp.json()["message"] == str(CredentialsNeedHttpsError())
 
     @pytest.mark.asyncio
     async def test_private_ip_server_url_returns_422_on_gaia_cloud(

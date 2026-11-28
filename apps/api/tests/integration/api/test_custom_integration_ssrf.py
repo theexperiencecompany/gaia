@@ -67,14 +67,16 @@ async def test_adding_a_signed_in_server_on_public_plain_http_is_refused_with_th
 async def test_editing_a_signed_in_server_to_public_plain_http_is_refused_with_the_https_message(
     test_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    stored = Integration(
-        integration_id="custom-1",
-        name="Mine",
-        description="Mine",
-        category="custom",
-        managed_by="mcp",
-        created_by="user-1",
-        mcp_config=MCPConfig(server_url="https://mcp.example.com/mcp", requires_auth=True),
+    stored = Integration.model_validate(
+        {
+            "integration_id": "custom-1",
+            "name": "Mine",
+            "description": "Mine",
+            "category": "custom",
+            "managed_by": "mcp",
+            "created_by": "user-1",
+            "mcp_config": MCPConfig(server_url="https://mcp.example.com/mcp", requires_auth=True),
+        }
     )
     # The stored document is the repository's; the route and service logic run for real.
     monkeypatch.setattr(

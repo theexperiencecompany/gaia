@@ -207,14 +207,16 @@ class TestAddCustomServer:
 
 
 def _custom_doc(server_url: str, *, requires_auth: bool) -> Integration:
-    return Integration(
-        integration_id=INTEGRATION_ID,
-        name="Mine",
-        description="Mine",
-        category="custom",
-        managed_by="mcp",
-        created_by=USER_ID,
-        mcp_config=MCPConfig(server_url=server_url, requires_auth=requires_auth),
+    return Integration.model_validate(
+        {
+            "integration_id": INTEGRATION_ID,
+            "name": "Mine",
+            "description": "Mine",
+            "category": "custom",
+            "managed_by": "mcp",
+            "created_by": USER_ID,
+            "mcp_config": MCPConfig(server_url=server_url, requires_auth=requires_auth),
+        }
     )
 
 
@@ -225,11 +227,13 @@ class TestEditCustomServer:
         [
             (
                 _custom_doc("https://mcp.example.com/mcp", requires_auth=True),
-                UpdateCustomIntegrationRequest(server_url=PUBLIC_HTTP),
+                UpdateCustomIntegrationRequest.model_validate({"server_url": PUBLIC_HTTP}),
             ),
             (
                 _custom_doc(PUBLIC_HTTP, requires_auth=False),
-                UpdateCustomIntegrationRequest(requires_auth=True, auth_type="oauth"),
+                UpdateCustomIntegrationRequest.model_validate(
+                    {"requires_auth": True, "auth_type": "oauth"}
+                ),
             ),
         ],
         ids=["url-to-public-http", "sign-in-turned-on-for-public-http"],
@@ -255,11 +259,11 @@ class TestEditCustomServer:
         [
             (
                 _custom_doc("https://mcp.example.com/mcp", requires_auth=True),
-                UpdateCustomIntegrationRequest(server_url=LAN_HTTP),
+                UpdateCustomIntegrationRequest.model_validate({"server_url": LAN_HTTP}),
             ),
             (
                 _custom_doc("https://mcp.example.com/mcp", requires_auth=False),
-                UpdateCustomIntegrationRequest(server_url=PUBLIC_HTTP),
+                UpdateCustomIntegrationRequest.model_validate({"server_url": PUBLIC_HTTP}),
             ),
         ],
         ids=["signed-in-to-lan-http", "no-sign-in-to-public-http"],
