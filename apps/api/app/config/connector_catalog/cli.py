@@ -467,6 +467,8 @@ CLI_CONNECTORS: list[CatalogRow] = [
                 "token_url": "https://console.aws.amazon.com/iam/home#/security_credentials",  # nosec B105 -- a page URL, not a key
             },
             "usage": {
+                # `help` needs a man renderer the runners lack; --version proves the install.
+                "help_args": ["--version"],
                 "json_flag": "--output json",
                 "guidance": (
                     "Pass --region REGION (e.g. us-east-1) on every call: no default region is "

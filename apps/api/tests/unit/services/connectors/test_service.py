@@ -180,6 +180,20 @@ async def test_huge_output_is_scrubbed_before_it_is_truncated() -> None:
             ),
             CallFailure.AUTH,
         ),
+        *(
+            (RunResult(RunOutcome.EXIT_NONZERO, 1, "", refusal), CallFailure.AUTH)
+            for refusal in (
+                # Each CLI's own words for a key it never issued, seen live on E2B.
+                "Error: The token provided via VERCEL_TOKEN environment variable is not valid.",
+                "X [ERROR] A request to the Cloudflare API failed. Invalid access token [code: 9109]",
+                "Error: failed retrieving current user: You must be authenticated to view this.",
+                '{"error":"Invalid Auth token"}',
+                "Unauthorized. Please check that your RAILWAY_API_TOKEN is valid",
+                "Error: Invalid credentials provided.",
+                "Invalid access token format. Must be like sbp_0102...1920.",
+                "the CLI only supports using a secret or restricted key",
+            )
+        ),
         # Cloudflare on a key that is not even token-shaped, seen live.
         (
             RunResult(

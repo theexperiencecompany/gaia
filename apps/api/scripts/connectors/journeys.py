@@ -167,6 +167,7 @@ JOURNEYS: dict[str, Journey] = {
             secret="sk_test_123",
             args=("--api-base", fake_url(FakeName.STRIPE_MOCK)),
         ),
+        bad_key=f"sk_test_{'a' * 99}",
     ),
     "stripe-sdk": Journey(
         key_env=("STRIPE_API_KEY",),
@@ -200,7 +201,10 @@ JOURNEYS: dict[str, Journey] = {
     "vercel-cli": Journey(key_env=("VERCEL_TOKEN",), read=["projects", "ls"], read_expect=""),
     "flyctl": Journey(key_env=("FLY_API_TOKEN",), read=["apps", "list", "--json"], read_expect="["),
     "supabase-cli": Journey(
-        key_env=("SUPABASE_ACCESS_TOKEN",), read=["projects", "list", "-o", "json"], read_expect="["
+        key_env=("SUPABASE_ACCESS_TOKEN",),
+        read=["projects", "list", "-o", "json"],
+        read_expect="[",
+        bad_key=f"sbp_{'0' * 40}",
     ),
     "doppler-cli": Journey(
         key_env=("DOPPLER_TOKEN",), read=["projects", "--json"], read_expect="["
