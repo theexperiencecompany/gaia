@@ -143,12 +143,24 @@ async def _build_updated_mcp_config(
 
     config_changes: dict[str, object] = {}
     if request.server_url is not None:
-        old_server_url = doc.mcp_config.server_url if doc.mcp_config else ""
         config_changes["server_url"] = request.server_url
         # The dedup key tracks the URL: a path edit must re-key, or the row
         # keeps matching (and colliding on) its old address.
         config_changes["server_url_normalized"] = dedup_server_url_key(request.server_url)
+    if request.requires_auth is not None:
+        config_changes["requires_auth"] = request.requires_auth
+    if request.auth_type is not None:
+        config_changes["auth_type"] = request.auth_type
+    updated = (
+        doc.mcp_config.model_copy(update=config_changes)
+        if doc.mcp_config
+        else MCPConfig.model_validate(config_changes)
+    )
+    if updated.requires_auth:
+        await assert_may_carry_credentials(updated.server_url)
 
+    if request.server_url is not None:
+        old_server_url = doc.mcp_config.server_url if doc.mcp_config else ""
         # Clean up old ChromaDB namespace when server_url changes
         if old_server_url and old_server_url != request.server_url:
             try:
@@ -161,16 +173,7 @@ async def _build_updated_mcp_config(
                     error_type=type(e).__name__,
                     user_id=user_id,
                 )
-
-    if request.requires_auth is not None:
-        config_changes["requires_auth"] = request.requires_auth
-    if request.auth_type is not None:
-        config_changes["auth_type"] = request.auth_type
-    return (
-        doc.mcp_config.model_copy(update=config_changes)
-        if doc.mcp_config
-        else MCPConfig.model_validate(config_changes)
-    )
+    return updated
 
 
 async def update_custom_integration(

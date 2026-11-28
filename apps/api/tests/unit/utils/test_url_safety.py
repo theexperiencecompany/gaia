@@ -313,12 +313,15 @@ LAN_HTTP_URLS = [
     "http://[fd12:3456::1]/mcp",
     "http://[::ffff:192.168.1.20]/mcp",
     "http://printer.local/mcp",
+    "http://100.64.0.1/mcp",  # Tailscale / WireGuard CGNAT
+    "http://100.127.255.254/mcp",
 ]
 
 PUBLIC_HTTP_URLS = [
     "http://93.184.216.34/mcp",
     "http://172.32.0.1/mcp",  # just past 172.16.0.0/12
-    "http://100.64.0.1/mcp",  # CGNAT is not a private LAN
+    "http://100.128.0.1/mcp",  # just past 100.64.0.0/10
+    "http://100.63.255.255/mcp",  # just before it
     "http://[2606:4700::1111]/mcp",
     "http://[::ffff:93.184.216.34]/mcp",
 ]
@@ -359,6 +362,11 @@ async def test_https_carries_a_token_without_a_lookup() -> None:
     with patch("app.utils.url_safety._resolve") as resolve:
         await assert_may_carry_credentials("https://mcp.resend.com/mcp")
     resolve.assert_not_called()
+
+
+async def test_a_tailnet_name_carries_a_token_because_it_resolves_into_the_tailnet() -> None:
+    with patch("app.utils.url_safety._resolve", return_value=["100.101.102.103"]):
+        await assert_may_carry_credentials("http://gaia-home-server.taila76294.ts.net:8000/mcp")
 
 
 async def test_a_hostname_is_judged_by_every_address_it_resolves_to() -> None:

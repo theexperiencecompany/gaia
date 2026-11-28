@@ -9,9 +9,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.models.integration_models import CreateCustomIntegrationRequest
+from app.models.integration_models import (
+    CreateCustomIntegrationRequest,
+    Integration,
+    UpdateCustomIntegrationRequest,
+)
 from app.models.mcp_config import MCPConfig
-from app.services.integrations.custom_crud import create_and_connect_custom_integration
+from app.services.integrations.custom_crud import (
+    create_and_connect_custom_integration,
+    update_custom_integration,
+)
 from app.services.integrations.integration_connection_service import connect_mcp_integration
 from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
@@ -197,3 +204,78 @@ class TestAddCustomServer:
             error_type="CredentialsNeedHttpsError",
             integration_id=INTEGRATION_ID,
         )
+
+
+def _custom_doc(server_url: str, *, requires_auth: bool) -> Integration:
+    return Integration(
+        integration_id=INTEGRATION_ID,
+        name="Mine",
+        description="Mine",
+        category="custom",
+        managed_by="mcp",
+        created_by=USER_ID,
+        mcp_config=MCPConfig(server_url=server_url, requires_auth=requires_auth),
+    )
+
+
+@pytest.mark.unit
+class TestEditCustomServer:
+    @pytest.mark.parametrize(
+        ("stored", "edit"),
+        [
+            (
+                _custom_doc("https://mcp.example.com/mcp", requires_auth=True),
+                UpdateCustomIntegrationRequest(server_url=PUBLIC_HTTP),
+            ),
+            (
+                _custom_doc(PUBLIC_HTTP, requires_auth=False),
+                UpdateCustomIntegrationRequest(requires_auth=True, auth_type="oauth"),
+            ),
+        ],
+        ids=["url-to-public-http", "sign-in-turned-on-for-public-http"],
+    )
+    async def test_an_edit_that_puts_a_sign_in_on_public_plain_http_is_refused_before_saving(
+        self, stored: Integration, edit: UpdateCustomIntegrationRequest
+    ) -> None:
+        repository = MagicMock()
+        repository.get_custom_for_user = AsyncMock(return_value=stored)
+        repository.update = AsyncMock()
+        with (
+            patch(f"{_CRUD}.integration_repository", repository),
+            patch(f"{_CRUD}.cleanup_integration_chroma_data", AsyncMock()) as cleanup,
+            pytest.raises(CredentialsNeedHttpsError, match=REFUSAL),
+        ):
+            await update_custom_integration(USER_ID, INTEGRATION_ID, edit)
+
+        repository.update.assert_not_awaited()
+        cleanup.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("stored", "edit"),
+        [
+            (
+                _custom_doc("https://mcp.example.com/mcp", requires_auth=True),
+                UpdateCustomIntegrationRequest(server_url=LAN_HTTP),
+            ),
+            (
+                _custom_doc("https://mcp.example.com/mcp", requires_auth=False),
+                UpdateCustomIntegrationRequest(server_url=PUBLIC_HTTP),
+            ),
+        ],
+        ids=["signed-in-to-lan-http", "no-sign-in-to-public-http"],
+    )
+    async def test_an_edit_that_keeps_tokens_off_public_plain_http_is_saved(
+        self, stored: Integration, edit: UpdateCustomIntegrationRequest
+    ) -> None:
+        repository = MagicMock()
+        repository.get_custom_for_user = AsyncMock(return_value=stored)
+        repository.update = AsyncMock(return_value=stored)
+        with (
+            patch(f"{_CRUD}.integration_repository", repository),
+            patch(f"{_CRUD}.cleanup_integration_chroma_data", AsyncMock()),
+        ):
+            await update_custom_integration(USER_ID, INTEGRATION_ID, edit)
+
+        saved = repository.update.await_args.args[1]
+        assert saved.mcp_config is not None
+        assert saved.mcp_config.server_url == edit.server_url

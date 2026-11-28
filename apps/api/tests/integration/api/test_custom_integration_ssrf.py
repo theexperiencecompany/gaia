@@ -6,6 +6,9 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.db.repositories.integrations import integration_repository
+from app.models.integration_models import Integration
+from app.models.mcp_config import MCPConfig
 
 _URL = "/api/v1/integrations/custom"
 
@@ -59,3 +62,34 @@ async def test_adding_a_signed_in_server_on_public_plain_http_is_refused_with_th
         "This server needs a sign-in, so its URL has to start with https://. "
         "Plain http works only for a server on this machine or your local network."
     )
+
+
+async def test_editing_a_signed_in_server_to_public_plain_http_is_refused_with_the_https_message(
+    test_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored = Integration(
+        integration_id="custom-1",
+        name="Mine",
+        description="Mine",
+        category="custom",
+        managed_by="mcp",
+        created_by="user-1",
+        mcp_config=MCPConfig(server_url="https://mcp.example.com/mcp", requires_auth=True),
+    )
+    # The stored document is the repository's; the route and service logic run for real.
+    monkeypatch.setattr(
+        integration_repository, "get_custom_for_user", AsyncMock(return_value=stored)
+    )
+    update = AsyncMock()
+    monkeypatch.setattr(integration_repository, "update", update)
+
+    response = await test_client.patch(
+        f"{_URL}/custom-1", json={"server_url": "http://93.184.216.34/mcp"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == (
+        "This server needs a sign-in, so its URL has to start with https://. "
+        "Plain http works only for a server on this machine or your local network."
+    )
+    update.assert_not_awaited()

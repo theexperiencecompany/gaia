@@ -134,11 +134,12 @@ def endpoint_http_client(*, allow_private: bool) -> httpx.AsyncClient:
     return httpx.AsyncClient(event_hooks={"request": [_guard]})
 
 
-# Plain http may carry a token only inside these: RFC1918 and IPv6 unique-local
-# space; loopback and link-local are matched by the ipaddress predicates.
+# Plain http may carry a token only inside these: RFC1918, IPv6 unique-local and
+# 100.64.0.0/10 (Tailscale/WireGuard, encrypted end to end; *.ts.net resolves there).
+# Loopback and link-local are matched by the ipaddress predicates.
 _PRIVATE_LAN_NETWORKS = tuple(
     ipaddress.ip_network(net)
-    for net in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")
+    for net in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7")
 )
 _LOCAL_HOSTNAME_SUFFIX = ".local"  # mDNS names, which only resolve on the LAN
 
@@ -167,7 +168,7 @@ async def assert_may_carry_credentials(url: str) -> None:
     """Raise CredentialsNeedHttpsError unless url may carry an OAuth or bearer token.
 
     https always may; plain http only when the host is localhost, an mDNS .local
-    name, or resolves to loopback, link-local or private-LAN addresses only.
+    name, or resolves to loopback, link-local, private-LAN or tailnet addresses only.
     """
     if httpx.URL(url).scheme == "https":
         return
