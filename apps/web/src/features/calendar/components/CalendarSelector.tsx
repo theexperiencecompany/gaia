@@ -16,7 +16,7 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
     <button
       type="button"
       className="relative min-w-full cursor-pointer rounded-lg px-2 text-left transition hover:bg-zinc-800"
-      aria-label={`Toggle calendar ${calendar.summary}`}
+      aria-label={`Toggle calendar ${calendar.summary ?? ""}`}
       onClick={() => onSelect(calendar.id)}
     >
       <Chip
@@ -55,7 +55,7 @@ export default function CalendarSelector({
     <div className={`relative flex flex-col justify-center gap-1`}>
       {calendars && calendars.length > 0 ? (
         calendars
-          .toSorted((a, b) => a.summary.localeCompare(b.summary))
+          .toSorted((a, b) => (a.summary ?? "").localeCompare(b.summary ?? ""))
           .map((calendar) => (
             <CalendarChip
               key={calendar.id}

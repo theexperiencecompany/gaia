@@ -5,8 +5,12 @@ import {
 } from "@/components/seo/PageBreadcrumbs";
 
 import { RaisedButton } from "@/components/ui/raised-button";
-import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
+import type {
+  CommunityWorkflow,
+  Workflow,
+} from "@/features/workflows/api/workflowApi";
 import { track } from "@/lib/analytics";
+import type { UseCase } from "@/types/features/workflowTypes";
 
 import PublishWorkflowCTA from "./PublishWorkflowCTA";
 import ShareButton from "./ShareButton";
@@ -14,11 +18,11 @@ import { YouMightAlsoLike } from "./YouMightAlsoLike";
 
 interface UseCaseDetailLayoutProps {
   breadcrumbs: readonly PageCrumb[];
-  title: string;
+  /** The curated use case or community workflow the page presents. */
+  workflow: UseCase | Workflow;
   /** Optional workflow icon rendered beside the title */
   icon?: ReactNode;
-  description?: string;
-  id: string;
+  slug: string;
   isCreating: boolean;
   onCreateWorkflow: () => void;
   metaInfo: ReactNode;
@@ -29,10 +33,9 @@ interface UseCaseDetailLayoutProps {
 
 export default function UseCaseDetailLayout({
   breadcrumbs,
-  title,
+  workflow,
   icon,
-  description,
-  id,
+  slug,
   isCreating,
   onCreateWorkflow,
   metaInfo,
@@ -40,6 +43,10 @@ export default function UseCaseDetailLayout({
   steps,
   relatedUseCases,
 }: UseCaseDetailLayoutProps) {
+  const description =
+    ("detailed_description" in workflow && workflow.detailed_description) ||
+    workflow.description;
+
   return (
     <div className="flex min-h-screen w-full justify-center overflow-y-auto pt-34 pb-20 relative z-[1]">
       {/* max-w-7xl + px matches FinalSection's container so the page content
@@ -51,7 +58,9 @@ export default function UseCaseDetailLayout({
           <div className="flex-1 space-y-2">
             <div className="flex items-center gap-4">
               {icon}
-              <h1 className="text-5xl font-normal text-foreground">{title}</h1>
+              <h1 className="text-5xl font-normal text-foreground">
+                {workflow.title}
+              </h1>
             </div>
             {description && (
               <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
@@ -61,13 +70,13 @@ export default function UseCaseDetailLayout({
           </div>
 
           <div className="flex items-center gap-3">
-            <ShareButton id={id} />
+            <ShareButton id={slug} />
             <RaisedButton
               color="#00bbff"
               className="shrink-0"
               onClick={() => {
                 track("use_cases:clicked", {
-                  use_case_id: id,
+                  use_case_id: slug,
                 });
                 onCreateWorkflow();
               }}

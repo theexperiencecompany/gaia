@@ -90,12 +90,12 @@ export default function AccountSection({
               disabled={isLoading}
               className="relative h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-shadow duration-200 hover:ring-2 hover:ring-accent hover:ring-offset-2 hover:ring-offset-zinc-900"
             >
-              {user?.profilePicture ? (
+              {user?.picture ? (
                 <Image
                   width={56}
                   height={56}
-                  src={user.profilePicture}
-                  unoptimized={isPrivateBlobUrl(user.profilePicture)}
+                  src={user.picture}
+                  unoptimized={isPrivateBlobUrl(user.picture)}
                   alt={user?.name || "Profile"}
                   className="h-full w-full object-cover"
                 />
@@ -158,7 +158,7 @@ export default function AccountSection({
               className="group flex w-full items-center justify-between rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white transition-colors duration-200 hover:bg-zinc-700"
             >
               <span>
-                {user?.name || (user?.userId ? "Add your name" : "Loading...")}
+                {user?.name || (user?.user_id ? "Add your name" : "Loading...")}
               </span>
               <PencilEdit02Icon className="h-4 w-4 text-zinc-400 transition-colors duration-200 group-hover:text-white" />
             </button>

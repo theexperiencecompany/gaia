@@ -1,6 +1,7 @@
 "use client";
 
 import { Kbd, Modal, Tabs } from "@heroui/react";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // The renderer takes streamdown's Components, not react-markdown's: the two are
 // structurally incompatible, and react-markdown's is not assignable to it.
@@ -18,7 +19,6 @@ import {
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { LazyMentionEditor } from "@/features/integrations/components/LazyMentionEditor";
 import { MentionChip } from "@/features/integrations/components/MentionChip";
-import type { Integration } from "@/features/integrations/types";
 import {
   decodeMentionHref,
   MENTION_LINK_PROTOCOL,
@@ -31,7 +31,7 @@ const MENTION_PROTOCOLS = [MENTION_LINK_PROTOCOL];
 interface IntegrationInstructionsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  integration: Integration;
+  integration: MyIntegrationItem;
   instructions: UseInstructionsResult;
   toolNames: string[];
 }

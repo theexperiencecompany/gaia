@@ -1,21 +1,12 @@
 import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import { parseISO } from "date-fns";
-import type { Author } from "@/types/api/aboutApiTypes";
+import type { Author } from "@/lib/blog.types";
 
 import { AuthorTooltip } from "./AuthorTooltip";
 import CopyLinkButton from "./CopyLinkButton";
 
-interface TeamMember {
-  id?: string;
-  name: string;
-  role: string;
-  avatar?: string;
-  linkedin?: string;
-  twitter?: string;
-}
-
 interface BlogMetadataProps {
-  authors?: TeamMember[];
+  authors?: Author[];
   date: string;
   /** Revision date — renders a visible "Updated" label when set. */
   updated?: string;
@@ -43,7 +34,7 @@ export default function BlogMetadata({
           };
           return (
             <AuthorTooltip
-              key={author.id || author.name}
+              key={author.name}
               author={authorData}
               avatarSize="md"
               avatarClassName="h-10 w-10 cursor-help border-2 border-background"

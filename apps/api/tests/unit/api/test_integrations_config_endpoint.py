@@ -14,9 +14,14 @@ import pytest
 from app.constants.integrations import NOT_SET_UP_ON_INSTANCE
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
+from app.models.user_models import UserDocument
 from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.composio.error_detail import AuthConfigNotFoundError
-from app.services.connect_link_service import ConnectLinkBinding
+from app.services.connect_link_service import (
+    ConnectLinkBinding,
+    build_connect_link_url,
+    resolve_and_consume_connect_code,
+)
 from app.services.mcp.mcp_token_store import oauth_browser_cookie, oauth_state_bound_to_browser
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
@@ -776,3 +781,39 @@ class TestConnectLinkEndpoint:
             )
         assert resp.status_code != 401
         assert resp.headers["location"] == "https://oauth.example/go"
+
+
+class TestConnectLinkPreview:
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_live_link_names_the_integration_and_masked_account_without_spending_it(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        url = await build_connect_link_url(_VALID_UID, "gmail")
+        assert url is not None
+        code = url.rsplit("/", 1)[1]
+        with (
+            patch(
+                "app.services.connect_link_service.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="aryan@heygaia.io", name="Aryan"),
+            ),
+            patch(f"{_MODULE}.log") as mock_log,
+        ):
+            resp = await unauthed_client.post(f"{API}/connect-link/preview", json={"code": code})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["integration_id"] == "gmail"
+        assert body["integration_name"] == "Gmail"
+        assert body["account_email"] == "ar***@heygaia.io"
+        assert await resolve_and_consume_connect_code(code) is not None
+        mock_log.set.assert_called_with(outcome="success", integration={"id": "gmail"})
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_dead_link_is_not_found(self, unauthed_client: AsyncClient) -> None:
+        with patch(f"{_MODULE}.log") as mock_log:
+            resp = await unauthed_client.post(f"{API}/connect-link/preview", json={"code": "nope"})
+
+        assert resp.status_code == 404
+        assert resp.json()["message"] == "invalid_or_expired_link"
+        mock_log.set.assert_called_with(outcome="rejected")

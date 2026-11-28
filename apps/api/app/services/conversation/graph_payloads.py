@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from app.agents.core.background.session import claim_tool_output
 from app.agents.core.held_replies import HeldReplies, last_ai_message
 from app.agents.llm.reasoning import extract_reasoning_delta
+from app.constants.chat import TOOL_CALLS_CARD
 from app.constants.comms import TURN_ENDING_TOOL_NAMES
 from app.models.agent_models import StreamChunkMetadata
 from app.models.conversation_frame_models import (
@@ -29,6 +30,8 @@ from app.models.conversation_frame_models import (
 )
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
 from app.models.stream_events import MessageBoundaryPayload, ReasoningPayload, ToolOutputPayload
+from app.models.tool_card_registry import tool_card_data
+from app.services.conversation.tool_cards import MCP_APP_CARD
 from app.services.links.placeholders import releasable_end
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import NodeMessagesUpdate, ToolCallView, format_tool_call_entry
@@ -171,21 +174,26 @@ async def _mcp_app_card(
         ui_resource = McpUiResource.model_validate(ui_details) if ui_details is not None else None
         if ui_resource is not None and ui_resource.html:
             card: ToolDataEntry = {
-                "tool_name": "mcp_app",
+                "tool_name": MCP_APP_CARD,
                 "tool_category": app_meta.tool_category,
-                "data": {
-                    "tool_call_id": tool_call_id,
-                    "tool_name": app_meta.tool_name,
-                    "server_url": app_meta.server_url,
-                    "resource_uri": app_meta.mcp_ui.resource_uri,
-                    "html_content": ui_resource.html,
-                    "tool_result": tool_result,
-                    "csp": ui_resource.csp if ui_resource.csp is not None else app_meta.mcp_ui.csp,
-                    "permissions": ui_resource.permissions
-                    if ui_resource.permissions is not None
-                    else app_meta.mcp_ui.permissions,
-                    "tool_arguments": app_meta.tool_arguments,
-                },
+                "data": tool_card_data(
+                    MCP_APP_CARD,
+                    {
+                        "tool_call_id": tool_call_id,
+                        "tool_name": app_meta.tool_name,
+                        "server_url": app_meta.server_url,
+                        "resource_uri": app_meta.mcp_ui.resource_uri,
+                        "html_content": ui_resource.html,
+                        "tool_result": tool_result,
+                        "csp": ui_resource.csp
+                        if ui_resource.csp is not None
+                        else app_meta.mcp_ui.csp,
+                        "permissions": ui_resource.permissions
+                        if ui_resource.permissions is not None
+                        else app_meta.mcp_ui.permissions,
+                        "tool_arguments": app_meta.tool_arguments,
+                    },
+                ),
                 "timestamp": app_meta.timestamp,
             }
             yield ToolDataEvent(tool_data=card)
@@ -198,7 +206,7 @@ def _pending_mcp_app(entry: object) -> tuple[str, _PendingMcpApp] | None:
     if not isinstance(entry, dict):
         return None
     app_entry = _McpAppEntry.model_validate(entry)
-    if app_entry.tool_name != "tool_calls_data" or not app_entry.mcp_ui:
+    if app_entry.tool_name != TOOL_CALLS_CARD or not app_entry.mcp_ui:
         return None
     if not _McpUiHead.model_validate(app_entry.mcp_ui).resource_uri:
         return None

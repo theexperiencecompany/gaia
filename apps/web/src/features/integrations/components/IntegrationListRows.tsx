@@ -1,4 +1,8 @@
 import { Chip } from "@heroui/react";
+import type {
+  MyIntegrationItem,
+  SuggestedIntegrationCard,
+} from "@shared/api/generated";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -9,14 +13,10 @@ import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKe
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
-import type {
-  Integration,
-  SuggestedIntegration,
-} from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 
 interface IntegrationRowProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   onConnect: (integrationId: string) => Promise<unknown>;
 }
 
@@ -92,7 +92,7 @@ export function IntegrationRow({
 }
 
 /** Add a community integration to the user's account, following its OAuth redirect when it needs one. */
-function useAddSuggested(suggestion: SuggestedIntegration) {
+function useAddSuggested(suggestion: SuggestedIntegrationCard) {
   const queryClient = useQueryClient();
   const [isAdding, setIsAdding] = useState(false);
 
@@ -126,7 +126,7 @@ function useAddSuggested(suggestion: SuggestedIntegration) {
 }
 
 interface SuggestedIntegrationRowProps {
-  suggestion: SuggestedIntegration;
+  suggestion: SuggestedIntegrationCard;
 }
 
 /** A community integration the user can add: opens its marketplace page, with Add. */

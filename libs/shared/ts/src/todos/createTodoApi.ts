@@ -1,4 +1,8 @@
-import type { TodoConversationResponse } from "../api/generated";
+import type {
+  TodoConversationResponse,
+  TodoWorkflowGenerationResponse,
+  TodoWorkflowStatusResponse,
+} from "../api/generated";
 import { buildQueryString, type QueryValue } from "../api/queryBuilder";
 import { normalizeListResponse } from "../api/responseNormalizer";
 import { TODO_ENDPOINTS } from "../api/todosApi";
@@ -14,12 +18,7 @@ import type {
   TodoLabel,
   TodoListResponse,
 } from "../types/todo";
-import type {
-  SemanticSearchOptions,
-  TodoApiClient,
-  WorkflowGenerateResult,
-  WorkflowStatusResult,
-} from "./apiClient";
+import type { SemanticSearchOptions, TodoApiClient } from "./apiClient";
 
 /**
  * Per-call options forwarded to the platform HTTP adapter. Mirrors the
@@ -228,19 +227,22 @@ export function createTodoApi(http: HttpAdapter): TodoApiClient {
         silent: true,
       }),
 
-    generateWorkflow: (todoId): Promise<WorkflowGenerateResult> =>
-      http.post<WorkflowGenerateResult>(
+    generateWorkflow: (todoId): Promise<TodoWorkflowGenerationResponse> =>
+      http.post<TodoWorkflowGenerationResponse>(
         TODO_ENDPOINTS.workflow(todoId),
         {},
         { errorMessage: "Failed to generate workflow", silent: true },
       ),
 
-    getWorkflowStatus: (todoId): Promise<WorkflowStatusResult> =>
+    getWorkflowStatus: (todoId): Promise<TodoWorkflowStatusResponse> =>
       // Read for display and polled after creation; never a user action.
-      http.get<WorkflowStatusResult>(TODO_ENDPOINTS.workflowStatus(todoId), {
-        silent: true,
-        background: true,
-      }),
+      http.get<TodoWorkflowStatusResponse>(
+        TODO_ENDPOINTS.workflowStatus(todoId),
+        {
+          silent: true,
+          background: true,
+        },
+      ),
 
     openTodoConversation: (todoId) =>
       http.post<TodoConversationResponse>(

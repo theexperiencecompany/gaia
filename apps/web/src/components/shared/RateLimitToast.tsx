@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
+import type { RateLimitCardData } from "@shared/api/generated";
 import { formatPlanName, rateLimitResetInfo } from "@shared/utils";
 import type { ReactNode } from "react";
 import { toast } from "@/lib/toast";
@@ -15,14 +16,15 @@ interface ToastConfig {
   };
 }
 
-interface RateLimitToastProps {
+type RateLimitToastProps = Partial<
+  Pick<
+    RateLimitCardData,
+    "feature" | "message" | "plan_required" | "reset_time"
+  >
+> & {
   title?: string;
-  message?: string;
   showUpgradeButton?: boolean;
-  resetTime?: string;
-  feature?: string;
-  planRequired?: string;
-}
+};
 
 const MINUTES_PER_DAY = 24 * 60;
 
@@ -43,7 +45,7 @@ function buildRateLimitMessage({
   isUpgradeRequired: boolean;
   feature?: string;
   planName?: string;
-  resetTime?: string;
+  resetTime?: string | null;
 }): string {
   if (isUpgradeRequired) {
     return `${feature || "This feature"} is only available in the ${planName} plan. Upgrade to continue using it.`;
@@ -58,9 +60,9 @@ export const showRateLimitToast = ({
   title = "Rate Limit Reached",
   message,
   showUpgradeButton = true,
-  resetTime,
+  reset_time: resetTime,
   feature,
-  planRequired,
+  plan_required: planRequired,
 }: RateLimitToastProps = {}) => {
   // Determine the appropriate icon and styling based on error type
   const isUpgradeRequired = Boolean(planRequired && showUpgradeButton);
@@ -122,7 +124,7 @@ export const showFeatureRestrictedToast = (
   showRateLimitToast({
     title: "Feature Restricted",
     feature,
-    planRequired,
+    plan_required: planRequired,
     showUpgradeButton: true,
   });
 };
@@ -133,7 +135,7 @@ export const showTokenLimitToast = (feature: string, planRequired?: string) => {
     message: planRequired
       ? `${feature} token limit exceeded. Upgrade to ${formatPlanName(planRequired)} for higher token limits.`
       : `${feature} token limit exceeded. Please wait or upgrade for higher limits.`,
-    planRequired,
+    plan_required: planRequired,
     showUpgradeButton: !!planRequired,
   });
 };

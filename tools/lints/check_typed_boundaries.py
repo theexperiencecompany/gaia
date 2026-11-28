@@ -75,6 +75,8 @@ BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/browser_host/screencast.py": "the CDP wire: Chrome owns every command and result shape",
     "apps/api/app/services/conversation/tool_cards.py": "the tool-card boundary: each tool owns the "
     "JSON its card carries (ToolDataEntry.data is open), folded into FoldedCards here once",
+    "apps/api/app/models/tool_card_schema.py": "the OpenAPI boundary: it rewrites the raw "
+    "JSON Schema pydantic generates for ToolDataEntry into the per-tool union",
     "apps/api/app/services/conversation/tool_timeline.py": "the tool-card boundary: the open call and "
     "subagent-group JSON the cards carry is read into the typed ToolTimeline here once",
 }
@@ -253,6 +255,19 @@ def _decorator_ids(tree: ast.AST) -> set[int]:
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
         for decorator in node.decorator_list
     }
+
+
+def _annotation_ids(tree: ast.AST) -> set[int]:
+    """Every node inside a type annotation: ``list["Group"]`` names a type, it reads no key."""
+    annotations: list[ast.expr] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AnnAssign) or (
+            isinstance(node, ast.arg) and node.annotation is not None
+        ):
+            annotations.append(node.annotation)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.returns is not None:
+            annotations.append(node.returns)
+    return {id(inner) for annotation in annotations for inner in ast.walk(annotation)}
 
 
 def typeddict_names(trees: list[ast.AST]) -> set[str]:
@@ -521,12 +536,14 @@ def _receiver(node: ast.AST) -> ast.expr | None:
 
 def _string_key_reads(tree: ast.AST, typeddicts: set[str]) -> list[int]:
     decorators = _decorator_ids(tree)
+    annotations = _annotation_ids(tree)
     typed_receivers = _typed_receivers(tree, typeddicts, set(), {})
     return [
         node.lineno
         for node in ast.walk(tree)
         if isinstance(node, ast.Call | ast.Subscript)
         and id(node) not in typed_receivers
+        and id(node) not in annotations
         and ((_is_string_key_get(node) and id(node) not in decorators) or _is_string_key_load(node))
     ]
 

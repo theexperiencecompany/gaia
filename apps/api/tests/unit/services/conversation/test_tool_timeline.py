@@ -6,8 +6,7 @@ from itertools import pairwise
 from hypothesis import given, strategies as st
 from pydantic import JsonValue
 
-from app.constants.chat import BROWSER_TASK_TOOL_NAME, SUBAGENT_GROUP_TOOL_NAME
-from app.services.conversation.tool_cards import TOOL_CALLS_CARD
+from app.constants.chat import BROWSER_TASK_TOOL_NAME, SUBAGENT_GROUP_TOOL_NAME, TOOL_CALLS_CARD
 from app.services.conversation.tool_timeline import tool_timeline
 from shared.py.conversation_wire import (
     TimelineStepKind,

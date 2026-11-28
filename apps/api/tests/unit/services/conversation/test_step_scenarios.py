@@ -8,7 +8,7 @@ from typing import cast
 import pytest
 
 from app.agents.core.comms_ledger import Closing
-from app.constants.chat import ConversationSource
+from app.constants.chat import TOOL_CALLS_CARD, ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import HIL_ACK_APPROVED
 from app.models.chat_models import ReactionBy
@@ -51,7 +51,7 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
-from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
+from app.services.conversation.screen import project_screen
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
@@ -100,7 +100,7 @@ TRUNCATE = Cancelled(CancelReason.TRUNCATE)
 
 CARD: ToolDataEntry = {"tool_name": "search", "data": {"query": "flights"}}
 HANDOFF_CARD: ToolDataEntry = {
-    "tool_name": TOOL_CALL_CARD,
+    "tool_name": TOOL_CALLS_CARD,
     "data": {"tool_name": CALL_EXECUTOR_NAME, "tool_call_id": "h1", "inputs": {}},
 }
 FILE_CARD: ToolDataEntry = {

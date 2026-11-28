@@ -717,6 +717,26 @@ def test_a_type_that_shares_too_few_fields_is_not_a_twin(tmp_path: Path) -> None
     assert process.returncode == 0, process.stdout
 
 
+def test_fields_after_a_callback_member_are_still_compared(tmp_path: Path) -> None:
+    # The `>` of `=>` once closed the declaration, so every field after a callback went unread.
+    repo = _shape_repo(tmp_path)
+    _add_text(
+        repo,
+        "apps/web/src/components/TodoCard.tsx",
+        "export interface TodoCardProps {\n"
+        "  onToggle: () => void;\n"
+        "  id: string;\n"
+        "  createdAt: string;\n"
+        "  isDone: boolean;\n"
+        "}\n",
+    )
+
+    process = _run(repo, "api-schema-types")
+
+    assert process.returncode == 1, f"a twin hidden behind a callback passed\n{process.stdout}"
+    assert "apps/web/src/components/TodoCard.tsx:TodoCardProps=TodoResponse" in process.stdout
+
+
 def test_a_hand_written_d_ts_is_scanned(tmp_path: Path) -> None:
     # `.d.ts` is in the size gates' global ignore list. This gate must not
     # inherit it: the generated file is exempt by path, so every other `.d.ts`

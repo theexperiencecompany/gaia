@@ -137,7 +137,7 @@ const FIELD_NAME = /^\s*(?:readonly\s+)?["']?([A-Za-z_$][A-Za-z0-9_$]*)["']?\s*\
 
 // The field names one brace level down from `open`. Nested objects, generics,
 // tuples and call signatures all raise the depth, so only the declaration's own
-// members are collected.
+// members are collected. The `>` of an arrow `=>` closes nothing.
 function topLevelFields(src, open) {
   const members = [];
   let depth = 0;
@@ -147,7 +147,12 @@ function topLevelFields(src, open) {
     if (char === "{" || char === "(" || char === "[" || char === "<") {
       depth++;
       if (depth > 1) current += char;
-    } else if (char === "}" || char === ")" || char === "]" || char === ">") {
+    } else if (
+      char === "}" ||
+      char === ")" ||
+      char === "]" ||
+      (char === ">" && src[i - 1] !== "=")
+    ) {
       depth--;
       if (depth === 0) break;
       current += char;

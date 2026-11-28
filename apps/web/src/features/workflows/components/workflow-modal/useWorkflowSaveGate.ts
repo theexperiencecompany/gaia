@@ -1,8 +1,7 @@
 "use client";
 
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useCallback } from "react";
-
-import type { Integration } from "@/features/integrations/types";
 
 import type { Workflow } from "../../api/workflowApi";
 import {
@@ -21,7 +20,7 @@ interface UseWorkflowSaveGateParams {
   /** Live form values (react-hook-form watch()) */
   formData: WorkflowFormData;
   selectedIntegrationSlugs: string[];
-  missingTriggerIntegration: Integration | null;
+  missingTriggerIntegration: MyIntegrationItem | null;
   isCreating: boolean;
 }
 

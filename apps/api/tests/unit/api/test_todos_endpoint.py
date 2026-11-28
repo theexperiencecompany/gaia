@@ -172,12 +172,12 @@ class TestListTodos:
     async def test_counts_bucket_on_the_callers_home_timezone(self, client: AsyncClient) -> None:
         with (
             patch(
-                f"{TODOS_ENDPOINT}.project_repository.get_default_inbox",
+                "app.services.todos.todo_service.project_repository.get_default_inbox",
                 new_callable=AsyncMock,
                 return_value=None,
-            ),
+            ) as get_inbox,
             patch(
-                f"{TODOS_ENDPOINT}.todo_repository.compute_counts",
+                "app.services.todos.todo_service.todo_repository.compute_counts",
                 new_callable=AsyncMock,
                 return_value=TodoCounts(today=2),
             ) as compute_counts,
@@ -187,6 +187,8 @@ class TestListTodos:
 
         assert resp.status_code == 200
         assert resp.json()["today"] == 2
+        get_inbox.assert_awaited_once_with(FAKE_USER.user_id)
+        assert compute_counts.await_args.kwargs["user_id"] == FAKE_USER.user_id
         assert _is_ist_midnight(compute_counts.await_args.kwargs["window"].today_start)
 
     async def test_list_logs_the_search_context(self, client: AsyncClient) -> None:

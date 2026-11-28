@@ -2,10 +2,10 @@
 
 import { Separator } from "@heroui/react";
 import { InformationCircleIcon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import type { Control, FieldErrors, UseFormSetValue } from "react-hook-form";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 
-import type { Integration } from "@/features/integrations/types";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
@@ -50,7 +50,7 @@ interface WorkflowModalFormViewProps {
   currentWorkflow: Workflow | null;
   existingWorkflow: Workflow | null;
   activation: WorkflowActivationState;
-  missingIntegrations: Integration[];
+  missingIntegrations: MyIntegrationItem[];
   connectingId: string | null;
   onConnect: (integrationId: string) => void;
   /** @-mentioned integration slugs from the prompt (persisted with the workflow) */

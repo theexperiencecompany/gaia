@@ -11,22 +11,23 @@ Inputs only: a tool's output is never kept.
 import asyncio
 from collections.abc import Callable
 import json
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.constants.cache import EXECUTOR_ALIVE_TTL, EXECUTOR_PROGRESS_PREFIX
+from app.constants.chat import TOOL_CALLS_CARD
 from app.constants.executor import EXECUTOR_PROGRESS_MAX_CALLS
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.models.todo_progress_card_models import TodoProgressStatus
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 #: Not progress: the plan tools are shown as the plan itself, and a live run's
 #: stream also carries comms' own hand-off card.
 _NOT_PROGRESS = frozenset({"plan_tasks", "update_tasks", CALL_EXECUTOR_NAME})
-_TOOL_CALL_ENTRY = "tool_calls_data"
+
 _MAX_VALUE_CHARS = 80
 
 StreamWriter = Callable[[dict[str, object]], None]
@@ -36,7 +37,7 @@ class PlanItem(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     content: str
-    status: Literal["pending", "in_progress", "completed", "cancelled"]
+    status: TodoProgressStatus
 
 
 class _PlanFrame(BaseModel):
@@ -101,7 +102,7 @@ def _calls_of(frame: _ProgressFrame) -> list[RecordedCall]:
     entries = frame.tool_data if isinstance(frame.tool_data, list) else [frame.tool_data]
     calls = []
     for entry in entries:
-        if entry is None or entry.tool_name != _TOOL_CALL_ENTRY:
+        if entry is None or entry.tool_name != TOOL_CALLS_CARD:
             continue
         data = _CallData.model_validate(entry.data)
         if data.tool_name in _NOT_PROGRESS:

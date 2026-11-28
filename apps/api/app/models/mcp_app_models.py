@@ -1,10 +1,12 @@
-"""MCP Apps UI shapes: the mcp_ui hint attached to a tool, and the resource it names.
+"""MCP Apps UI shapes: the mcp_ui hint attached to a tool, the resource it names, and the card it renders on.
 
 Both cross a boundary (the hint rides the tool_calls_data frame to the client and
 Mongo; the MCP server serves the resource), so both are parsed once on entry.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
+
+from app.schemas.common import ResponseModel
 
 
 class McpUiMetadata(BaseModel):
@@ -35,3 +37,21 @@ class McpUiResource(BaseModel):
     html: str | None = None
     csp: object = None
     permissions: object = None
+
+
+class McpAppData(ResponseModel):
+    """The mcp_app card's payload: an MCP App's HTML with the call it renders.
+
+    csp, permissions and tool_result are the MCP server's own JSON, forwarded verbatim; tool_result
+    is the call's raw result, or its result text once the tool's output arrives.
+    """
+
+    tool_call_id: str
+    tool_name: str
+    server_url: str
+    resource_uri: str
+    html_content: str
+    tool_result: JsonValue
+    csp: JsonValue
+    permissions: JsonValue
+    tool_arguments: dict[str, JsonValue]

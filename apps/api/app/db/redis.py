@@ -271,6 +271,11 @@ def _new_client(redis_url: str) -> AsyncRedisCommands:
     return cast(AsyncRedisCommands, TimedRedis.from_url(redis_url, decode_responses=True))
 
 
+def key_namespace(key: str) -> str:
+    """Return the part of a key before its first ':', safe to log; what follows can be a credential."""
+    return key.partition(":")[0]
+
+
 class RedisCache:
     """Async Redis wrapper with type-safe (de)serialization and graceful degradation.
 
@@ -352,7 +357,7 @@ class RedisCache:
             log.error(
                 "redis_op_failed",
                 op="get",
-                key=key,
+                key_namespace=key_namespace(key),
                 error_type=type(e).__name__,
                 error=str(e),
             )
@@ -380,7 +385,7 @@ class RedisCache:
             log.error(
                 "redis_op_failed",
                 op="set",
-                key=key,
+                key_namespace=key_namespace(key),
                 ttl=ttl,
                 error_type=type(e).__name__,
                 error=str(e),
@@ -408,7 +413,7 @@ class RedisCache:
             log.error(
                 "redis_op_failed",
                 op="get_and_delete",
-                key=key,
+                key_namespace=key_namespace(key),
                 error_type=type(e).__name__,
                 error=str(e),
             )
@@ -434,7 +439,7 @@ class RedisCache:
             log.error(
                 "redis_op_failed",
                 op="set_if_absent",
-                key=key,
+                key_namespace=key_namespace(key),
                 ttl=ttl,
                 error_type=type(e).__name__,
                 error=str(e),
@@ -453,7 +458,7 @@ class RedisCache:
             log.error(
                 "redis_op_failed",
                 op="ttl",
-                key=key,
+                key_namespace=key_namespace(key),
                 error_type=type(e).__name__,
                 error=str(e),
             )
@@ -468,12 +473,12 @@ class RedisCache:
 
         try:
             await self.redis.delete(key)
-            log.info(f"{LogTag.STORAGE} Cache deleted for key", key=key)
+            log.info(f"{LogTag.STORAGE} Cache deleted for key", key_namespace=key_namespace(key))
         except Exception as e:
             log.error(
                 "redis_op_failed",
                 op="delete",
-                key=key,
+                key_namespace=key_namespace(key),
                 error_type=type(e).__name__,
                 error=str(e),
             )
@@ -552,7 +557,7 @@ async def delete_cache_by_pattern(pattern: str) -> None:
             return
         for key in keys:
             await redis_cache.delete(key)
-            log.info(f"{LogTag.STORAGE} Cache deleted for key", key=key)
+            log.info(f"{LogTag.STORAGE} Cache deleted for key", key_namespace=key_namespace(key))
     except Exception as e:
         log.error(
             f"{LogTag.STORAGE} Error deleting Redis keys by pattern",

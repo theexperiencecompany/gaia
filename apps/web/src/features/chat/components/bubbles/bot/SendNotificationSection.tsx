@@ -1,14 +1,14 @@
 import { CheckmarkCircle02Icon, NotificationIcon } from "@icons";
+import type { SentNotificationCard } from "@shared/api/generated";
 import Image from "next/image";
 import {
   isNotificationChannel,
   NOTIFICATION_CHANNEL_ICONS,
   NOTIFICATION_CHANNEL_LABELS,
 } from "@/features/notification/constants";
-import type { SendNotificationData } from "@/types/features/notificationTypes";
 
 interface SendNotificationSectionProps {
-  send_notification_data: SendNotificationData;
+  send_notification_data: SentNotificationCard;
 }
 
 export default function SendNotificationSection({

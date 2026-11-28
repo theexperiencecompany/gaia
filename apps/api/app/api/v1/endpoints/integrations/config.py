@@ -15,16 +15,20 @@ from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser
-from app.schemas.integrations.requests import ConnectIntegrationRequest
+from app.schemas.integrations.requests import ConnectIntegrationRequest, ConnectLinkPreviewRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
+    ConnectLinkPreviewResponse,
     IntegrationsConfigResponse,
     IntegrationSuccessResponse,
     IntegrationToolsResponse,
     MyIntegrationsResponse,
 )
 from app.services.analytics_service import capture
-from app.services.connect_link_service import resolve_and_consume_connect_code
+from app.services.connect_link_service import (
+    preview_connect_code,
+    resolve_and_consume_connect_code,
+)
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     disconnect_integration,
@@ -210,6 +214,26 @@ async def _bind_to_this_browser(
         secure=session_cookie_secure(request),
         httponly=True,
     )
+
+
+@router.post("/connect-link/preview")
+@limiter.limit("10/minute")
+async def connect_link_preview_endpoint(
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
+    body: ConnectLinkPreviewRequest,
+) -> ConnectLinkPreviewResponse:
+    """Show what a connect link connects, and for which account, without spending the code.
+
+    Same credential and rate limit as /connect-link; answers only the integration
+    and a masked email, so a guessed code learns nothing it could not use anyway.
+    """
+    log.set(operation="connect_link_preview")
+    preview = await preview_connect_code(body.code)
+    if preview is None:
+        log.set(outcome="rejected")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invalid_or_expired_link")
+    log.set(outcome="success", integration={"id": preview.integration_id})
+    return preview
 
 
 @router.post(

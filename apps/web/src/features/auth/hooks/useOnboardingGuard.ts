@@ -15,7 +15,7 @@ export const useOnboardingGuard = () => {
   if (pendingCheckout) return;
 
   // Only proceed if user data is loaded with email and onboarding data is available
-  if (!user.email || user.onboarding === undefined) return;
+  if (!user?.email || user.onboarding === undefined) return;
 
   // Resolved during render, not an effect, so a guarded page never paints
   // before redirecting. Replaces (not pushes), like every guard — a pushed

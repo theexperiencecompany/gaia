@@ -23,7 +23,8 @@ vi.mock("@/lib/analytics", () => ({
 }));
 
 import type * as ApiClient from "@/lib/api/client";
-import { type ApiBody, type ApiResponse, api } from "@/lib/api/typed";
+import { api } from "@/lib/api/typed";
+import type { ApiBody, ApiResponse } from "@/lib/api/typed.types";
 
 /** The URL the transport was actually asked for, for the nth call. */
 const requestedUrl = (nth: number): unknown =>

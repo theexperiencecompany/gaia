@@ -8,6 +8,7 @@ import type {
   UpdateWorkflowRequest,
 } from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
+import type { ApiQuery } from "@/lib/api/typed.types";
 import type {
   CommunityWorkflow,
   CreateWorkflowRequest,
@@ -17,12 +18,6 @@ import type {
 
 // Re-export types for convenience
 export type { CommunityWorkflow, CreateWorkflowRequest, Workflow };
-
-export interface TriggerOptionsQuery {
-  parentValues?: string[];
-  page?: number;
-  search?: string;
-}
 
 export const workflowApi = {
   // Create a new workflow
@@ -200,7 +195,13 @@ export const workflowApi = {
     integrationId: string,
     triggerSlug: string,
     fieldName: string,
-    { parentValues, page, search }: TriggerOptionsQuery = {},
+    {
+      parentValues,
+      page,
+      search,
+    }: Pick<ApiQuery<"get", "/api/v1/triggers/options">, "page" | "search"> & {
+      parentValues?: string[];
+    } = {},
   ) => {
     const response = await api.get("/api/v1/triggers/options", {
       query: {

@@ -410,31 +410,43 @@ class MCPTokenStore:
                 await session.commit()
                 log.info(f"{LogTag.MCP} Deleted MCP credentials for", integration_id=integration_id)
 
-    async def clear_oauth_grant(self, integration_id: str) -> None:
-        """Drop a proven-dead grant's access and refresh tokens while keeping the credential row.
+    async def forget_rejected_grant(
+        self, integration_id: str, refresh_token: str, client_id: str | None = None
+    ) -> None:
+        """Drop a grant its refresh had rejected, and the registered client when client_id names it.
 
-        A refresh runs only once the access token expired or was rejected, so when the
-        refresh can never succeed the access token is dead too; keeping either makes
-        liveness checks report the integration usable with no re-auth prompt.
+        A refresh runs only once the access token expired or was rejected, so the access
+        token goes with the refresh token. Each is cleared only if it is still what the
+        refresh sent, so a reconnect that stored new credentials meanwhile keeps them.
         """
         async with get_db_session() as session:
             result = await session.execute(
-                select(MCPCredential).where(
+                select(MCPCredential)
+                .where(
                     MCPCredential.user_id == self.user_id,
                     MCPCredential.integration_id == integration_id,
                 )
+                .with_for_update()
             )
             cred = result.scalar_one_or_none()
-            if cred and (cred.refresh_token or cred.access_token):
-                cred.access_token = None
-                cred.refresh_token = None
-                cred.token_expires_at = None
-                session.add(cred)
-                await session.commit()
-                log.info(
-                    f"{LogTag.MCP} Cleared dead OAuth grant for",
-                    integration_id=integration_id,
-                )
+            if not cred or not cred.refresh_token:
+                return
+            if self._decrypt(cred.refresh_token) != refresh_token:
+                return
+            cred.access_token = None
+            cred.refresh_token = None
+            cred.token_expires_at = None
+            if client_id is not None and cred.client_registration:
+                stored = DCRClientRegistration.model_validate_json(cred.client_registration)
+                if stored.client_id == client_id:
+                    cred.client_registration = None
+            session.add(cred)
+            await session.commit()
+            log.info(
+                f"{LogTag.MCP} Forgot rejected OAuth grant",
+                integration_id=integration_id,
+                client_forgotten=cred.client_registration is None,
+            )
 
     async def is_connected(self, integration_id: str) -> bool:
         """Check whether a connected credential can be used or refreshed."""

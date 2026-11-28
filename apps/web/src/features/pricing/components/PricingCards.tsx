@@ -143,14 +143,14 @@ export function PricingCards({
           // in the active plan list), so use plan_type instead: pro is the only
           // paid tier, with a name-match fallback for a future paid tier.
           const isCurrentPlan =
-            user.userId && subscriptionStatus
+            user?.user_id && subscriptionStatus
               ? isPro
                 ? subscriptionStatus.plan_type === "pro"
                 : subscriptionStatus.current_plan?.name === plan.name
               : false;
 
           // Only consider truly active subscriptions when user is logged in
-          const hasActiveSubscription = user.userId
+          const hasActiveSubscription = user?.user_id
             ? !!(
                 subscriptionStatus?.is_subscribed &&
                 subscriptionStatus?.subscription?.status === "active"
@@ -159,7 +159,7 @@ export function PricingCards({
 
           const planViewerState = getPlanViewerState({
             isSubscriptionStatusUnknown:
-              !!user.userId && isSubscriptionStatusUnknown,
+              !!user?.user_id && isSubscriptionStatusUnknown,
             isCurrentPlan: !!isCurrentPlan,
             hasActiveSubscription,
           });

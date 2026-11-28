@@ -68,15 +68,7 @@ export type {
   SupportTicketType,
 } from "./cards/support-ticket-card";
 export { SupportTicketCard } from "./cards/support-ticket-card";
-export type {
-  TodoAction,
-  TodoData,
-  TodoItem,
-  TodoPriority,
-  TodoProject,
-  TodoStats,
-  TodoSubtask,
-} from "./cards/todo-card";
+export type { TodoData } from "./cards/todo-card";
 export { TodoCard } from "./cards/todo-card";
 export { TodoProgressCard } from "./cards/todo-progress-card";
 export type {

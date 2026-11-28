@@ -204,3 +204,45 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         assert result is not None
         request = mock_service.create_workflow.await_args.kwargs["request"]
         assert request.prompt == "The detailed execution instructions."
+
+    async def test_a_workflow_created_directly_streams_its_created_card(self) -> None:
+        from app.services.workflow.subagent_output import FinalizedOutput
+        from app.utils.workflow_utils import create_workflow_directly
+
+        workflow = _make_real_workflow()
+        workflow.trigger_config.trigger_name = "daily_digest"
+        workflow.integration_ids = ["gmail"]
+        writer = MagicMock()
+        draft = FinalizedOutput(
+            type="finalized",
+            title="Daily digest",
+            description="Send the digest",
+            prompt="Send the digest",
+            trigger_type="scheduled",
+            direct_create=True,
+        )
+
+        with patch("app.services.workflow.service.WorkflowService") as mock_service:
+            mock_service.create_workflow = AsyncMock(return_value=workflow)
+            await create_workflow_directly(
+                draft=draft, user_id=FAKE_USER_ID, writer=writer, delivery=WorkflowDelivery.NOW
+            )
+
+        writer.assert_called_once_with(
+            {
+                "workflow_created": {
+                    "id": workflow.id,
+                    "title": "Daily digest",
+                    "description": "Send the digest",
+                    "trigger_config": {
+                        "type": "schedule",
+                        "cron_expression": "0 16 * * *",
+                        "trigger_name": "daily_digest",
+                        "enabled": True,
+                        "timezone": "Asia/Kolkata",
+                    },
+                    "integration_ids": ["gmail"],
+                    "activated": workflow.activated,
+                }
+            }
+        )

@@ -8,9 +8,8 @@ from langchain_core.tools import tool
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.agent_models import current_stream_writer, get_user_id
-from app.models.support_models import (
-    SupportRequestType,
-)
+from app.models.support_models import SupportRequestType, SupportTicketDraft
+from app.models.tool_card_registry import tool_card
 from app.services import user_service
 from app.templates.docstrings.support_tool_docs import (
     CREATE_SUPPORT_TICKET,
@@ -65,19 +64,17 @@ async def create_support_ticket(
 
         request_type = SupportRequestType(ticket_type.lower())
 
-        # Prepare support ticket data for streaming
-        support_ticket_data = {
-            "type": request_type.value,
-            "title": title.strip(),
-            "description": description.strip(),
-            "user_name": user_name,
-            "user_email": user_email,
-        }
+        draft = SupportTicketDraft(
+            type=request_type,
+            title=title.strip(),
+            description=description.strip(),
+            user_name=user_name,
+            user_email=user_email,
+        )
 
-        # Stream the support ticket data to frontend
         writer = current_stream_writer()
         writer({"progress": "Creating support ticket..."})
-        writer({"support_ticket_data": [support_ticket_data]})
+        writer(tool_card("support_ticket_data", [draft]))
 
         log.info(f"{LogTag.TOOL} Support ticket draft prepared", user_id=user_id)
 

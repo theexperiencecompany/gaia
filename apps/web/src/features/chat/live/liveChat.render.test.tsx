@@ -51,7 +51,7 @@ vi.mock("@/features/chat/components/bubbles/bot/SearchedImageDialog", () => ({
   default: () => null,
 }));
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
-  useCurrentUser: () => ({ profilePicture: "" }),
+  useCurrentUser: () => ({ picture: "" }),
 }));
 
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";

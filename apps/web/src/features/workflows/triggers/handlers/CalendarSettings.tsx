@@ -9,6 +9,10 @@
 "use client";
 
 import { ListBox, Select, Spinner } from "@heroui/react";
+import type {
+  CalendarEventCreatedConfig,
+  CalendarEventStartingSoonConfig,
+} from "@shared/api/generated";
 import { useMemo } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
@@ -23,12 +27,14 @@ import { TriggerToggleRow } from "../components/TriggerToggleRow";
 import type { TriggerSettingsProps } from "../registry";
 import type { TriggerConfigDraft } from "../types";
 
-export type CalendarTriggerData = {
-  trigger_name: string;
-  calendar_ids: string[];
-  minutes_before_start?: number;
-  include_all_day?: boolean;
-};
+// The draft holds whichever slug the picker set, so trigger_name is any string.
+export type CalendarTriggerData = Omit<
+  CalendarEventCreatedConfig,
+  "trigger_name"
+> &
+  Omit<CalendarEventStartingSoonConfig, "trigger_name"> & {
+    trigger_name: string;
+  };
 
 export interface CalendarConfig extends TriggerConfigDraft {
   trigger_name?: string;
@@ -128,7 +134,7 @@ export function CalendarSettings({
     { id: "all", name: "Select All" },
     ...calendars.map((cal) => ({
       id: cal.id,
-      name: `${cal.summary} ${cal.primary ? "(Primary)" : ""}`,
+      name: `${cal.summary ?? ""} ${cal.primary ? "(Primary)" : ""}`,
     })),
   ];
 

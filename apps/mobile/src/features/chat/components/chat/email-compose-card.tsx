@@ -1,3 +1,4 @@
+import type { EmailComposeData } from "@gaia/shared";
 import { Button, Chip } from "heroui-native";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
@@ -5,17 +6,6 @@ import { AppIcon, PencilEdit01Icon } from "@/components/icons";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
 import { GmailIcon } from "@/features/chat/tool-data/cards/gmail-icon";
-
-export interface EmailComposeData {
-  to: string[];
-  subject: string;
-  body: string;
-  draft_id?: string;
-  thread_id?: string;
-  bcc?: string[];
-  cc?: string[];
-  is_html?: boolean;
-}
 
 interface EmailComposeCardProps {
   data?: EmailComposeData;
@@ -29,10 +19,12 @@ export const SAMPLE_EMAIL_COMPOSE: EmailComposeData = {
   to: ["sudarshan@gmail.com"],
   subject: "Checking In",
   body: "Hi Sudarshan,\n\nI hope you are doing well! Just wanted to check in and see how you are doing.\n\nBest regards,\n\n[Your Name]",
+  draft_id: null,
   thread_id: "",
   bcc: [],
   cc: [],
   is_html: false,
+  attachments: [],
 };
 
 // HTML → plain text fallback: web renders sanitized HTML via DOMPurify; mobile
@@ -98,7 +90,8 @@ export function EmailComposeCard({
   const isReply = !!data.thread_id;
   const hasRecipients = (data.to?.length ?? 0) > 0;
   const toDisplay = data.to?.join(", ") ?? "";
-  const bodyText = data.is_html ? stripHtml(data.body) : data.body;
+  const body = data.body ?? "";
+  const bodyText = data.is_html ? stripHtml(body) : body;
 
   const [isSending, setIsSending] = useState(false);
   const sendDisabled = !hasRecipients || isSending;

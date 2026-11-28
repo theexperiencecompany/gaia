@@ -35,13 +35,13 @@ export function NotionSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as NotionConfig;
   const triggerData = config.trigger_data;
   const integrationId = "notion";
 
-  const isConnected =
-    integrations.find((i) => i.id === integrationId)?.status === "connected";
+  const integration = integrations.find((i) => i.id === integrationId);
+  const isConnected = integration?.status === "connected";
 
   const triggerSlug = config.trigger_name || "";
 
@@ -94,14 +94,7 @@ export function NotionSettings({
   };
 
   if (!isConnected) {
-    return (
-      <TriggerConnectionPrompt
-        integrationName="Notion"
-        integrationId={integrationId}
-        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
-        onConnect={() => connectIntegration(integrationId)}
-      />
-    );
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
 
   // Get current selected values for databases

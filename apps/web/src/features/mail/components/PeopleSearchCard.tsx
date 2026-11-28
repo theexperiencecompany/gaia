@@ -21,7 +21,7 @@ export default function PeopleSearchCard({ people }: PeopleSearchCardProps) {
         <ScrollShadow className="max-h-[400px] divide-y divide-zinc-700">
           {people.map((person) => (
             <div
-              key={person.email + person.phone}
+              key={`${person.email ?? ""}${person.phone ?? ""}`}
               className="group flex cursor-default items-start gap-4 p-3 transition-colors hover:bg-zinc-700"
             >
               {/* Name Column */}

@@ -6,6 +6,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.models.brief_view_models import BriefCard
 from app.models.chat_models import SystemPurpose
 from app.models.conversation_log_models import Notice
+from app.models.tool_card_registry import tool_card_data
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation_service import create_system_conversation
@@ -38,7 +39,7 @@ async def post_brief_message(
         (
             ToolDataEntry(
                 tool_name=BRIEFING_TOOL_NAME,
-                data=card.model_dump(),
+                data=tool_card_data(BRIEFING_TOOL_NAME, card),
                 timestamp=datetime.now(UTC).isoformat(),
             ),
         )

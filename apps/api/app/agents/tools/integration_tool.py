@@ -30,6 +30,7 @@ from app.helpers.slug_helpers import generate_integration_slug
 from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.device import Device
 from app.models.device_models import DeviceInfo, DeviceServerInfo, ListDevicesResult
+from app.models.integration_card_models import IntegrationListCard, SuggestedIntegrationCard
 from app.models.integration_models import (
     ConnectStep,
     CreateCustomIntegrationRequest,
@@ -40,6 +41,7 @@ from app.models.integration_models import (
 )
 from app.models.mcp_config import AuthType, McpProbeResult
 from app.models.oauth_models import OAuthIntegration
+from app.models.tool_card_registry import tool_card
 from app.services.device.bridge import online_device_ids
 from app.services.device.device_service import (
     list_device_servers,
@@ -144,18 +146,17 @@ async def _add_custom_integrations(lists: _IntegrationLists, user_id: str) -> se
     return user_integration_ids
 
 
-def _stream_frame(suggested: SuggestedIntegration) -> dict[str, object]:
-    """A suggested integration as the frontend's camelCase stream frame."""
-    return {
-        "id": suggested["id"],
-        "name": suggested["name"],
-        "description": suggested["description"],
-        "category": suggested["category"],
-        "iconUrl": suggested["icon_url"],
-        "authType": suggested["auth_type"],
-        "relevanceScore": suggested["relevance_score"],
-        "slug": suggested["slug"],
-    }
+def _suggestion_card(suggested: SuggestedIntegration) -> SuggestedIntegrationCard:
+    return SuggestedIntegrationCard(
+        id=suggested["id"],
+        name=suggested["name"],
+        description=suggested["description"],
+        category=suggested["category"],
+        icon_url=suggested["icon_url"],
+        auth_type=suggested["auth_type"],
+        relevance_score=suggested["relevance_score"],
+        slug=suggested["slug"],
+    )
 
 
 async def _search_suggested(query: str, exclude_ids: set[str]) -> list[SuggestedIntegration]:
@@ -249,14 +250,14 @@ async def list_integrations(
                 search_public_query.strip(), lists.listed_ids | user_integration_ids
             )
 
-        # Stream suggested integrations to frontend (camelCase)
         writer(
-            {
-                "integration_list_data": {
-                    "hasSuggestions": len(suggested_list) > 0,
-                    "suggested": [_stream_frame(s) for s in suggested_list[:MAX_SUGGESTED_FOR_LLM]],
-                }
-            }
+            tool_card(
+                "integration_list_data",
+                IntegrationListCard(
+                    has_suggestions=len(suggested_list) > 0,
+                    suggested=[_suggestion_card(s) for s in suggested_list[:MAX_SUGGESTED_FOR_LLM]],
+                ),
+            )
         )
 
         # Return structured data for LLM (with limits)

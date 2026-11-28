@@ -10,7 +10,7 @@ import {
 import { useAppendToInput } from "@/stores/composerStore";
 
 export const ChatSuggestions: React.FC = () => {
-  const profession = useCurrentUser().onboarding?.preferences?.profession;
+  const profession = useCurrentUser()?.onboarding?.preferences?.profession;
   const appendToInput = useAppendToInput();
   // Picked post-mount: Math.random during render made server and client
   // disagree on every load (hydration mismatch → discarded server tree).

@@ -1,9 +1,14 @@
 "use client";
 
-import { AppBridge, AppFrame, type McpUiHostContext } from "@mcp-ui/client";
+import {
+  AppBridge,
+  AppFrame,
+  type McpUiHostContext,
+  type SandboxConfig,
+} from "@mcp-ui/client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { McpAppData } from "@shared/api/generated";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MCPAppData } from "@/config/registries/toolRegistry";
 import {
   callMCPAppTool,
   listMCPPrompts,
@@ -34,7 +39,7 @@ function getTheme(): "dark" | "light" {
 }
 
 interface Props {
-  data: MCPAppData;
+  data: McpAppData;
 }
 
 export function MCPAppRenderer({ data }: Props) {
@@ -55,9 +60,9 @@ export function MCPAppRenderer({ data }: Props) {
 
   const hasCsp = data.csp !== undefined;
   const cspKey = useMemo(() => JSON.stringify(data.csp ?? null), [data.csp]);
-  const stableCsp = useMemo((): MCPAppData["csp"] | undefined => {
+  const stableCsp = useMemo((): SandboxConfig["csp"] => {
     if (!hasCsp) return undefined;
-    return JSON.parse(cspKey) as MCPAppData["csp"];
+    return JSON.parse(cspKey) as SandboxConfig["csp"];
   }, [cspKey, hasCsp]);
 
   const sandbox = useMemo(

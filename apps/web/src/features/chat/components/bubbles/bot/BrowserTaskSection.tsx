@@ -29,17 +29,11 @@ import { StepRow } from "./StepRow";
 const accordionStyles = accordionVariants({ density: "compact" });
 
 interface BrowserTaskSectionProps {
-  data: BrowserTaskSnapshot | BrowserTaskSnapshot[];
+  data: BrowserTaskSnapshot[];
 }
 
 /** Everything the card derives from its snapshots — folded once per render. */
-function useBrowserTaskState(
-  data: BrowserTaskSnapshot | BrowserTaskSnapshot[],
-) {
-  const snapshots = useMemo(
-    () => (Array.isArray(data) ? data : [data]),
-    [data],
-  );
+function useBrowserTaskState(snapshots: BrowserTaskSnapshot[]) {
   const folded = useMemo(() => foldBrowserTask(snapshots), [snapshots]);
   const { cardId, session, steps, pendingHandoff, result } = folded;
   const phase = browserCardPhase(folded);

@@ -1,6 +1,7 @@
 "use client";
 
 import { Chip, Skeleton } from "@heroui/react";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import nextDynamic from "next/dynamic";
 import { useState } from "react";
 import { chipVariants } from "@/components/shared/controlVariants";
@@ -15,7 +16,7 @@ import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegr
 import { useIntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type {
-  Integration,
+  ConnectIntegrationOutcome,
   IntegrationConnectOptions,
 } from "@/features/integrations/types";
 import { isSettingUpTools } from "@/features/integrations/utils/catalog";
@@ -39,11 +40,11 @@ const IntegrationInstructionsEditor = nextDynamic(
 const TOOL_SKELETON_WIDTHS = ["w-24", "w-20", "w-28", "w-16", "w-32", "w-14"];
 
 interface IntegrationSidebarProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   onConnect: (
     integrationId: string,
     options?: IntegrationConnectOptions,
-  ) => Promise<{ status: string; toolsCount?: number }>;
+  ) => Promise<ConnectIntegrationOutcome>;
   onDisconnect?: (integrationId: string) => void;
   onDelete?: (integrationId: string) => Promise<void>;
   onPublish?: (integrationId: string) => Promise<void>;

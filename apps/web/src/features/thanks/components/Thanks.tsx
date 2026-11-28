@@ -1,5 +1,6 @@
 "use client";
 
+import type { URLResponse } from "@shared/api/generated";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect } from "react";
@@ -11,17 +12,8 @@ import { getImageDimensions } from "@/lib/imageDimensions";
 
 const BACKGROUND_LOGO = getImageDimensions("/images/logos/logo.webp");
 
-interface ToolMetadata {
-  title: string | null;
-  description: string | null;
-  favicon: string | null;
-  website_name: string | null;
-  website_image: string | null;
-  url: string;
-}
-
 interface ThanksProps {
-  toolsMetadata: Record<string, ToolMetadata>;
+  toolsMetadata: Record<string, URLResponse>;
 }
 
 export default function Thanks({ toolsMetadata }: ThanksProps) {

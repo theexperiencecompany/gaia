@@ -25,7 +25,7 @@ export default function UserContainer() {
       >
         <div className="flex items-center gap-3">
           <Avatar className="size-7 rounded-full bg-black">
-            <AvatarImage src={user?.profilePicture} alt="User Avatar" />
+            <AvatarImage src={user?.picture ?? undefined} alt="User Avatar" />
             <AvatarFallback>
               <Image
                 src={"/images/avatars/default.webp"}

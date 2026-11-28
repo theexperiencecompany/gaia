@@ -1,3 +1,4 @@
+import type { MyIntegrationItem } from "@shared/api/generated";
 import {
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
@@ -9,7 +10,6 @@ import {
   getUniqueCategories,
   sortCategories,
 } from "../constants/categories";
-import type { Integration } from "../types";
 import { useIntegrationSearch } from "./useIntegrationSearch";
 import { useIntegrations } from "./useIntegrations";
 
@@ -25,7 +25,7 @@ export function useIntegrationsList({
   onIntegrationClick,
 }: UseIntegrationsListParams) {
   const { integrations, isPending, connectIntegration } = useIntegrations();
-  const currentUserId = useCurrentUser().userId;
+  const currentUserId = useCurrentUser()?.user_id;
 
   const { filteredIntegrations } = useIntegrationSearch(
     integrations,
@@ -54,7 +54,7 @@ export function useIntegrationsList({
     const sorted = sortCategories(uniqueCategories);
     // Add "created_by_you" at the start if user has custom integrations they created
     const hasCreatedByYou = integrations.some(
-      (i) => i.createdBy === currentUserId,
+      (i) => currentUserId !== undefined && i.createdBy === currentUserId,
     );
     if (hasCreatedByYou) {
       return ["created_by_you", ...sorted];
@@ -64,7 +64,9 @@ export function useIntegrationsList({
 
   // Integrations created by the current user
   const createdByYouIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => i.createdBy === currentUserId);
+    return filteredIntegrations.filter(
+      (i) => currentUserId !== undefined && i.createdBy === currentUserId,
+    );
   }, [filteredIntegrations, currentUserId]);
 
   // Separate featured integrations
@@ -75,7 +77,7 @@ export function useIntegrationsList({
   // Group ALL integrations by category, sorted: connected first, then alphabetically
   // When a search query is active, preserve Fuse.js relevance order instead of sorting alphabetically
   const integrationsByCategory = useMemo(() => {
-    const grouped: Record<string, Integration[]> = {};
+    const grouped: Record<string, MyIntegrationItem[]> = {};
 
     for (const category of availableCategories) {
       const items = filteredIntegrations.filter((i) => i.category === category);

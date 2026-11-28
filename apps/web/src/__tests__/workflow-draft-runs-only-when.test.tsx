@@ -19,7 +19,12 @@ describe("a drafted runs-only-when condition", () => {
       prompt: "Draft a reply",
       trigger_type: "integration",
       trigger_slug: "GMAIL_NEW_GMAIL_MESSAGE",
+      cron_expression: null,
+      integration_ids: [],
+      delivery: "now",
       runs_only_when: BILLING,
+      draft_id: "draft-1",
+      direct_create: false,
     };
 
     render(<WorkflowDraftCard draft={draft} />);

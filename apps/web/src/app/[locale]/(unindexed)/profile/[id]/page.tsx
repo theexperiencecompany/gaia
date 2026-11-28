@@ -68,7 +68,7 @@ export default function ProfilePage() {
         name: holoCardData.name ?? "",
         personality_phrase: holoCardData.personality_phrase ?? "",
         user_bio: holoCardData.user_bio ?? "",
-        account_number: `#${holoCardData.account_number}`,
+        account_number: holoCardData.account_number,
         member_since: holoCardData.member_since,
         overlay_color: holoCardData.overlay_color || "rgba(0,0,0,0)",
         overlay_opacity: holoCardData.overlay_opacity || 40,

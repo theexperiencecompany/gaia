@@ -1,3 +1,4 @@
+import type { ContactData } from "@gaia/shared";
 import { ScrollView, View } from "react-native";
 import {
   AppIcon,
@@ -8,12 +9,7 @@ import {
 import { Text } from "@/components/ui/text";
 import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 
-export interface ContactData {
-  name?: string;
-  email?: string;
-  phone?: string;
-  resource_name?: string;
-}
+export type { ContactData };
 
 function ContactRow({ contact }: { contact: ContactData }) {
   return (

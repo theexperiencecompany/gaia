@@ -4,16 +4,14 @@
  * convention so card and detail pages stay in sync.
  */
 
+import type { WorkflowCreator } from "@shared/api/generated";
+
+type ResolvableCreator = Partial<WorkflowCreator>;
+
 const SYSTEM_CREATOR_ID = "system";
 // The GAIA mark, not the Experience Company one — these surfaces are attributed
 // to "GAIA Team", so the logo has to match the name.
 const GAIA_LOGO_SRC = "/brand/gaia_logo.svg";
-
-export interface ResolvableCreator {
-  id?: string | null;
-  name?: string | null;
-  avatar?: string | null;
-}
 
 export function isSystemCreator(
   creator: ResolvableCreator | null | undefined,

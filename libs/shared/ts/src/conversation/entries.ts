@@ -23,7 +23,7 @@ import type {
   WorkflowFiredItem,
   WorkItem,
 } from "../api/generated";
-import { ToolDataEntrySchema } from "../chat/schema";
+import { TimelineToolCardSchema, ToolDataEntrySchema } from "../chat/schema";
 
 /** Zod mirror of the screen's items and the log entries they carry, each tied to its generated API type. */
 
@@ -272,7 +272,7 @@ export const ToolTimelineSchema = z.object({
       data: z.unknown(),
     }),
   ),
-  cards: z.array(z.object({ key: z.string(), card: ToolDataEntrySchema })),
+  cards: z.array(z.object({ key: z.string(), card: TimelineToolCardSchema })),
   progress: z
     .object({
       message: z.string().min(1),

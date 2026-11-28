@@ -17,7 +17,7 @@ from app.db.repositories.errors import RepositoryError
 from app.db.repositories.usage_daily import UsageDailyIncrement, usage_daily_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
-from app.schemas.usage import ActivityDay, UsageActivityResponse
+from app.schemas.usage import ActivityDay, BadgeTier, UsageActivityResponse
 from app.services.email import send_badge_earned_email
 from shared.py.wide_events import log
 
@@ -27,7 +27,7 @@ _PERCENTILE_WINDOW_DAYS = 30
 
 # Badge tiers, weakest → strongest. Order doubles as the promotion ranking:
 # a user is only ever "promoted" to a tier later in this tuple.
-TIER_KEYS: tuple[str, ...] = ("bronze", "silver", "gold", "diamond")
+TIER_KEYS: tuple[BadgeTier, ...] = ("bronze", "silver", "gold", "diamond")
 
 
 class _TierMeta(NamedTuple):
@@ -36,7 +36,7 @@ class _TierMeta(NamedTuple):
     top_label: str  # user-facing "top X%" wording
 
 
-_TIER_META: dict[str, _TierMeta] = {
+_TIER_META: dict[BadgeTier, _TierMeta] = {
     "diamond": _TierMeta("p999", 99.9, "0.1%"),
     "gold": _TierMeta("p99", 99.0, "1%"),
     "silver": _TierMeta("p90", 90.0, "10%"),
@@ -44,7 +44,7 @@ _TIER_META: dict[str, _TierMeta] = {
 }
 
 
-def _tier_for_total(total: int, thresholds: dict[str, float]) -> str | None:
+def _tier_for_total(total: int, thresholds: dict[str, float]) -> BadgeTier | None:
     """Return the strongest tier a 30-day total qualifies for, or None."""
     for tier in reversed(TIER_KEYS):
         if total >= thresholds[_TIER_META[tier].threshold_key]:
@@ -196,7 +196,7 @@ def _percentile_window_start() -> str:
 
 async def _percentile_tier(
     user_id: str, window_start: str, mine: int | None
-) -> tuple[float | None, str | None]:
+) -> tuple[float | None, BadgeTier | None]:
     """Return the user's activity percentile vs all users, and the badge tier it earns.
 
     Compares the user's 30-day total against cross-user thresholds recomputed
@@ -241,14 +241,14 @@ async def _percentile_thresholds(window_start: str) -> dict[str, float]:
     return thresholds
 
 
-async def _record_tier(user_id: str, tier: str) -> UserDocument | None:
+async def _record_tier(user_id: str, tier: BadgeTier) -> UserDocument | None:
     """Persist tier as the user's highest reached; return the doc only on first promotion.
 
     The guard is monotonic — a stored tier is only ever replaced by a stronger
     one — so downgrades are silent and the filtered update also serves as the
     idempotency lock for retried jobs.
     """
-    lower_tiers = list(TIER_KEYS[: TIER_KEYS.index(tier)])
+    lower_tiers: list[str] = list(TIER_KEYS[: TIER_KEYS.index(tier)])
     return await user_repository.record_activity_tier_promotion(user_id, tier, lower_tiers)
 
 

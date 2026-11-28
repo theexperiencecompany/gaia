@@ -88,24 +88,23 @@ export function StepRow(
   props: Readonly<StepCallbacks & { call: ToolCallEntry; isLast: boolean }>,
 ) {
   const {
+    call,
     pendingApprovalToolCallIds,
     approvalOutcomeByToolCallId,
     ...rowProps
   } = props;
-  if (props.call.reasoning != null) {
-    return (
-      <ThinkingStepRow reasoning={props.call.reasoning} isLast={props.isLast} />
-    );
+  if ("reasoning" in call) {
+    return <ThinkingStepRow reasoning={call.reasoning} isLast={props.isLast} />;
   }
   const awaitingApproval =
-    !!props.call.tool_call_id &&
-    pendingApprovalToolCallIds.has(props.call.tool_call_id);
-  const approvalOutcome = props.call.tool_call_id
-    ? approvalOutcomeByToolCallId?.get(props.call.tool_call_id)
+    !!call.tool_call_id && pendingApprovalToolCallIds.has(call.tool_call_id);
+  const approvalOutcome = call.tool_call_id
+    ? approvalOutcomeByToolCallId?.get(call.tool_call_id)
     : undefined;
   return (
     <ToolCallRow
       {...rowProps}
+      call={call}
       awaitingApproval={awaitingApproval}
       approvalOutcome={approvalOutcome}
     />
@@ -127,10 +126,12 @@ function deriveSubagentSteps(
     stepKeys: visible.map(({ key }) => key),
     awaitingApproval: visibleSteps.some(
       (tc) =>
-        !!tc.tool_call_id && pendingApprovalToolCallIds.has(tc.tool_call_id),
+        !("reasoning" in tc) &&
+        !!tc.tool_call_id &&
+        pendingApprovalToolCallIds.has(tc.tool_call_id),
     ),
     // Thinking blocks aren't "tools".
-    toolCount: visibleSteps.filter((s) => s.reasoning == null).length,
+    toolCount: visibleSteps.filter((s) => !("reasoning" in s)).length,
   };
 }
 

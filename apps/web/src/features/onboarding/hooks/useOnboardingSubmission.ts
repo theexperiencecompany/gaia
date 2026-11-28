@@ -25,7 +25,7 @@ export function useOnboardingSubmission(
   state: OnboardingState,
   onSuccess: () => void,
 ): OnboardingSubmission {
-  const alreadyCompleted = useCurrentUser().onboarding?.completed === true;
+  const alreadyCompleted = useCurrentUser()?.onboarding?.completed === true;
   const { mutate, status } = useMutation({
     mutationFn: (request: OnboardingRequest) =>
       authApi.completeOnboarding(request),

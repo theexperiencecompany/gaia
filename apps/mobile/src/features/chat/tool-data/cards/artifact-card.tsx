@@ -1,4 +1,5 @@
 import type { ArtifactData } from "@gaia/shared";
+import type { ArtifactFileEvent } from "@gaia/shared/api/generated";
 import { Linking, Pressable, View } from "react-native";
 import {
   AppIcon,
@@ -76,8 +77,23 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ArtifactRow({ artifact }: { artifact: ArtifactData }) {
-  const config = getFileConfig(artifact.filename);
+function basename(path: string): string {
+  return path.split("/").pop() || path;
+}
+
+/** The files the events leave standing: last write per path wins, a remove drops the path. */
+function currentFiles(events: ArtifactData[]): ArtifactFileEvent[] {
+  const byPath = new Map<string, ArtifactFileEvent>();
+  for (const event of events) {
+    if (event.event === "remove") byPath.delete(event.path);
+    else byPath.set(event.path, event);
+  }
+  return Array.from(byPath.values());
+}
+
+function ArtifactRow({ artifact }: { artifact: ArtifactFileEvent }) {
+  const filename = basename(artifact.path);
+  const config = getFileConfig(filename);
   const Icon = config.icon === "code" ? CodeIcon : File01Icon;
   const chipPalette = CHIP_PALETTE[config.color];
 
@@ -117,7 +133,7 @@ function ArtifactRow({ artifact }: { artifact: ArtifactData }) {
                 className="flex-1 text-sm font-medium text-white"
                 numberOfLines={1}
               >
-                {artifact.filename}
+                {filename}
               </Text>
             </View>
 
@@ -149,7 +165,7 @@ function ArtifactRow({ artifact }: { artifact: ArtifactData }) {
 }
 
 export function ArtifactCard({ data }: { data: ArtifactData[] }) {
-  const artifacts = Array.isArray(data) ? data : [data];
+  const artifacts = currentFiles(Array.isArray(data) ? data : [data]);
 
   if (artifacts.length === 0) return null;
 

@@ -9,7 +9,7 @@ import fakeredis.aioredis
 from pydantic import JsonValue
 import pytest
 
-from app.constants.chat import ARTIFACT_CARD
+from app.constants.chat import ARTIFACT_CARD, TOOL_CALLS_CARD
 from app.constants.conversation import (
     EVENTS_KEY_PREFIX,
     EVENTS_RESUME_PAGE,
@@ -48,7 +48,6 @@ from app.services.conversation.event_stream import (
     follow_screen,
 )
 from app.services.conversation.ports import ConversationLog
-from app.services.conversation.screen import TOOL_CALL_CARD
 from shared.py.conversation_wire import (
     BubbleTextDelta,
     ReplyDeltaFrame,
@@ -107,7 +106,7 @@ async def _never_disconnected() -> bool:
 
 
 _CARD: ToolDataEntry = {
-    "tool_name": TOOL_CALL_CARD,
+    "tool_name": TOOL_CALLS_CARD,
     "data": {"tool_name": "search", "tool_call_id": "c1"},
 }
 

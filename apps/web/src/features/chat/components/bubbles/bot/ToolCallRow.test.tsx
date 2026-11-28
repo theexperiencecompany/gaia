@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ToolCallEntry } from "@shared/chat";
+import type { ToolCallsDataEntryData } from "@shared/api/generated";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { StepRow } from "@/features/chat/components/bubbles/bot/SubagentRow";
@@ -10,15 +10,21 @@ vi.mock("@icons", async (importOriginal) => ({
   PackageOpenIcon: () => <svg data-testid="integration-fallback-icon" />,
 }));
 
-const call = (overrides: Partial<ToolCallEntry> = {}): ToolCallEntry => ({
+const call = (
+  overrides: Partial<ToolCallsDataEntryData> = {},
+): ToolCallsDataEntryData => ({
   tool_name: "get_forecast",
   tool_category: "int_weather",
   message: "Get forecast",
   tool_call_id: "call-1",
+  icon_url: null,
+  inputs: {},
+  integration_name: null,
+  show_category: true,
   ...overrides,
 });
 
-const renderRow = (entry: ToolCallEntry) =>
+const renderRow = (entry: ToolCallsDataEntryData) =>
   render(
     <StepRow
       call={entry}

@@ -15,10 +15,6 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 
 import { authApi, type UserInfo } from "@/features/auth/api/authApi";
 import { hasSessionHint } from "@/features/auth/utils/sessionHint";
-import {
-  type CurrentUser,
-  toCurrentUser,
-} from "@/features/auth/utils/toCurrentUser";
 
 /** Identity of the current-user cache entry. Import it; never re-type it. */
 export const CURRENT_USER_QUERY_KEY = ["current-user"] as const;
@@ -31,24 +27,6 @@ export const currentUserQueryOptions = {
   staleTime: Number.POSITIVE_INFINITY,
   retry: false, // auth failures shouldn't be retried
 } as const;
-
-/**
- * Shape returned before the query has answered. Frozen module constant so the
- * reference is stable across renders — `useCurrentUser()` must not return a
- * fresh object every render or every consumer re-renders on every render.
- *
- * An empty `userId` is the "not known yet" signal, exactly as the pre-hydration
- * user store was: see `useIsSubscriptionStatusUnknown`.
- */
-const UNKNOWN_USER: CurrentUser = Object.freeze({
-  userId: "",
-  name: "",
-  email: "",
-  profilePicture: "",
-  timezone: undefined,
-  onboarding: undefined,
-  role: undefined,
-});
 
 type CurrentUserQuery = Query<
   UserInfo,
@@ -79,7 +57,6 @@ const useCurrentUserQuery = () =>
   useQuery({
     ...currentUserQueryOptions,
     enabled: useMayHaveSession(),
-    select: toCurrentUser,
   });
 
 const noSubscription = () => () => {
@@ -100,13 +77,13 @@ const useIsHydrated = (): boolean =>
   useSyncExternalStore(noSubscription, clientSnapshot, serverSnapshot);
 
 /**
- * The current user, or an all-empty record while the answer is unknown
- * (server render, hydration, cold cache, in-flight fetch, or signed out).
+ * The current user, or undefined while the answer is unknown (server render,
+ * hydration, cold cache, in-flight fetch, or signed out).
  */
-export const useCurrentUser = (): CurrentUser => {
+export const useCurrentUser = (): UserInfo | undefined => {
   const hydrated = useIsHydrated();
   const { data } = useCurrentUserQuery();
-  return hydrated && data ? data : UNKNOWN_USER;
+  return hydrated ? data : undefined;
 };
 
 /**

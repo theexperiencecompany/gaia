@@ -1,5 +1,6 @@
 import { Chip, Input, Spinner } from "@heroui/react";
 import { AlertCircleIcon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import {
   type ConnectionPromptState,
   connectionPromptState,
@@ -11,17 +12,14 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useInlineIntegrationConnect } from "@/features/integrations/hooks/useInlineIntegrationConnect";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import type {
-  Integration,
-  IntegrationConnectionData,
-} from "@/features/integrations/types";
+import type { IntegrationConnectionData } from "@/features/integrations/types";
 
 interface IntegrationConnectionPromptProps {
   integration_connection_required: IntegrationConnectionData;
 }
 
 interface IntegrationConnectCardProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   message: string;
   expired?: boolean;
   addAccount?: boolean;

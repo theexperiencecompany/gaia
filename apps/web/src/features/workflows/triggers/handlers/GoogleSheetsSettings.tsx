@@ -8,6 +8,10 @@
 "use client";
 
 import { Description, Header, ListBox, Select } from "@heroui/react";
+import type {
+  GoogleSheetsNewRowConfig,
+  GoogleSheetsNewSheetConfig,
+} from "@shared/api/generated";
 import { useMemo } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
@@ -27,11 +31,11 @@ import type { TriggerConfigDraft } from "../types";
 // TYPE DEFINITIONS
 // =============================================================================
 
-type GoogleSheetsTriggerData = {
-  trigger_name: string;
-  spreadsheet_ids?: string[];
-  sheet_names?: string[];
-};
+// The draft holds whichever slug the picker set, so trigger_name is any string.
+type GoogleSheetsTriggerData = Omit<GoogleSheetsNewRowConfig, "trigger_name"> &
+  Omit<GoogleSheetsNewSheetConfig, "trigger_name"> & {
+    trigger_name: string;
+  };
 
 export interface GoogleSheetsConfig extends TriggerConfigDraft {
   trigger_name?: string;
@@ -82,13 +86,13 @@ export function GoogleSheetsSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as GoogleSheetsConfig;
   const triggerData = config.trigger_data;
   const integrationId = "googlesheets";
 
-  const isConnected =
-    integrations.find((i) => i.id === integrationId)?.status === "connected";
+  const integration = integrations.find((i) => i.id === integrationId);
+  const isConnected = integration?.status === "connected";
 
   // The parent owns the config: selections are read straight from it and every
   // interaction writes back through onConfigChange, instead of mirroring into
@@ -184,14 +188,7 @@ export function GoogleSheetsSettings({
   };
 
   if (!isConnected) {
-    return (
-      <TriggerConnectionPrompt
-        integrationName="Google Sheets"
-        integrationId={integrationId}
-        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
-        onConnect={() => connectIntegration(integrationId)}
-      />
-    );
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
   return (
     <TriggerSettingsCard>

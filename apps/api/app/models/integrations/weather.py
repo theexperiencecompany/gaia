@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import ResponseModel
+
 
 class OpenWeatherCondition(BaseModel):
     """One entry of an OpenWeatherMap weather list; also the daily summary's condition."""
@@ -30,16 +32,79 @@ class OpenWeatherSys(BaseModel):
     sunset: int | None = None
 
 
+class OpenWeatherCoord(BaseModel):
+    """Where a current-weather response is for."""
+
+    model_config = ConfigDict(extra="allow")
+
+    lon: float
+    lat: float
+
+
+class OpenWeatherCurrentCondition(BaseModel):
+    """One entry of a current-weather response's weather list; the card picks its theme by id."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    main: str
+    description: str
+    icon: str
+
+
+class OpenWeatherMain(BaseModel):
+    """The main block of a current-weather response."""
+
+    model_config = ConfigDict(extra="allow")
+
+    temp: float | None = None
+    feels_like: float | None = None
+    temp_min: float | None = None
+    temp_max: float | None = None
+    pressure: int | None = None
+    humidity: int | None = None
+    sea_level: int | None = None
+    grnd_level: int | None = None
+
+
+class OpenWeatherWind(BaseModel):
+    """The wind block of a current-weather response."""
+
+    model_config = ConfigDict(extra="allow")
+
+    speed: float
+    deg: int | None = None
+    gust: float | None = None
+
+
+class OpenWeatherClouds(BaseModel):
+    """The cloud cover of a current-weather response, in percent."""
+
+    model_config = ConfigDict(extra="allow")
+
+    all: int
+
+
 class OpenWeatherCurrent(BaseModel):
     """An OpenWeatherMap current-weather response.
 
-    extra="allow": forwarded verbatim to the frontend weather card (coord,
-    main, wind, timezone, ...), which reads far more than GAIA does.
+    extra="allow": forwarded verbatim to the frontend weather card, so keys it
+    does not declare (base, rain, snow, ...) survive.
     """
 
     model_config = ConfigDict(extra="allow")
 
+    coord: OpenWeatherCoord | None = None
+    weather: list[OpenWeatherCurrentCondition] | None = None
+    main: OpenWeatherMain | None = None
+    visibility: int | None = None
+    wind: OpenWeatherWind | None = None
+    clouds: OpenWeatherClouds | None = None
+    dt: int | None = None
+    timezone: int | None = None
+    id: int | None = None
     name: str | None = None
+    cod: int | None = None
     sys: OpenWeatherSys | None = None
 
 
@@ -90,8 +155,10 @@ class WeatherLocation(BaseModel):
     region: str | None
 
 
-class WeatherReport(OpenWeatherCurrent):
-    """The weather card payload: the current weather plus GAIA's forecast and location."""
+class WeatherReport(OpenWeatherCurrent, ResponseModel):
+    """The weather_data card's payload: the current weather plus GAIA's forecast and location."""
+
+    model_config = ConfigDict(extra="allow", json_schema_serialization_defaults_required=True)
 
     forecast: list[DailyForecast]
     location: WeatherLocation

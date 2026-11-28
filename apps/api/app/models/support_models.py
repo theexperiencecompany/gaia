@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.document_models import MongoDocument
+from app.schemas.common import ResponseModel
 
 
 class SupportRequestType(str, Enum):
@@ -115,6 +116,16 @@ class SupportRequestSubmissionResponse(BaseModel):
     support_request: SupportRequestResponse | None = Field(
         None, description="Created support request details"
     )
+
+
+class SupportTicketDraft(ResponseModel):
+    """The support_ticket_data card's payload: a ticket the user reviews before submitting it."""
+
+    type: SupportRequestType
+    title: str
+    description: str
+    user_name: str
+    user_email: str
 
 
 class SupportRequestPagination(BaseModel):

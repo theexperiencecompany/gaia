@@ -4,9 +4,12 @@ import type {
   BotDeliveryRecorded,
   BotDeliveryReport,
   BotMessageAccepted,
+  BotSettingsResponse,
+  ConversationListResponse,
   ConversationStopResponse,
   CreateWorkflowRequest,
   DeliveryFailureReport,
+  RedeemLinkCodeResponse,
   TodoListResponse,
   TodoModel,
   TodoResponse,
@@ -20,13 +23,9 @@ import type {
 import type { ConversationFrame } from "../../conversation/types";
 import type {
   AuthStatus,
-  BotConversation,
-  BotConversationListResponse,
   BotFileData,
   BotUserContext,
   ChatRequest,
-  RedeemedLinkCode,
-  SettingsResponse,
 } from "../types";
 import { getErrorReason, getHttpStatus } from "../utils/logger";
 import { isOwnApiUrl } from "../utils/own-api";
@@ -329,9 +328,9 @@ export class GaiaClient {
   async getSettings(
     platform: string,
     platformUserId: string,
-  ): Promise<SettingsResponse> {
+  ): Promise<BotSettingsResponse> {
     return this.request(async () => {
-      const { data } = await this.client.get(
+      const { data } = await this.client.get<BotSettingsResponse>(
         `/api/v1/bot/settings/${platform}/${platformUserId}`,
         {
           headers: {
@@ -341,20 +340,7 @@ export class GaiaClient {
           },
         },
       );
-      return {
-        authenticated: data.authenticated,
-        userName: data.user_name ?? null,
-        accountCreatedAt: data.account_created_at ?? null,
-        profileImageUrl: data.profile_image_url ?? null,
-        connectedIntegrations:
-          data.connected_integrations?.map(
-            (i: { name: string; logo_url?: string; status: string }) => ({
-              name: i.name,
-              logoUrl: i.logo_url ?? null,
-              status: i.status,
-            }),
-          ) ?? [],
-      };
+      return data;
     });
   }
 
@@ -531,27 +517,17 @@ export class GaiaClient {
       page?: number;
       limit?: number;
     },
-  ): Promise<BotConversationListResponse> {
+  ): Promise<ConversationListResponse> {
     return this.requestWithAuth(async () => {
       const queryParams = new URLSearchParams();
       queryParams.set("page", String(params?.page || 1));
       queryParams.set("limit", String(params?.limit || 10));
 
-      const { data } = await this.client.get(
+      const { data } = await this.client.get<ConversationListResponse>(
         `/api/v1/conversations?${queryParams.toString()}`,
         { headers: this.userHeaders(ctx) },
       );
-
-      // Map from regular API format to bot format
-      const conversations = (data.conversations || []).map(
-        mapConversationResponse,
-      );
-
-      return {
-        conversations,
-        total: data.total ?? conversations.length,
-        page: data.page ?? 1,
-      };
+      return data;
     }, ctx);
   }
 
@@ -788,9 +764,9 @@ export class GaiaClient {
     code: string,
     profile?: { username?: string; displayName?: string },
     firstMessage?: string,
-  ): Promise<RedeemedLinkCode> {
+  ): Promise<RedeemLinkCodeResponse> {
     return this.request(async () => {
-      const { data } = await this.client.post(
+      const { data } = await this.client.post<RedeemLinkCodeResponse>(
         "/api/v1/bot/redeem-link-code",
         {
           platform,
@@ -810,28 +786,7 @@ export class GaiaClient {
           },
         },
       );
-      return {
-        linked: data.linked,
-        delivered: data.delivered,
-        firstContact: data.first_contact,
-      };
+      return data;
     });
   }
-}
-
-/**
- * Maps a conversation response from the regular API format to the bot-expected format.
- */
-function mapConversationResponse(
-  data: Record<string, unknown>,
-): BotConversation {
-  return {
-    conversation_id:
-      (data.conversation_id as string) || (data.id as string) || "",
-    url: data.url as string,
-    title: (data.title as string) || (data.description as string) || undefined,
-    created_at: (data.createdAt as string) || (data.created_at as string) || "",
-    updated_at: (data.updatedAt as string) || (data.updated_at as string) || "",
-    message_count: data.message_count as number | undefined,
-  };
 }

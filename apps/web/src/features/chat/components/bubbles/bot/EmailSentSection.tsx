@@ -9,7 +9,10 @@ export default function EmailSentSection({
   return (
     <div className="mt-3 w-full space-y-3">
       {email_sent_data.map((email) => (
-        <EmailSentCard emailSentData={email} key={email.message_id} />
+        <EmailSentCard
+          emailSentData={email}
+          key={"message_id" in email ? email.message_id : undefined}
+        />
       ))}
     </div>
   );

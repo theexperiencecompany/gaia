@@ -1,15 +1,16 @@
 import type {
-  ApprovalEnd,
-  SubagentGroupData,
-  ToolCallEntry,
-} from "@gaia/shared/chat";
-
-/** A single tool call inside a turn's chronological activity feed. */
-export interface ActivityToolCall extends Partial<ToolCallEntry> {
-  status?: "running" | "done" | "error";
-}
+  ToolCallReasoningStep,
+  ToolCallsDataEntryData,
+} from "@gaia/shared/api/generated";
+import type { ApprovalEnd, SubagentGroupData } from "@gaia/shared/chat";
 
 export type ActivityStatus = "running" | "done" | "error";
+
+/** A tool call or thinking step in a turn's activity feed; streamed partials merge by id, so any field may be missing yet. */
+export type ActivityToolCall = Partial<ToolCallsDataEntryData> &
+  Partial<Pick<ToolCallReasoningStep, "reasoning">> & {
+    status?: ActivityStatus;
+  };
 
 /**
  * SubagentGroupData plus task/result lifted off the originating handoff/spawn

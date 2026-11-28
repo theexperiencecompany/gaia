@@ -32,7 +32,7 @@ vi.mock("@/lib/analytics", () => ({
 }));
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
-  useCurrentUser: () => ({ userId: undefined, name: "" }),
+  useCurrentUser: () => undefined,
 }));
 
 vi.mock("next/navigation", () => ({

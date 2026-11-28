@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import type {
+  AddIntegrationOutcome,
+  ConnectIntegrationOutcome,
+} from "../types";
 
-interface BearerConnectResult {
-  status: string;
-  name?: string;
-  message?: string;
-}
+/** Either endpoint's answer: native `connect` or community `add`. */
+type BearerConnectResult = ConnectIntegrationOutcome | AddIntegrationOutcome;
 
 interface UseBearerTokenModalOptions {
   /**

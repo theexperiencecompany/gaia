@@ -8,7 +8,7 @@ const PRO_BENEFITS = [
 ];
 
 interface LimitExplanationProps {
-  message?: string;
+  message: string | null;
   children: ReactNode;
 }
 
@@ -24,7 +24,7 @@ function LimitExplanation({ message, children }: LimitExplanationProps) {
 interface UpgradeRequiredBodyProps {
   featureName: string;
   planName: string;
-  message?: string;
+  message: string | null;
 }
 
 /** Plan-gated feature: explain the gate, then sell the plan. */
@@ -59,7 +59,7 @@ interface DailyLimitBodyProps {
   featureName: string;
   showUpgradeNudge: boolean;
   resetInfo: { label: string; detail: string } | null;
-  message?: string;
+  message: string | null;
 }
 
 /** Usage cap: say what bound and when it lifts, and nudge only when there is a tier above. */

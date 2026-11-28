@@ -1,8 +1,8 @@
 import { ScrollShadow } from "@heroui/react";
+import type { CalendarFetchDataCard } from "@shared/api/generated";
 import { useMemo } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { GoogleCalendarIcon } from "@/components/shared/icons";
-import type { CalendarFetchData } from "@/types/features/calendarTypes";
 import { groupFetchDataByDate } from "@/utils/calendar/eventGrouping";
 import {
   formatDateWithRelative,
@@ -11,7 +11,7 @@ import {
 } from "@/utils/date/calendarDateUtils";
 
 interface CalendarListProps {
-  events?: CalendarFetchData[] | null;
+  events?: CalendarFetchDataCard["data"] | null;
   isCollapsible?: boolean;
 }
 

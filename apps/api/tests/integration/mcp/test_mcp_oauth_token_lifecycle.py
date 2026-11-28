@@ -136,9 +136,12 @@ class _InMemoryTokenStore(MCPTokenStore):
     async def get_refresh_token(self, integration_id: str) -> str | None:
         return self._refresh_token
 
-    async def clear_oauth_grant(self, integration_id: str) -> None:
-        self._access_token = None
-        self._refresh_token = None
+    async def forget_rejected_grant(
+        self, integration_id: str, refresh_token: str, client_id: str | None = None
+    ) -> None:
+        if refresh_token == self._refresh_token:
+            self._access_token = None
+            self._refresh_token = None
 
 
 @pytest.fixture

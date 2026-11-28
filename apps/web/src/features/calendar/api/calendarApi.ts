@@ -57,14 +57,7 @@ export const calendarApi = {
   fetchCalendars: async (): Promise<CalendarItem[]> => {
     const response = await api.get("/api/v1/calendar/list", { silent: true });
 
-    // Map Google Calendar API response to our Calendar type
-    return response.items.map((item) => ({
-      id: item.id,
-      name: item.summary ?? "",
-      summary: item.summary ?? "",
-      backgroundColor: item.backgroundColor ?? undefined,
-      primary: item.primary ?? false,
-    }));
+    return response.items;
   },
 
   // Fetch calendar preferences

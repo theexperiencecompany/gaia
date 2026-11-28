@@ -8,6 +8,7 @@ import {
   Tooltip,
 } from "@heroui/react";
 import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
+import type { SuggestedIntegrationCard } from "@shared/api/generated";
 import { type ReactNode, useState } from "react";
 import { accordionVariants } from "@/components/shared/accordionVariants";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
@@ -17,7 +18,6 @@ import {
   SuggestedIntegrationRow,
 } from "@/features/integrations/components/IntegrationListRows";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import type { SuggestedIntegration } from "@/features/integrations/types";
 
 const accordionStyles = accordionVariants({ density: "compact" });
 
@@ -99,7 +99,7 @@ function useAutoExpandedSections(populated: readonly ListSectionId[]) {
 }
 
 interface IntegrationListSectionProps {
-  suggestedIntegrations?: SuggestedIntegration[];
+  suggestedIntegrations?: SuggestedIntegrationCard[];
 }
 
 function IntegrationListSection({

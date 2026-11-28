@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import type { RequestOrigin } from "@/lib/api/typed";
+import type { RequestOrigin } from "@/lib/api/typed.types";
 
 import { pricingApi } from "./pricingApi";
 

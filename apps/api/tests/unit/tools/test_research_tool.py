@@ -12,6 +12,7 @@ Covers:
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools.research_tool import ResearchSource, _fetch_source_contents
@@ -22,15 +23,15 @@ from app.constants.search import (
     DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
     DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,
 )
+from app.models.web_search_models import ResearchSearchResult, SearchResultItem
 from app.utils.crawl4ai_utils import CrawlBatchParams
 from app.utils.research_utils import RankedUrl
-from app.utils.search.models import ResearchSearchResult, SearchResultItem
 
 MODULE = "app.agents.tools.research_tool"
 
 
-def _make_config(user_id: str | None = "user-123") -> dict[str, Any]:
-    """Build a minimal RunnableConfig-like dict."""
+def _make_config(user_id: str | None = "user-123") -> RunnableConfig:
+    """Build a minimal RunnableConfig."""
     return {"configurable": {"user_id": user_id}}
 
 
@@ -240,12 +241,12 @@ class TestDeepResearch:
                 "found_urls": ["https://example.com", "https://example2.com"],
             }
         )
-        for frame in (
+        for progress_frame in (
             "Fetching sources...",
             "Fetched source 1/2...",
             "Fetched source 2/2...",
         ):
-            _patch_stream_writer.assert_any_call({"progress": frame})
+            _patch_stream_writer.assert_any_call({"progress": progress_frame})
         mock_batch_crawl4ai.assert_awaited_once_with(
             ["https://example.com", "https://example2.com"],
             CrawlBatchParams(

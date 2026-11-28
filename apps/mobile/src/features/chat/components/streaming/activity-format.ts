@@ -170,7 +170,7 @@ export function formatDetailText(content: unknown): string {
  * can render the full TOOL_RENDERERS card instead of raw text.
  */
 export function matchRichRenderer(
-  output: string | undefined,
+  output: string | null | undefined,
 ): { key: string; data: unknown } | null {
   if (!output) return null;
   const parsed = safeJsonParse(output);
@@ -218,7 +218,8 @@ function coalesceReasoning<T extends ActivityToolCall>(calls: T[]): T[] {
  * drop that call from the child rows — the group header IS the spawn row.
  */
 function enrichGroup(group: EnrichedSubagentGroup): EnrichedSubagentGroup {
-  const originCall = group.tool_calls.find(isOriginCall);
+  const originCall: ActivityToolCall | undefined =
+    group.tool_calls.find(isOriginCall);
   return {
     ...group,
     tool_calls: coalesceReasoning(
@@ -326,7 +327,7 @@ function collectGroupedToolCallIds(toolData: ToolDataEntry[]): Set<string> {
   const ids = new Set<string>();
   const visit = (group: SubagentGroupData): void => {
     for (const tc of group.tool_calls) {
-      if (tc.tool_call_id) ids.add(tc.tool_call_id);
+      if (!("reasoning" in tc) && tc.tool_call_id) ids.add(tc.tool_call_id);
     }
     for (const nested of group.nested_subagents) visit(nested);
   };
@@ -396,7 +397,7 @@ export function buildApprovalLookup(
 /** Total real tool calls shown by a timeline (thinking rows excluded). */
 export function countTimelineTools(items: TimelineItem[]): number {
   const countGroup = (group: SubagentGroupData): number => {
-    let total = group.tool_calls.filter((tc) => tc.reasoning == null).length;
+    let total = group.tool_calls.filter((tc) => !("reasoning" in tc)).length;
     for (const nested of group.nested_subagents) total += countGroup(nested);
     return total;
   };

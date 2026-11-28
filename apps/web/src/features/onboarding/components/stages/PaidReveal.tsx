@@ -46,7 +46,7 @@ export function PaidReveal() {
           nextBillingDate={receipt.nextBillingDate}
           planName={receipt.planName}
           purchasedAt={receipt.purchasedAt}
-          customerEmail={user.email || undefined}
+          customerEmail={user?.email || undefined}
           quantity={receipt.quantity}
           stage={printerStage}
           subscriptionRef={receipt.subscriptionRef}

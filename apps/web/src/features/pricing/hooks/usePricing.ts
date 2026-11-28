@@ -34,7 +34,7 @@ export const usePricing = (initialPlans: Plan[] = []) => {
     refetch: refetchSubscription,
   } = useQuery({
     ...subscriptionStatusQuery(),
-    enabled: !!user.userId, // Only fetch once the persisted user store has a real id
+    enabled: !!user?.user_id, // Only fetch once the persisted user store has a real id
   });
 
   // Verify payment status
@@ -77,14 +77,14 @@ export const usePricing = (initialPlans: Plan[] = []) => {
     subscriptionStatus,
 
     // Loading states - plans can load independently of subscription
-    isLoading: plansLoading || (user && subscriptionLoading),
+    isLoading: plansLoading || subscriptionLoading,
     plansLoading,
-    subscriptionLoading: user ? subscriptionLoading : false,
+    subscriptionLoading,
 
     // Errors - only show error if plans failed AND we have no data
     error: error || (isPlansError && plans.length === 0 ? plansError : null),
     plansError,
-    subscriptionError: user ? subscriptionError : null,
+    subscriptionError,
 
     // Methods
     verifyPayment,
@@ -100,7 +100,7 @@ export const useUserSubscriptionStatus = () => {
 
   return useQuery({
     ...subscriptionStatusQuery(),
-    enabled: !!user.userId, // Only fetch once the persisted user store has a real id
+    enabled: !!user?.user_id, // Only fetch once the persisted user store has a real id
   });
 };
 
@@ -114,5 +114,5 @@ export const useUserSubscriptionStatus = () => {
 export function useIsSubscriptionStatusUnknown(): boolean {
   const user = useCurrentUser();
   const { data } = useUserSubscriptionStatus();
-  return !user.userId || data === undefined;
+  return !user?.user_id || data === undefined;
 }

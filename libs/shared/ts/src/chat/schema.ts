@@ -1,10 +1,9 @@
 import { z } from "zod";
-import type { ToolDataEntry } from "../api/generated";
+import type { TimelineToolCard, ToolDataEntry } from "../api/generated";
 
-// The satisfies-check makes the generated type the arbiter. The schema may stay
-// looser than its model on purpose: a parse boundary may accept more than the
-// model promises, never less.
-export const ToolDataEntrySchema = z
+// Only the envelope is checked here: each tool's data is validated by its payload
+// model where the server built it, and a stored card keeps the shape it was built with.
+const ToolCardEnvelopeSchema = z
   .object({
     tool_name: z.string(),
     data: z.unknown(),
@@ -13,4 +12,14 @@ export const ToolDataEntrySchema = z
     subagent_id: z.string().optional(),
   })
   // Per-tool variants (tool_calls_data, mcp_app, …) carry extra keys.
-  .loose() satisfies z.ZodType<ToolDataEntry>;
+  .loose();
+
+function isToolCard(value: unknown): boolean {
+  return ToolCardEnvelopeSchema.safeParse(value).success;
+}
+
+/** One tool card as stored and streamed, typed per tool by the API's generated union. */
+export const ToolDataEntrySchema = z.custom<ToolDataEntry>(isToolCard);
+
+/** One card the server folded into a timeline; a grouped tool's card lists every call's data. */
+export const TimelineToolCardSchema = z.custom<TimelineToolCard>(isToolCard);

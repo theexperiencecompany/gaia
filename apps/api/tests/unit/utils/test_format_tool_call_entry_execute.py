@@ -4,6 +4,7 @@ Without the unwrap every proxied card in the "Used N tools" thread collapses to
 a generic "Execute" row: wrong name, wrong category/icon, envelope as inputs.
 """
 
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -116,3 +117,24 @@ class TestTicketCards:
             label,
         )
         assert data["show_category"] is False
+
+
+@pytest.mark.unit
+class TestTheEntryEnvelope:
+    async def test_the_entry_is_stamped_with_the_calls_category_and_when_it_rendered(self) -> None:
+        call = {"name": "get_weather", "args": {"city": "Berlin"}, "id": "tc5"}
+        before = datetime.now(UTC)
+        with patch(REGISTRY_PATCH, new_callable=AsyncMock, return_value=_registry("weather")):
+            entry = await format_tool_call_entry(cast(ToolCall, call))
+        assert entry is not None
+        assert entry["tool_category"] == entry["data"]["tool_category"] == "weather"
+        assert before <= datetime.fromisoformat(entry["timestamp"]) <= datetime.now(UTC)
+
+    async def test_a_call_with_no_known_category_is_stamped_with_an_empty_one(self) -> None:
+        call = {"name": "get_weather", "args": {"city": "Berlin"}, "id": "tc5"}
+        registry = _registry()
+        registry.get_category_of_tool.return_value = None
+        with patch(REGISTRY_PATCH, new_callable=AsyncMock, return_value=registry):
+            entry = await format_tool_call_entry(cast(ToolCall, call))
+        assert entry is not None
+        assert entry["tool_category"] == entry["data"]["tool_category"] == ""

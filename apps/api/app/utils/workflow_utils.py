@@ -2,7 +2,6 @@
 
 import asyncio
 from collections.abc import Mapping
-from typing import TypedDict
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
@@ -11,7 +10,9 @@ from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import AgentConfigurableView, read_agent_configurable
+from app.models.tool_card_registry import tool_card
 from app.models.trigger_gate_models import GateEdit
+from app.models.workflow_card_models import WorkflowCreatedData, WorkflowCreatedTriggerConfig
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -32,30 +33,6 @@ from shared.py.wide_events import log
 
 class WorkflowConfigError(Exception):
     pass
-
-
-class WorkflowCreatedTriggerConfig(TypedDict):
-    """The trigger_config block of the workflow_created stream frame."""
-
-    type: TriggerType
-    cron_expression: str | None
-    trigger_name: str | None
-    enabled: bool
-    timezone: str | None
-
-
-class WorkflowCreatedPayload(TypedDict):
-    """The workflow_created frame streamed when a workflow is created without a confirmation card.
-
-    The frontend renders it as a created-workflow tool card.
-    """
-
-    id: str | None
-    title: str
-    description: str
-    trigger_config: WorkflowCreatedTriggerConfig
-    integration_ids: list[str]
-    activated: bool
 
 
 async def handle_workflow_error(
@@ -250,22 +227,21 @@ async def create_workflow_directly(
             user_timezone=user_timezone,
         )
 
-        workflow_data: WorkflowCreatedPayload = {
-            "id": workflow.id,
-            "title": workflow.title,
-            "description": workflow.description,
-            "trigger_config": {
-                "type": workflow.trigger_config.type,
-                "cron_expression": workflow.trigger_config.cron_expression,
-                "trigger_name": workflow.trigger_config.trigger_name,
-                "enabled": workflow.trigger_config.enabled,
-                "timezone": workflow.trigger_config.timezone,
-            },
-            "integration_ids": workflow.integration_ids,
-            "activated": workflow.activated,
-        }
-
-        writer({"workflow_created": workflow_data})
+        created = WorkflowCreatedData(
+            id=workflow.id,
+            title=workflow.title,
+            description=workflow.description,
+            trigger_config=WorkflowCreatedTriggerConfig(
+                type=workflow.trigger_config.type,
+                cron_expression=workflow.trigger_config.cron_expression,
+                trigger_name=workflow.trigger_config.trigger_name,
+                enabled=workflow.trigger_config.enabled,
+                timezone=workflow.trigger_config.timezone,
+            ),
+            integration_ids=workflow.integration_ids,
+            activated=workflow.activated,
+        )
+        writer(tool_card("workflow_created", created))
 
         log.info(f"{LogTag.WORKFLOW} Created workflow directly", id=workflow.id)
 

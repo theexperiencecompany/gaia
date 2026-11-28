@@ -79,7 +79,7 @@ export default function RedirectPage() {
             queryClient.fetchQuery(setupStatusQueryOptions),
             queryClient.fetchQuery(currentUserQueryOptions),
           ]);
-          if (opensSetupWizard(setupStatus, user.role ?? undefined)) {
+          if (opensSetupWizard(setupStatus, user.role)) {
             router.replace("/setup");
             return;
           }

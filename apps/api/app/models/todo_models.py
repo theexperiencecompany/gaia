@@ -597,7 +597,7 @@ class TodoWorkflowStatus(str, Enum):
     FAILED = "failed"
 
 
-class TodoWorkflowGenerationResponse(BaseModel):
+class TodoWorkflowGenerationResponse(ResponseModel):
     """Result of asking for a todo's workflow to be generated."""
 
     status: TodoWorkflowGenerationStatus
@@ -608,7 +608,7 @@ class TodoWorkflowGenerationResponse(BaseModel):
     )
 
 
-class TodoWorkflowStatusResponse(BaseModel):
+class TodoWorkflowStatusResponse(ResponseModel):
     """Generation progress and the linked workflow, if any, for one todo."""
 
     todo_id: str

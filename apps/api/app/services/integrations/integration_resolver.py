@@ -32,6 +32,7 @@ class ResolvedIntegration:
     # Original sources for backward compatibility
     platform_integration: OAuthIntegration | None
     custom_doc: dict | None
+    icon_url: str | None = None
 
 
 class IntegrationResolver:
@@ -62,6 +63,7 @@ class IntegrationResolver:
                 mcp_config=platform_integration.mcp_config,
                 platform_integration=platform_integration,
                 custom_doc=None,
+                icon_url=platform_integration.icon_url,
             )
 
         # Custom only: a tools-only stub (store_tools upserts one per platform id) is not an Integration.
@@ -114,6 +116,7 @@ class IntegrationResolver:
                 mcp_config=mcp_config,
                 platform_integration=None,
                 custom_doc=integration.model_dump(),
+                icon_url=integration.icon_url,
             )
 
         return None

@@ -25,6 +25,7 @@ from app.models.openui_artifact_models import (
     ArtifactStreamHeader,
 )
 from app.models.short_link_models import RecordTarget, ShortLinkTargetType
+from app.models.tool_card_registry import tool_card
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.links.service import attach_link
 from app.services.openui_artifacts.create import ArtifactCreationError, create_openui_artifact
@@ -61,7 +62,7 @@ class _DeltaBatcher:
 
 
 def _write_card(writer: StreamWriter, card: ArtifactCard) -> None:
-    writer({ARTIFACT_DONE_EVENT: card.model_dump(mode="json", exclude_none=True)})
+    writer(tool_card(ARTIFACT_DONE_EVENT, card))
 
 
 @tool

@@ -6,18 +6,49 @@
 // ---------------------------------------------------------------------------
 
 import type {
-  ToolDataEntry,
-  ToolProgress,
-  WorkflowDelivery,
+  ArtifactDataCard,
+  CalendarEventDisplay,
+  CalendarListCard,
+  ContactCard,
+  EmailComposeCard,
+  EmailListItem,
+  EmailSentDataCard,
+  EmailThreadCard,
+  EmailThreadItem,
+  GoogleCalendarEventDateTime,
+  McpAppData,
+  RateLimitCardData,
+  RedditDataCard,
+  SearchResultItem,
+  SubagentGroupCardData,
+  TodoCardData,
+  TodoProgressCard,
+  TodoProgressItem,
+  TodoProgressSnapshot,
+  ToolCallReasoningStep,
+  ToolCallsDataEntryData,
+  ToolCardEnvelope,
+  TwitterSearchCard,
+  TwitterSearchTweet,
+  TwitterUserCard,
+  WeatherReport,
+  WorkflowCreatedData,
+  WorkflowDraftData,
 } from "../api/generated";
-import type { ArtifactCardData } from "../artifacts/types";
 
 export type {
   RecurrenceData,
   RecurrenceRule,
+  RedditCardComment as RedditCommentData,
+  RedditCardCommentCreated as RedditCommentCreatedData,
+  RedditCardPost as RedditPostData,
+  RedditCardPostCreated as RedditPostCreatedData,
+  RedditCardSearchPost as RedditSearchData,
   ReplyToMessageData,
-  ToolDataEntry,
 } from "../api/generated";
+
+/** A card of any tool name, as apps/mobile builds and reads it; the web reads the generated per-tool ToolDataEntry. */
+export type ToolDataEntry = ToolCardEnvelope;
 
 export interface ApiFileData {
   fileId: string;
@@ -49,94 +80,24 @@ export interface GroupedConversations {
 // Weather
 // ---------------------------------------------------------------------------
 
-export interface WeatherData {
-  coord?: { lon: number; lat: number };
-  weather?: Array<{
-    id: number;
-    main: string;
-    description: string;
-    icon: string;
-  }>;
-  base?: string;
-  main?: {
-    temp: number;
-    feels_like: number;
-    temp_min: number;
-    temp_max: number;
-    pressure: number;
-    humidity: number;
-    sea_level?: number;
-    grnd_level?: number;
-  };
-  visibility?: number;
-  wind?: {
-    speed: number;
-    deg: number;
-    gust?: number;
-  };
-  clouds?: { all: number };
-  dt?: number;
-  sys?: {
-    country: string;
-    sunrise: number;
-    sunset: number;
-  };
-  timezone?: number;
-  id?: number;
-  name?: string;
-  cod?: number;
-  location?: {
-    city: string;
-    country: string | null;
-    region: string | null;
-  };
-  forecast?: Array<{
-    date: string;
-    timestamp: number;
-    temp_min: number;
-    temp_max: number;
-    humidity: number;
-    weather: {
-      main: string;
-      description: string;
-      icon: string;
-    };
-  }>;
-  // Flat fallback fields (used in older/simplified tool output)
-  temperature?: number;
-  condition?: string;
-  humidity?: number;
-  wind_speed?: number;
-  unit?: string;
-}
+export type WeatherData = WeatherReport;
 
 // ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------
 
-export interface WebResult {
-  title?: string;
-  url?: string;
-  content?: string;
-  score?: number;
+/** A search_results web item: webpage_tool.py streams serialized SearchResultItem models. */
+export type WebResult = SearchResultItem & {
+  /** Legacy keys: only results stored before the search engine rewrite carry them. */
   raw_content?: string;
-  favicon?: string;
   snippet?: string;
-}
+};
 
-export interface NewsResult {
-  title?: string;
-  url?: string;
-  content?: string;
-  score?: number;
-  raw_content?: string;
-  favicon?: string;
-  published_date?: string;
-  source?: string;
-}
+export type NewsResult = SearchResultItem;
 
 export type ImageResult = string;
 
+// apps/mobile still reads this hand copy; the web reads the generated type.
 export interface SearchResults {
   web?: WebResult[];
   images?: ImageResult[];
@@ -150,10 +111,10 @@ export interface SearchResults {
   progress?: string;
 }
 
-export interface EnhancedWebResult extends WebResult {
+export type EnhancedWebResult = WebResult & {
   full_content?: string;
   screenshot_url?: string;
-}
+};
 
 export interface DeepResearchSource {
   url: string;
@@ -182,103 +143,37 @@ export interface DeepResearchResults {
 // Email / Mail
 // ---------------------------------------------------------------------------
 
-export interface EmailComposeData {
-  to: string[];
-  subject: string;
-  body: string;
-  draft_id?: string;
-  thread_id?: string;
-  bcc?: string[];
-  cc?: string[];
-  is_html?: boolean;
-}
+export type EmailComposeData = EmailComposeCard;
 
-export interface EmailSentData {
-  to?: string[];
-  subject?: string;
-  body?: string;
-  message_id?: string;
-  message?: string;
-  timestamp?: string;
-  sent_at?: string;
-  recipients?: string[];
-}
+/** One email_sent_data item: the composed email, or the draft-sent confirmation. */
+export type EmailSentData = EmailSentDataCard["data"][number];
 
-export interface EmailFetchData {
-  from: string;
-  subject: string;
-  time: string;
-  thread_id?: string;
-  id: string;
+/** One fetched email; the optional keys only cards stored before the typed payload carry. */
+export type EmailFetchData = EmailListItem & {
   from_name?: string;
   snippet?: string;
   date?: string;
   is_unread?: boolean;
-}
+};
 
-export interface EmailThreadMessage {
-  id?: string;
-  from?: string;
-  from_name?: string;
-  subject?: string;
-  time?: string;
-  snippet?: string;
-  body?: string;
-  date?: string;
-  content?: { text: string; html: string };
-}
+export type EmailThreadMessage = EmailThreadItem;
 
-export interface EmailThreadData {
-  thread_id?: string;
-  subject?: string;
-  messages?: EmailThreadMessage[];
-  messages_count?: number;
-}
+export type EmailThreadData = EmailThreadCard;
 
-export interface ContactData {
-  name?: string;
-  email?: string;
-  phone?: string;
-  resource_name?: string;
-}
+export type ContactData = ContactCard;
 
-export interface PeopleSearchData {
-  name?: string;
-  email?: string;
-  phone?: string;
+/** One person found; organization and role only cards stored before the typed payload carry. */
+export type PeopleSearchData = ContactCard & {
   organization?: string;
   role?: string;
-  resource_name?: string;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Calendar
 // ---------------------------------------------------------------------------
 
-export interface CalendarEventDateTime {
-  date?: string;
-  dateTime?: string;
-  timeZone?: string;
-}
+export type CalendarEventDateTime = GoogleCalendarEventDateTime;
 
-export interface SameDayEvent {
-  id: string;
-  summary: string;
-  start?: CalendarEventDateTime;
-  end?: CalendarEventDateTime;
-  description?: string;
-  location?: string;
-  attendees?: Array<{
-    email: string;
-    responseStatus?: string;
-    organizer?: boolean;
-  }>;
-  recurrence?: string[];
-  status?: string;
-  calendarId?: string;
-  calendarTitle?: string;
-  background_color?: string;
-}
 export interface CalendarDeleteOptions {
   action: "delete";
   event_id: string;
@@ -313,223 +208,53 @@ export interface CalendarEditOptions {
   timezone?: string;
 }
 
-export interface CalendarFetchData {
-  summary: string;
-  start_time: string;
-  end_time: string;
-  calendar_name: string;
-  background_color: string;
-}
+export type CalendarFetchData = CalendarEventDisplay;
 
-export interface CalendarListFetchData {
-  name: string;
-  id: string;
-  description: string;
-  backgroundColor?: string;
-}
+export type CalendarListFetchData = CalendarListCard;
 
 // ---------------------------------------------------------------------------
 // Reddit
 // ---------------------------------------------------------------------------
 
-export interface RedditPostData {
-  id?: string;
-  title?: string;
-  author?: string;
-  subreddit?: string;
-  score?: number;
-  upvote_ratio?: number;
-  num_comments?: number;
-  created_utc?: number;
-  selftext?: string;
-  url?: string;
-  permalink?: string;
-  is_self?: boolean;
-  link_flair_text?: string;
-}
-
-export interface RedditCommentData {
-  id?: string;
-  author?: string;
-  body?: string;
-  score?: number;
-  created_utc?: number;
-  permalink?: string;
-  is_submitter?: boolean;
-}
-
-export interface RedditSearchData {
-  id?: string;
-  title?: string;
-  author?: string;
-  subreddit?: string;
-  score?: number;
-  num_comments?: number;
-  created_utc?: number;
-  permalink?: string;
-  url?: string;
-  selftext?: string;
-}
-
-export interface RedditPostCreatedData {
-  id?: string;
-  url?: string;
-  message?: string;
-  permalink?: string;
-}
-
-export interface RedditCommentCreatedData {
-  id?: string;
-  message?: string;
-  permalink?: string;
-}
-
-export type RedditData =
-  | { type: "search"; posts: RedditSearchData[] }
-  | { type: "post"; post: RedditPostData }
-  | { type: "comments"; comments: RedditCommentData[] }
-  | { type: "post_created"; data: RedditPostCreatedData }
-  | { type: "comment_created"; data: RedditCommentCreatedData };
+/** One reddit_data card: a search, a post, its comments, or a post or comment the user created. */
+export type RedditData = RedditDataCard["data"];
 
 // ---------------------------------------------------------------------------
 // Twitter / X
 // ---------------------------------------------------------------------------
 
-export interface TwitterUserData {
-  id: string;
-  username: string;
-  name: string;
-  description?: string;
-  profile_image_url?: string;
-  verified?: boolean;
-  public_metrics?: {
-    followers_count?: number;
-    following_count?: number;
-    tweet_count?: number;
-    listed_count?: number;
-  };
-  created_at?: string;
-  location?: string;
-  url?: string;
-}
+export type TwitterUserData = TwitterUserCard;
 
-export interface TwitterTweetData {
-  id: string;
-  text: string;
-  created_at?: string;
-  author: TwitterUserData;
-  public_metrics?: {
-    retweet_count?: number;
-    reply_count?: number;
-    like_count?: number;
-    quote_count?: number;
-    bookmark_count?: number;
-    impression_count?: number;
-  };
-  conversation_id?: string;
-}
+export type TwitterTweetData = TwitterSearchTweet;
 
-export interface TwitterSearchData {
-  tweets: TwitterTweetData[];
-  result_count: number;
-  next_token?: string;
-}
+export type TwitterSearchData = TwitterSearchCard;
 
 // ---------------------------------------------------------------------------
 // Todos (agent task planning)
 // ---------------------------------------------------------------------------
 
-export type TodoProgressStatus =
-  | "pending"
-  | "in_progress"
-  | "completed"
-  | "cancelled";
+export type TodoProgressStatus = TodoProgressItem["status"];
 
-export interface TodoProgressItem {
-  id: string;
-  content: string;
-  status: TodoProgressStatus;
-}
+export type { TodoProgressItem, TodoProgressSnapshot };
 
-export interface TodoProgressSnapshot {
-  todos?: TodoProgressItem[];
-  source?: string;
-}
-
-export type TodoProgressData = Record<string, TodoProgressSnapshot>;
+/** Accumulated todo_progress data on a message, keyed by source agent; each source replaces its own slice. */
+export type TodoProgressData = TodoProgressCard["data"];
 
 // ---------------------------------------------------------------------------
 // Todo tool data (user's personal todos)
 // ---------------------------------------------------------------------------
 
-export type TodoPriority = "high" | "medium" | "low" | "none";
-
-export type TodoAction =
-  | "list"
-  | "create"
-  | "update"
-  | "delete"
-  | "search"
-  | "stats";
-
-export interface TodoSubtask {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
-export interface TodoProject {
-  id: string;
-  name: string;
-  description?: string;
-  color?: string;
-  is_default?: boolean;
-  todo_count?: number;
-  completion_percentage?: number;
-}
-
-export interface TodoItem {
-  id: string;
-  title: string;
-  description?: string;
-  completed: boolean;
-  priority: TodoPriority;
-  labels: string[];
-  due_date?: string;
-  due_date_timezone?: string;
-  project_id?: string;
-  project?: TodoProject;
-  subtasks: TodoSubtask[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface TodoToolStats {
-  total: number;
-  completed: number;
-  pending: number;
-  overdue: number;
-  today: number;
-  upcoming: number;
-}
-
-export interface TodoToolData {
-  todos?: TodoItem[];
-  projects?: TodoProject[];
-  stats?: TodoToolStats;
-  action?: TodoAction;
-  message?: string;
-}
+export type TodoToolData = TodoCardData;
 
 // ---------------------------------------------------------------------------
 // Documents & Code
 // ---------------------------------------------------------------------------
 
 export interface CodeOutput {
-  stdout?: string;
-  stderr?: string;
-  results?: string[];
-  error?: string | null;
+  stdout: string;
+  stderr: string;
+  results: string[];
+  error: string | null;
 }
 
 export interface CodeChartData {
@@ -555,8 +280,8 @@ export interface CodeChartData {
 }
 
 export interface CodeData {
-  language?: string;
-  code?: string;
+  language: string;
+  code: string;
   output?: CodeOutput | null;
   charts?: CodeChartData[] | null;
   status?: "executing" | "completed" | "error";
@@ -568,12 +293,12 @@ export interface CodeData {
 // ---------------------------------------------------------------------------
 
 export interface GoogleDocsDocument {
-  id?: string;
-  title?: string;
-  url?: string;
-  created_time?: string;
-  modified_time?: string;
-  type?: string;
+  id: string;
+  title: string;
+  url: string;
+  created_time: string;
+  modified_time: string;
+  type: string;
 }
 
 export interface GoogleDocsData {
@@ -592,40 +317,14 @@ export interface GoogleDocsData {
 // Workflows
 // ---------------------------------------------------------------------------
 
-export interface WorkflowDraftData {
-  suggested_title: string;
-  suggested_description: string;
-  prompt: string;
-  trigger_type: "manual" | "scheduled" | "integration";
-  trigger_slug?: string | null;
-  cron_expression?: string | null;
-  /** Chosen by the agent from the user's words; absent on drafts saved before delivery modes. */
-  delivery?: WorkflowDelivery;
-}
-
-export interface WorkflowCreatedData {
-  id: string;
-  title: string;
-  description: string;
-  trigger_config: {
-    type: "manual" | "scheduled" | "integration";
-    cron_expression?: string | null;
-    trigger_name?: string | null;
-    enabled?: boolean;
-  };
-  activated: boolean;
-}
+export type { WorkflowCreatedData, WorkflowDraftData };
 
 // ---------------------------------------------------------------------------
 // Artifacts
 // ---------------------------------------------------------------------------
 
-export interface ArtifactData {
-  path: string;
-  filename: string;
-  content_type: string;
-  size_bytes: number;
-}
+/** One artifact_data event: a file the agent wrote, or one it removed. */
+export type ArtifactData = ArtifactDataCard["data"];
 
 // ---------------------------------------------------------------------------
 // Memory
@@ -656,56 +355,20 @@ export interface SharedMemoryData {
 // Rate limit
 // ---------------------------------------------------------------------------
 
-export interface RateLimitData {
-  feature: string;
-  plan_required?: string;
-  reset_time?: string;
-  /** The user's actual plan (e.g. "free", "pro"). Lets a card suppress the
-   *  upgrade pitch for a user already on the top tier. */
-  current_plan?: string;
-  /** Backend-provided explanation; overrides the card's generic copy (used
-   *  when a feature is capped rather than plan-gated, e.g. the memory cap). */
-  message?: string;
-}
+export type RateLimitData = RateLimitCardData;
 
 // ---------------------------------------------------------------------------
 // MCP App
 // ---------------------------------------------------------------------------
 
-export interface MCPAppData {
-  tool_call_id: string;
-  tool_name: string;
-  server_url: string;
-  resource_uri: string;
-  html_content: string;
-  csp?: {
-    connectDomains?: string[];
-    resourceDomains?: string[];
-  };
-  permissions?: string[];
-  tool_result?: unknown;
-  tool_arguments?: Record<string, unknown>;
-}
+export type MCPAppData = McpAppData;
 
 // ---------------------------------------------------------------------------
 // Tool calls data (progress entries)
 // ---------------------------------------------------------------------------
 
-/** One tool call of a run: the progress line the server states for it, plus the call itself. */
-export interface ToolCallEntry
-  extends Pick<ToolProgress, "tool_name" | "tool_category" | "message"> {
-  show_category?: boolean;
-  tool_call_id?: string;
-  inputs?: Record<string, unknown>;
-  output?: string;
-  /** Set when the server cut output: how many characters the tool returned. */
-  output_original_length?: number;
-  icon_url?: string;
-  integration_name?: string;
-  // When set, this entry is the model's thinking for the step (not a tool call).
-  // It rides the same ordered tool_calls stream so it interleaves between steps.
-  reasoning?: string;
-}
+/** One tool_calls_data entry: a tool call with its progress line, or a thinking step between calls. */
+export type ToolCallEntry = ToolCallsDataEntryData | ToolCallReasoningStep;
 
 // tool_name marker for a thinking/reasoning step (a ToolCallEntry with `reasoning`).
 export const REASONING_TOOL_NAME = "reasoning";
@@ -719,27 +382,10 @@ export const SUBAGENT_GROUP_TOOL_NAME = "subagent_group";
 export const BROWSER_TASK_TOOL_NAME = "browser_task";
 export const BROWSER_TOOL_CATEGORY = "browser";
 
-/** A subagent's row as the client folds it from its start, tool calls and end frames. */
-export interface SubagentGroupData {
-  subagent_id: string;
-  subagent_name: string;
-  agent_type: "handoff" | "spawned";
-  started_at: string;
-  /** Accumulated tool calls from this subagent, in order of emission */
-  tool_calls: ToolCallEntry[];
-  duration_ms: number | null;
-  token_count: number | null;
-  completed_at: string | null;
-  /** Integration icon URL forwarded from the backend */
-  icon_url: string | null;
-  /** Integration category ID used for icon lookup (e.g. "gmail", "googlecalendar") */
-  tool_category: string | null;
-  /** Spawned subagents launched from within this subagent (nested in the UI) */
-  nested_subagents: SubagentGroupData[];
-}
+export type SubagentGroupData = SubagentGroupCardData;
 
 // ---------------------------------------------------------------------------
-// Tool registry — canonical ToolName and ToolDataMap
+// Tool registry — canonical ToolName
 // ---------------------------------------------------------------------------
 
 export type ToolName =
@@ -778,94 +424,3 @@ export type ToolName =
   | "memory_data"
   | "todo_progress"
   | "chart_data";
-
-export type GenericToolData = Record<string, unknown>;
-
-export interface ToolDataMap {
-  email_compose_data: EmailComposeData[];
-  email_sent_data: EmailSentData[];
-  email_fetch_data: EmailFetchData[];
-  email_thread_data: EmailThreadData;
-  weather_data: WeatherData;
-  calendar_delete_options: CalendarDeleteOptions[];
-  calendar_edit_options: CalendarEditOptions[];
-  calendar_fetch_data: CalendarFetchData[];
-  calendar_list_fetch_data: CalendarListFetchData[];
-  search_results: SearchResults;
-  deep_research_results: DeepResearchResults;
-  contacts_data: ContactData[];
-  people_search_data: PeopleSearchData[];
-  support_ticket_data: GenericToolData[];
-  notification_data: GenericToolData;
-  send_notification_data: GenericToolData;
-  google_docs_data: GoogleDocsData;
-  code_data: CodeData;
-  todo_data: TodoToolData;
-  integration_connection_required: GenericToolData;
-  integration_list_data: GenericToolData;
-  connection_status_data: GenericToolData;
-  reddit_data: RedditData;
-  tool_calls_data: ToolCallEntry[];
-  twitter_search_data: TwitterSearchData;
-  twitter_user_data: TwitterUserData[];
-  workflow_draft: WorkflowDraftData;
-  workflow_created: WorkflowCreatedData;
-  mcp_app: MCPAppData;
-  rate_limit_data: RateLimitData;
-  artifact_data: ArtifactData[];
-  artifact_done: ArtifactCardData;
-  memory_data: SharedMemoryData;
-  todo_progress: TodoProgressData;
-  chart_data: GenericToolData[];
-}
-
-export function isKnownTool(name: string): name is ToolName {
-  const knownTools = new Set<string>([
-    "email_compose_data",
-    "email_sent_data",
-    "email_fetch_data",
-    "email_thread_data",
-    "weather_data",
-    "calendar_delete_options",
-    "calendar_edit_options",
-    "calendar_fetch_data",
-    "calendar_list_fetch_data",
-    "search_results",
-    "deep_research_results",
-    "contacts_data",
-    "people_search_data",
-    "support_ticket_data",
-    "notification_data",
-    "send_notification_data",
-    "google_docs_data",
-    "code_data",
-    "todo_data",
-    "integration_connection_required",
-    "integration_list_data",
-    "connection_status_data",
-    "reddit_data",
-    "tool_calls_data",
-    "twitter_search_data",
-    "twitter_user_data",
-    "workflow_draft",
-    "workflow_created",
-    "mcp_app",
-    "rate_limit_data",
-    "artifact_data",
-    "artifact_done",
-    "memory_data",
-    "todo_progress",
-    "chart_data",
-  ]);
-  return knownTools.has(name);
-}
-
-export function getToolData<K extends ToolName>(
-  entry: ToolDataEntry,
-  toolName: K,
-): ToolDataMap[K] | undefined {
-  if (entry.tool_name === toolName) {
-    return entry.data as ToolDataMap[K];
-  }
-  return undefined;
-}
