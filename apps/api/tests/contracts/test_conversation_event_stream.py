@@ -169,11 +169,11 @@ async def test_a_follower_replays_the_log_then_only_what_the_log_cannot_say(redi
     logged = await log.read_after(CID, UID, 2)
     assert [entry.seq for entry in logged] == [3, 4, 5]
     assert [item.frame for item in replayed if item is not None] == [
+        EntryUpdatedFrame(seq=2, entry=user("u1")),
         *(EntryFrame(seq=entry.seq, at=entry.at, entry=entry.entry) for entry in logged),
         state_frame(state),
         _delta("a1", "r1", 0),
         _work("live"),
-        EntryUpdatedFrame(seq=2, entry=user("u1")),
     ]
     assert all(item is not None and item.stream_id is None for item in replayed)
 
@@ -189,6 +189,33 @@ async def test_a_follower_replays_the_log_then_only_what_the_log_cannot_say(redi
         following = await anext(follower)
     assert following.frame == _frame(7, user("u7"))
     await follower.aclose()
+
+
+@pytest.mark.regression
+async def test_a_reply_s_amendment_is_replayed_before_the_settle_the_log_replays_after_it(
+    redis: Redis,
+) -> None:
+    """Regression for a bot resumed between a reply's amendment and its settle posting the first words as final."""
+    written = opened("e2", "r1").model_copy(update={"text": "Added fast-yes.", "revision": 1})
+    log = await _log(user("u1"), opened("e2", "r1"), settled("s3", ["u1"], 1, reply_id="r1"))
+    await RedisStreamFrames().publish(
+        CID,
+        _frame(1, user("u1")),
+        _frame(2, opened("e2", "r1")),
+        EntryUpdatedFrame(seq=2, entry=written),
+        _frame(3, settled("s3", ["u1"], 1, reply_id="r1")),
+    )
+
+    [settle] = await log.read_after(CID, UID, 2)
+
+    follower = follow(log, CID, UID, 2)
+    replayed = [await anext(follower) for _ in range(2)]
+    await follower.aclose()
+
+    assert [item.frame for item in replayed if item is not None] == [
+        EntryUpdatedFrame(seq=2, entry=written),
+        EntryFrame(seq=settle.seq, at=settle.at, entry=settle.entry),
+    ]
 
 
 async def test_a_frame_published_while_the_log_is_replayed_is_followed_exactly_once(

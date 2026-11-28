@@ -409,6 +409,35 @@ async def test_a_resume_past_the_open_reply_still_follows_it_to_its_settled_text
     ]
 
 
+async def test_an_amendment_outside_the_window_reopens_from_the_head_on_the_amended_item(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(event_stream, "CONVERSATION_READ_LIMIT", 1)
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1", "u2", "u3")
+    amendment = EntryUpdatedFrame(seq=1, entry=user("u1"))
+    await _publish(fake_redis, amendment)
+    followed: list[int] = []
+
+    async def follow(
+        log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
+    ) -> AsyncGenerator[StreamedFrame | None]:
+        followed.append(after_seq)
+        if len(followed) == 1:
+            yield StreamedFrame(stream_id="1-0", frame=amendment)
+        yield None
+
+    monkeypatch.setattr(event_stream, "follow", follow)
+    frames = follow_screen(runtime.log, CONVERSATION, USER)
+    opening, reopened = await anext(frames), await anext(frames)
+    await frames.aclose()
+
+    assert isinstance(opening, ScreenFrame) and isinstance(reopened, ScreenFrame)
+    assert [item.id for item in opening.items] == ["u3"]
+    assert [item.id for item in reopened.items] == ["u1", "u3"]
+    assert (followed, reopened.head) == ([3], 3)
+
+
 async def test_a_reply_the_client_held_is_projected_with_its_conversation_s_links(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:

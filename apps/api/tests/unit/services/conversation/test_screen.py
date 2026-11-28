@@ -51,7 +51,12 @@ from app.services.conversation.screen import (
     work_root,
     work_timeline,
 )
-from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
+from app.services.conversation.screen_patches import (
+    EntryNotHeld,
+    ScreenItemMoved,
+    ScreenTracker,
+    screen_patches,
+)
 from app.utils.artifact_utils import FILE_LINKS
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.approvals import ApprovalStatus
@@ -1311,11 +1316,12 @@ def test_only_the_last_patch_of_one_entry_names_its_head() -> None:
     ]
 
 
-def test_an_amendment_to_an_entry_older_than_the_window_changes_nothing_the_window_shows() -> None:
+def test_an_amendment_to_an_entry_outside_the_window_fails_naming_the_head_reached() -> None:
     tracker = ScreenTracker("c1", [logged(5, user("u5"))], {})
 
-    assert tracker.take(EntryUpdatedFrame(seq=2, entry=user("u2"))) == []
-    assert [item.id for item in tracker.items] == ["u5"]
+    with pytest.raises(EntryNotHeld) as unheld:
+        tracker.take(EntryUpdatedFrame(seq=2, entry=user("u2")))
+    assert unheld.value.head == 5
 
 
 def test_a_work_item_reads_the_messages_it_answers_beside_it_for_its_retry_target() -> None:

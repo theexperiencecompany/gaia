@@ -51,7 +51,7 @@ from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.patched_wire import PatchedWire
 from app.services.conversation.ports import ConversationLog
 from app.services.conversation.screen import LIVE_WORK, project_screen
-from app.services.conversation.screen_patches import ScreenTracker
+from app.services.conversation.screen_patches import EntryNotHeld, ScreenTracker
 from app.services.conversation.shown_links import shown_frame
 from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import FrameKind, ReplyDeltaFrame, TimelineCard
@@ -209,16 +209,20 @@ async def follow(
     """Yield every frame after entry after_seq once, then follow live.
 
     None follows every read that drained or timed out, so the caller can check its client is still there.
-    The log after after_seq is replayed first, then from the stream only what the log cannot say: the
-    deltas of the reply being written and of live work, and updates to entries the client already had.
+    Updates to entries the client already had come first, then the log after after_seq, then from
+    the stream what the log cannot say: the deltas of the reply being written and of live work.
     """
     # Taken before the log read, so a frame published after it is followed live, never lost.
     cursor = await latest_frame_id(conversation_id)
     entries, state = await _log_after(log, conversation_id, user_id, after_seq)
-    for replayed in _log_frames(entries, state):
+    unlogged = await _unlogged_frames(conversation_id, cursor, state, after_seq)
+    # A logged entry may read an amended one, as a settle reads its reply's text: the amendment goes first.
+    amended = [streamed for streamed in unlogged if isinstance(streamed.frame, EntryUpdatedFrame)]
+    for replayed in (*amended, *_log_frames(entries, state)):
         yield replayed
-    for unlogged in await _unlogged_frames(conversation_id, cursor, state, after_seq):
-        yield unlogged
+    for streamed in unlogged:
+        if not isinstance(streamed.frame, EntryUpdatedFrame):
+            yield streamed
     covered = entries[-1].seq if entries else after_seq
     while True:
         for streamed in await read_frames(conversation_id, cursor):
@@ -298,7 +302,8 @@ async def follow_screen(
     """Yield the screen a client at entry after still lacks, then its patches and the deltas of what is being written.
 
     after is 0 for a client that holds nothing. A live frame another deploy wrote, which this
-    code can't read, reopens on the full screen: that is how a client heals any gap.
+    code can't read, reopens on the full screen: that is how a client heals any gap. An amendment
+    to an entry older than the window reopens from the client's head, which then reaches back to it.
     """
     if not after:
         wide_log.set_ns("conversation", resume=EventsResume.FRESH)
@@ -308,6 +313,9 @@ async def follow_screen(
                 yield frame
         except UnreadableFrames:
             after = 0
+        except EntryNotHeld as unheld:
+            # Reopened from the head its client reached, the window reaches back to the amended entry.
+            after = unheld.head
 
 
 async def _screen_from_the_head(
