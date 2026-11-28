@@ -125,3 +125,30 @@ async def test_connecting_a_catalog_connector_never_writes_an_integration_docume
 
     assert (response.status, response.account_label) == ("connected", "heygaia.io")
     repo.update.assert_not_awaited()
+
+
+async def test_defining_a_binary_with_no_arm64_build_is_refused_before_anything_is_saved() -> None:
+    save = AsyncMock()
+    package = {
+        "manager": "binary",
+        "name": "terraform",
+        "version": "1.17.2",
+        "arch": "amd64",
+        "url": "https://releases.hashicorp.com/terraform_1.17.2_linux_amd64.zip",
+        "sha256": "a" * 64,
+        "archive_member": "terraform",
+    }
+    spec = make_connector_spec(
+        "cli",
+        provider_domain="hashicorp.com",
+        allowed_hosts=["app.terraform.io"],
+        install=[package],
+    )
+    with patch("app.agents.tools.connector_tools.save_connector", save):
+        reply = await define_connector.ainvoke(
+            {"name": "Terraform", "description": "IaC.", "spec": spec.model_dump()},
+            config={"configurable": {"user_id": USER_ID}},
+        )
+
+    assert "terraform has no arm64 build" in reply
+    save.assert_not_awaited()

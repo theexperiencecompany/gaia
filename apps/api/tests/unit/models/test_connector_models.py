@@ -181,12 +181,14 @@ def _binary(arch: str) -> dict[str, str]:
     }
 
 
-def test_a_binary_built_for_one_cpu_only_is_refused_naming_the_missing_one() -> None:
-    with pytest.raises(ValidationError, match="no arm64 build"):
-        make_connector_spec("cli", install=[_binary("amd64")])
+def test_a_saved_binary_built_for_one_cpu_still_loads_and_names_the_missing_build() -> None:
+    spec = make_connector_spec("cli", install=[_binary("amd64")])
+
+    assert spec.missing_builds() == {"terraform": ["arm64"]}
 
 
 def test_a_binary_built_for_both_cpus_is_accepted() -> None:
     spec = make_connector_spec("cli", install=[_binary("amd64"), _binary("arm64")])
 
     assert {p.arch for p in spec.install} == {"amd64", "arm64"}
+    assert spec.missing_builds() == {}

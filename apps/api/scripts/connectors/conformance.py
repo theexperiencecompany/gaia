@@ -5,8 +5,7 @@ it as `mise infisical connectors:conformance` so the team's keys apply. Per conn
 runner: install the pinned tools, prove a bad key is refused as an auth failure, then with a
 real key verify, run one read, and where the provider has a safe sandbox create, delete and
 confirm the deletion. A connector with no key is reported as skipped, naming the env var it
-looked for; stripe-mock and LocalStack stand in for Stripe and AWS on the docker runner and
-are reported as fakes. Not a CI lane. Exits 1 on any failure other than a known-dead team key.
+looked for. Not a CI lane. Exits 1 on any failure other than a known-dead team key.
 """
 
 import argparse
@@ -22,7 +21,6 @@ from app.models.connector_models import ConnectorSpec
 from app.services.connectors.docker_runner import DockerConnectorRunner
 from app.services.connectors.e2b_runner import E2BConnectorRunner
 from app.services.connectors.runner import ConnectorRunner
-from scripts.connectors.fakes import FakeName, running_fakes
 from scripts.connectors.journeys import JOURNEYS, Journey, real_key
 from scripts.connectors.stages import (
     BAD_KEY,
@@ -64,59 +62,38 @@ def _skip(stage: Stage, why: str) -> StageResult:
     return StageResult(stage, Outcome.SKIP, why)
 
 
-def _target_for(
-    journey: Journey, runner_name: RunnerName, runner: ConnectorRunner, fakes_up: set[FakeName]
-) -> tuple[Target | None, str]:
-    """Pick the real key, else the local fake, else say what is missing."""
+def _target_for(journey: Journey, runner: ConnectorRunner) -> tuple[Target | None, str]:
+    """Pick the real key, or say which env var it was looked for in."""
     key, source = real_key(journey)
-    if key is not None:
-        return Target(runner, key), f"real key from {source}"
-    fake = journey.fake
-    if fake is None:
+    if key is None:
         return None, f"no credential ({source})"
-    if runner_name is RunnerName.E2B:
-        return None, f"no credential ({source}); the {fake.name} fake is local, E2B cannot reach it"
-    if fake.name not in fakes_up:
-        return None, f"no credential ({source}); the {fake.name} fake did not start"
-    return Target(runner, fake.secret, fake.env, fake.args), f"fake: {fake.name}"
+    return Target(runner, key), f"real key from {source}"
 
 
 async def _keyed_stages(
-    spec: ConnectorSpec, journey: Journey, target: Target, label: str, run_name: str
+    spec: ConnectorSpec, journey: Journey, target: Target, run_name: str
 ) -> dict[Stage, StageResult]:
-    is_fake = target.fake_env is not None
-    fake = journey.fake if is_fake else None
-    verify_args = fake.verify_args if fake and fake.verify_args else None
-    results = {Stage.VERIFY: await verify_stage(spec, target, verify_args)}
-    read = journey.fake_read if is_fake and journey.fake_read else journey.read
+    results = {Stage.VERIFY: await verify_stage(spec, target)}
     results[Stage.READ] = (
-        await read_stage(spec, target, read, journey.read_expect)
-        if read
+        await read_stage(spec, target, journey.read, journey.read_expect)
+        if journey.read
         else _skip(Stage.READ, "no read journey")
     )
-    write = journey.fake_write if is_fake and journey.fake_write else journey.write
     results[Stage.WRITE] = (
-        await write_stage(spec, target, write, run_name)
-        if write
+        await write_stage(spec, target, journey.write, run_name)
+        if journey.write
         else _skip(Stage.WRITE, "no safe sandbox to write to")
     )
-    if is_fake:
-        results = {
-            stage: StageResult(stage, r.outcome, f"{label}; {r.detail}")
-            for stage, r in results.items()
-        }
     return results
 
 
-async def check(
-    connector_id: str, spec: ConnectorSpec, runner_name: RunnerName, fakes_up: set[FakeName]
-) -> Row:
+async def check(connector_id: str, spec: ConnectorSpec, runner_name: RunnerName) -> Row:
     """Run every stage for one connector on one runner."""
     runner = _RUNNERS[runner_name]()
     journey = JOURNEYS.get(connector_id, Journey())
     results = {Stage.INSTALL: await install_stage(spec, runner)}
     results[Stage.BAD_KEY] = await bad_key_stage(spec, runner, journey.bad_key or BAD_KEY)
-    target, label = _target_for(journey, runner_name, runner, fakes_up)
+    target, label = _target_for(journey, runner)
     run_name = f"gaia-conformance-{int(time.time())}-{runner_name}"
     if target is None:
         results |= {stage: _skip(stage, label) for stage in (Stage.VERIFY, Stage.READ, Stage.WRITE)}
@@ -126,7 +103,7 @@ async def check(
             for stage in (Stage.VERIFY, Stage.READ, Stage.WRITE)
         }
     else:
-        results |= await _keyed_stages(spec, journey, target, label, run_name)
+        results |= await _keyed_stages(spec, journey, target, run_name)
     return Row(connector_id, runner_name, results, journey.known_dead_key)
 
 
@@ -178,19 +155,14 @@ async def _main(only: list[str], runners: list[RunnerName]) -> int:
         print(f"not in the catalog: {', '.join(unknown)}")
         return 1
     chosen = {cid: spec for cid, spec in catalog.items() if not only or cid in only}
-    wanted_fakes = {
-        j.fake.name for cid, j in JOURNEYS.items() if cid in chosen and j.fake is not None
-    }
-    use_fakes = wanted_fakes if RunnerName.DOCKER in runners else set()
-    async with running_fakes(use_fakes) as fakes_up:
-        lanes = [
-            _lane(
-                [partial(check, cid, spec, runner, fakes_up) for cid, spec in chosen.items()],
-                _E2B_PARALLEL if runner is RunnerName.E2B else 1,
-            )
-            for runner in runners
-        ]
-        rows = [row for lane in await asyncio.gather(*lanes) for row in lane]
+    lanes = [
+        _lane(
+            [partial(check, cid, spec, runner) for cid, spec in chosen.items()],
+            _E2B_PARALLEL if runner is RunnerName.E2B else 1,
+        )
+        for runner in runners
+    ]
+    rows = [row for lane in await asyncio.gather(*lanes) for row in lane]
     rows.sort(key=lambda row: (row.connector_id, row.runner))
     return 1 if _print(rows) else 0
 

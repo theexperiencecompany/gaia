@@ -465,7 +465,7 @@ description = "Make about ten small real calls to every configured LLM provider 
 run = "cd apps/api && LOG_LEVEL=ERROR uv run --group backend python -m scripts.llm_conformance"
 
 [tasks."connectors:conformance"]
-description = "Hold every catalog connector (or the ones named: `mise connectors:conformance resend github-cli`) to real installs and calls on the E2B and docker runners: install, a bad key refused as auth, then with a real key verify, one read and, where the provider has a safe sandbox, a write that is cleaned up and checked gone. No key means skipped, naming the env var; Stripe and AWS fall back to stripe-mock and LocalStack on docker, reported as fakes. `--runner e2b|docker` for one. Team members run it as `mise infisical connectors:conformance`. Not a CI lane"
+description = "Hold every catalog connector (or the ones named: `mise connectors:conformance resend github-cli`) to real installs and calls on the E2B and docker runners: install, a bad key refused as auth, then with a real key verify, one read and, where the provider has a safe sandbox, a write that is cleaned up and checked gone. No key means skipped, naming the env var. `--runner e2b|docker` for one. Team members run it as `mise infisical connectors:conformance`. Not a CI lane"
 run = "cd apps/api && LOG_LEVEL=ERROR uv run --group backend python -m scripts.connectors.conformance"
 
 [tasks."connectors:benchmark"]

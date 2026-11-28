@@ -125,6 +125,14 @@ async def define_connector(
 ) -> str:
     user_id = _user_id(config)
     log.set(tool={"name": DEFINE_CONNECTOR_TOOL}, connector={"provider": spec.provider_domain})
+    if missing := spec.missing_builds():
+        named = "; ".join(
+            f"{name} has no {', '.join(arches)} build" for name, arches in missing.items()
+        )
+        return (
+            f"Not saved: {named}. List one binary package per arch (GAIA Cloud runs amd64, a "
+            "self-host box may be arm64), or install it with npm or pip."
+        )
     if shipped := catalog_connectors_for(spec.provider_domain):
         options = ", ".join(f"'{i.id}' ({i.name})" for i in shipped)
         log.set_ns("connector", catalog_hit=True)

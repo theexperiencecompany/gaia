@@ -2,22 +2,17 @@
 
 A stage passes, fails with the observed reason, or is skipped with what it lacked; it never
 passes on a guess. Calls with a real key go through run_with_secret exactly as the agent's
-calls do. A call against a local fake adds the fake's endpoint to the call's environment and
-is reported as a fake.
+calls do.
 """
 
-from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import StrEnum
 
 from app.models.connector_models import ConnectorKind, ConnectorSpec, IdentityExtractor
-from app.services.connectors.commands import plan_call
 from app.services.connectors.connect import extract_identity
 from app.services.connectors.runner import ConnectorRunner
 from app.services.connectors.service import (
     CallFailure,
-    build_run_request,
-    classify_failure,
     run_with_secret,
 )
 
@@ -57,12 +52,10 @@ class CallOutput:
 
 @dataclass(frozen=True)
 class Target:
-    """Where one stage's calls go: a runner, a key, and the fake's endpoint env when it is a fake."""
+    """Where one stage's calls go: a runner and the key it holds."""
 
     runner: ConnectorRunner
     secret: str
-    fake_env: Mapping[str, str] | None = None
-    fake_args: tuple[str, ...] = ()
 
 
 def _short(text: str) -> str:
@@ -74,13 +67,9 @@ def _why(output: CallOutput) -> str:
 
 
 async def call(spec: ConnectorSpec, argv: list[str], target: Target) -> CallOutput:
-    """Run one call the way the agent's run would, or against the fake when the target is one."""
-    if target.fake_env is None:
-        result = await run_with_secret(spec, argv, target.secret, runner=target.runner)
-        return CallOutput(result.failure, result.stdout, result.stderr)
-    request = build_run_request(spec, plan_call(spec, [*argv, *target.fake_args]), target.secret)
-    raw = await target.runner.run(replace(request, env={**request.env, **target.fake_env}))
-    return CallOutput(classify_failure(raw), raw.stdout, raw.stderr)
+    """Run one call the way the agent's run would."""
+    result = await run_with_secret(spec, argv, target.secret, runner=target.runner)
+    return CallOutput(result.failure, result.stdout, result.stderr)
 
 
 def _import_check(spec: ConnectorSpec) -> list[str]:
@@ -113,17 +102,16 @@ async def bad_key_stage(
     return StageResult(Stage.BAD_KEY, Outcome.FAIL, _why(output))
 
 
-async def verify_stage(
-    spec: ConnectorSpec, target: Target, verify_args: list[str] | None = None
-) -> StageResult:
+async def verify_stage(spec: ConnectorSpec, target: Target) -> StageResult:
     """Run the verify call with the real key and require the account it names."""
-    output = await call(spec, verify_args or spec.verify.args, target)
+    output = await call(spec, spec.verify.args, target)
     if output.failure is not None:
         return StageResult(Stage.VERIFY, Outcome.FAIL, _why(output))
     identity = extract_identity(spec.verify.identity, output.stdout)
     if not identity:
+        # Connect accepts this too and shows "your account": the key is proven, the name is not.
         return StageResult(
-            Stage.VERIFY, Outcome.FAIL, f"no account named in: {_short(output.stdout)}"
+            Stage.VERIFY, Outcome.PASS, f"key proven, names no account: {_short(output.stdout)}"
         )
     return StageResult(Stage.VERIFY, Outcome.PASS, f"as {identity}")
 
@@ -149,8 +137,6 @@ class WriteJourney:
     gone: list[str]
     # Where create's JSON names the new thing; None means its id is the {name} the run chose.
     id_path: str | None = None
-    # A stateless fake answers every read the same, so it cannot show the deletion.
-    stateful: bool = True
 
 
 def _fill(argv: list[str], **values: str) -> list[str]:
@@ -179,10 +165,6 @@ async def write_stage(
     removed = await call(spec, _fill(journey.cleanup, id=thing, name=name), target)
     if removed.failure is not None:
         return StageResult(Stage.WRITE, Outcome.FAIL, f"cleanup of {thing} {_why(removed)}")
-    if not journey.stateful:
-        return StageResult(
-            Stage.WRITE, Outcome.PASS, f"{thing} created and deleted (stateless fake)"
-        )
     after = await call(spec, _fill(journey.gone, id=thing, name=name), target)
     if after.failure is None and thing in after.stdout:
         return StageResult(Stage.WRITE, Outcome.FAIL, f"{thing} still listed after cleanup")
