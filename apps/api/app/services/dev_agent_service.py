@@ -59,9 +59,11 @@ async def _dev_base_configurable(
             role=AgentRole.EXECUTOR,
             dev_option=dev_option_for(model, use_defaults=model is None),
         ),
+        # A real chat run always has one, and the approval gate refuses every gated call without it.
         turn=AgentTurn(
             user_preferences=user_preferences,
             writing_style=writing_style,
+            stream_id=str(uuid4()),
         ),
     )
     return cast(AgentConfigurable, config["configurable"]), user_id, cid
