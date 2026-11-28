@@ -292,6 +292,21 @@ class ConnectorSpec(BaseModel):
             raise ValueError("bind the secret to at least one env var or file")
         return self
 
+    @model_validator(mode="after")
+    def _binaries_run_on_every_runner(self) -> Self:
+        builds: dict[str, set[CpuArch]] = {}
+        for package in self.install:
+            if package.manager is PackageManager.BINARY and package.arch is not None:
+                builds.setdefault(package.name, set()).add(package.arch)
+        for name, arches in builds.items():
+            if missing := sorted(set(CpuArch) - arches):
+                raise ValueError(
+                    f"binary {name!r} has no {', '.join(missing)} build: list one package per "
+                    "arch (GAIA Cloud runs amd64, a self-host box may be arm64), or install it "
+                    "with npm or pip"
+                )
+        return self
+
     def hosts_outside_provider(self) -> list[str]:
         """Return the allowed hosts that are not the provider's domain or one of its subdomains."""
         domain = self.provider_domain

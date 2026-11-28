@@ -77,3 +77,26 @@ def test_the_reach_fingerprint_changes_with_hosts_or_packages_only() -> None:
 def test_an_unknown_field_is_refused() -> None:
     with pytest.raises(ValidationError):
         ConnectorSpec.model_validate({**make_connector_spec("cli").model_dump(), "shell": "sh -c"})
+
+
+def _binary(arch: str) -> dict[str, str]:
+    return {
+        "manager": "binary",
+        "name": "terraform",
+        "version": "1.17.2",
+        "arch": arch,
+        "url": f"https://releases.hashicorp.com/terraform_1.17.2_linux_{arch}.zip",
+        "sha256": "a" * 64,
+        "archive_member": "terraform",
+    }
+
+
+def test_a_binary_built_for_one_cpu_only_is_refused_naming_the_missing_one() -> None:
+    with pytest.raises(ValidationError, match="no arm64 build"):
+        make_connector_spec("cli", install=[_binary("amd64")])
+
+
+def test_a_binary_built_for_both_cpus_is_accepted() -> None:
+    spec = make_connector_spec("cli", install=[_binary("amd64"), _binary("arm64")])
+
+    assert {p.arch for p in spec.install} == {"amd64", "arm64"}

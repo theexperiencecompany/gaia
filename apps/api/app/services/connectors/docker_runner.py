@@ -10,6 +10,7 @@ from encodings.utf_8 import IncrementalDecoder
 import hashlib
 import io
 from pathlib import Path
+import re
 import tarfile
 import time
 import uuid
@@ -58,6 +59,8 @@ from shared.py.wide_events import log
 _IMAGE_LIB_DIR = "/usr/local/lib/gaia-connector"
 _ENTRYPOINT_PATH = f"{_IMAGE_LIB_DIR}/entrypoint.py"
 _INSTALL_PATH = f"{_IMAGE_LIB_DIR}/install.sh"
+# A build step's own output line: "#6 0.432 no gh build for aarch64".
+_STEP_TIMED_LINE = re.compile(r"^\d+\.\d+ ")
 _ENTRYPOINT_SOURCE = Path(docker_entrypoint.__file__).read_text(encoding="utf-8")
 _STREAM_CHUNK_BYTES = 65_536
 
@@ -155,11 +158,29 @@ async def _ensure_image(
                 RunOutcome.INSTALL_FAILED,
                 proc.returncode,
                 capped(stdout.decode(errors="replace")),
-                capped(stderr.decode(errors="replace")),
+                capped(install_step_output(stderr.decode(errors="replace"))),
                 started,
             )
         log.info(f"{LogTag.SANDBOX} built a connector image", image=image)
         return None
+
+
+def install_step_output(build_log: str) -> str:
+    """Return what the install script printed, out of a plain-progress docker build log.
+
+    The script's own words ("no gh build for aarch64", a checksum mismatch) are what say
+    how to fix it; the rest of the log is docker's. The whole log when the step never ran.
+    """
+    step = re.search(rf"^(#\d+) \[[^\]]*\] RUN bash {re.escape(_INSTALL_PATH)}", build_log, re.M)
+    if step is None:
+        return build_log
+    prefix = f"{step.group(1)} "
+    lines = [
+        line.removeprefix(prefix).split(" ", 1)[-1]
+        for line in build_log.splitlines()
+        if line.startswith(prefix) and _STEP_TIMED_LINE.match(line.removeprefix(prefix))
+    ]
+    return "\n".join(lines) or build_log
 
 
 def _run_argv(name: str, image: str, call_argv: tuple[str, ...]) -> list[str]:
