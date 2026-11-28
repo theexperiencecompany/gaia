@@ -1,4 +1,6 @@
-"""End-to-end wiring: the custom-integration create route rejects SSRF URLs."""
+"""End-to-end wiring: the custom-integration create route rejects SSRF URLs and public plain-http sign-ins."""
+
+from unittest.mock import AsyncMock, MagicMock
 
 from httpx import AsyncClient
 import pytest
@@ -33,3 +35,27 @@ async def test_create_custom_integration_requires_auth(unauthenticated_client: A
         _URL, json={"name": "x", "server_url": "https://mcp.example.com/sse"}
     )
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [{"requires_auth": True, "auth_type": "oauth"}, {"bearer_token": "user-api-key"}],
+    ids=["oauth", "bearer"],
+)
+async def test_adding_a_signed_in_server_on_public_plain_http_is_refused_with_the_https_message(
+    test_client: AsyncClient, auth: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The per-user MCP client pool is process infrastructure; the route's own logic runs for real.
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.integrations.custom.get_mcp_client",
+        AsyncMock(return_value=MagicMock()),
+    )
+    response = await test_client.post(
+        _URL, json={"name": "Mine", "server_url": "http://93.184.216.34/mcp", **auth}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == (
+        "This server needs a sign-in, so its URL has to start with https://. "
+        "Plain http works only for a server on this machine or your local network."
+    )

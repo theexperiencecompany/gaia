@@ -10,8 +10,10 @@ from unittest.mock import patch
 import pytest
 
 from app.utils.url_safety import (
+    CredentialsNeedHttpsError,
     assert_endpoint_url_allowed,
     assert_endpoint_url_shape,
+    assert_may_carry_credentials,
     assert_public_http_url,
     assert_public_http_url_sync,
     assert_safe_url_shape,
@@ -292,3 +294,69 @@ def test_endpoint_names_the_link_local_address_it_refuses() -> None:
         match=r"^refusing to connect to link-local or reserved address 169\.254\.169\.254$",
     ):
         assert_endpoint_url_shape("http://169.254.169.254/latest/meta-data", allow_private=True)
+
+
+# --- a token only travels over https, or plain http inside the local network ---
+
+LAN_HTTP_URLS = [
+    "http://localhost:8080/mcp",
+    "http://LOCALHOST./mcp",
+    "http://127.0.0.1/mcp",
+    "http://127.8.9.10/mcp",
+    "http://[::1]:9000/mcp",
+    "http://10.1.2.3/mcp",
+    "http://172.16.0.1/mcp",
+    "http://172.31.255.254/mcp",
+    "http://192.168.1.20/mcp",
+    "http://169.254.10.10/mcp",
+    "http://[fe80::1]/mcp",
+    "http://[fd12:3456::1]/mcp",
+    "http://[::ffff:192.168.1.20]/mcp",
+    "http://printer.local/mcp",
+]
+
+PUBLIC_HTTP_URLS = [
+    "http://93.184.216.34/mcp",
+    "http://172.32.0.1/mcp",  # just past 172.16.0.0/12
+    "http://100.64.0.1/mcp",  # CGNAT is not a private LAN
+    "http://[2606:4700::1111]/mcp",
+    "http://[::ffff:93.184.216.34]/mcp",
+]
+
+
+@pytest.mark.parametrize("url", LAN_HTTP_URLS)
+async def test_plain_http_to_the_local_network_may_carry_a_token(url: str) -> None:
+    await assert_may_carry_credentials(url)
+
+
+@pytest.mark.parametrize("url", PUBLIC_HTTP_URLS)
+async def test_plain_http_to_a_public_host_may_not_carry_a_token(url: str) -> None:
+    with pytest.raises(CredentialsNeedHttpsError, match=r"has to start with https://"):
+        await assert_may_carry_credentials(url)
+
+
+async def test_https_carries_a_token_without_a_lookup() -> None:
+    with patch("app.utils.url_safety._resolve") as resolve:
+        await assert_may_carry_credentials("https://mcp.resend.com/mcp")
+    resolve.assert_not_called()
+
+
+async def test_a_hostname_is_judged_by_every_address_it_resolves_to() -> None:
+    with patch("app.utils.url_safety._resolve", return_value=["192.168.1.5"]) as resolve:
+        await assert_may_carry_credentials("http://nas.lan:8123/mcp")
+    resolve.assert_called_once_with("nas.lan", 8123)
+
+    with (
+        patch("app.utils.url_safety._resolve", return_value=["192.168.1.5", "93.184.216.34"]),
+        pytest.raises(CredentialsNeedHttpsError),
+    ):
+        await assert_may_carry_credentials("http://nas.lan/mcp")
+
+
+async def test_an_unresolvable_host_is_a_lookup_failure_not_a_policy_refusal() -> None:
+    with (
+        patch("app.utils.url_safety._resolve", side_effect=OSError("no such host")),
+        pytest.raises(ValueError, match="DNS resolution failed: no such host") as raised,
+    ):
+        await assert_may_carry_credentials("http://nowhere.example/mcp")
+    assert not isinstance(raised.value, CredentialsNeedHttpsError)

@@ -47,6 +47,7 @@ from app.services.mcp.mcp_tools_service import invalidate_mcp_tools_cache
 from app.services.public_pages import invalidate_public_pages
 from app.utils.favicon_utils import fetch_favicon_from_url
 from app.utils.mcp_oauth_utils import OAuthDiscoveryError, OAuthSecurityError
+from app.utils.url_safety import CredentialsNeedHttpsError, assert_may_carry_credentials
 from shared.py.wide_events import log
 
 #: OAuth discovery/DCR failures that are the remote server's policy, not a GAIA
@@ -350,6 +351,8 @@ async def create_and_connect_custom_integration(
             "action": "create_and_connect_custom_integration",
         }
     )
+    if request.bearer_token or request.requires_auth:
+        await assert_may_carry_credentials(request.server_url)
     icon_url = await _fetch_icon_safely(request.server_url)
     integration = await create_custom_integration(user_id, request, icon_url)
     integration_id = integration.integration_id
@@ -461,6 +464,8 @@ async def _build_oauth_result(
             redirect_path="/integrations",
         )
         return CustomIntegrationConnectionResult(status="requires_oauth", oauth_url=auth_url)
+    except CredentialsNeedHttpsError as e:
+        return _connect_failed(integration_id, str(e), type(e).__name__)
     except _EXPECTED_OAUTH_DISCOVERY_ERRORS as e:
         # Remote-server policy (its redirect_uri allowlist, missing AS metadata,
         # DCR disabled), returned to the user; warn to keep it out of Sentry High.

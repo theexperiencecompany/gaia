@@ -87,7 +87,7 @@ from app.services.providers.provider_credentials_service import (
 )
 from app.utils.background_tasks import spawn_background_task
 from app.utils.mcp_utils import wrap_tools_with_null_filter
-from app.utils.url_safety import assert_endpoint_url_allowed
+from app.utils.url_safety import assert_endpoint_url_allowed, assert_may_carry_credentials
 from shared.py.wide_events import log, log_context, spawn_logged_task
 
 
@@ -537,6 +537,8 @@ class MCPClient:
         )
 
         config = await self._build_config(integration_id, mcp_config)
+        if config["mcpServers"][integration_id].get("auth") is not None:
+            await assert_may_carry_credentials(mcp_config.server_url)
 
         log.info(
             f"{LogTag.MCP} Starting connection to MCP server",

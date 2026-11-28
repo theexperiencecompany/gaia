@@ -54,6 +54,7 @@ from app.utils.mcp_oauth_utils import (
     validate_jwt_issuer,
     validate_pkce_support,
 )
+from app.utils.url_safety import assert_may_carry_credentials
 from mcp.client.auth.exceptions import OAuthRegistrationError
 from mcp.client.auth.oauth2 import PKCEParameters
 from mcp.client.auth.utils import (
@@ -204,6 +205,7 @@ async def build_oauth_auth_url(
         raise ValueError(f"Integration {integration_id} not found")
 
     mcp_config = resolved.mcp_config
+    await assert_may_carry_credentials(mcp_config.server_url)
     # Full MCP OAuth discovery - pass challenge_data to avoid re-probe
     oauth_config = await discover_oauth_config(
         token_store, integration_id, mcp_config, challenge_data=challenge_data

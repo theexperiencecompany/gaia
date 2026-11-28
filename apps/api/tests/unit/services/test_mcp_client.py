@@ -6563,7 +6563,7 @@ class TestDoConnectWiringExact:
     ) -> None:
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config()
-        build_config = AsyncMock(return_value={"mcpServers": {}})
+        build_config = AsyncMock(return_value={"mcpServers": {INTEGRATION_ID: {"url": SERVER_URL}}})
         monkeypatch.setattr(client, "_build_config", build_config)
 
         with (
