@@ -3,10 +3,10 @@
  * same seeded data and compare the content region pixel by pixel.
  *
  * Usage (from apps/web):
- *   WEB_PORT=3740 API_PORT=8740 node ../../scripts/effect-ui/visual-parity.mjs
+ *   WEB_PORT=3740 API_PORT=8740 node scripts/effect-ui/visual-parity.mjs
  *
  * The first run writes `.context/proofs/effect-ui-visual/<name>-{react,effect,diff}.png`.
- * Exit code 1 when the diff ratio exceeds MAX_DIFF_RATIO (default 0.01 = 1%).
+ * Exit code 1 when the diff ratio exceeds MAX_DIFF_RATIO (default 0.002 = 0.2%).
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -20,7 +20,7 @@ const API = `http://localhost:${API_PORT}/api/v1`;
 const OUT = path.resolve(
   process.env.PROOF_DIR ?? "../../.context/proofs/effect-ui-visual",
 );
-const MAX_DIFF_RATIO = Number(process.env.MAX_DIFF_RATIO ?? "0.01");
+const MAX_DIFF_RATIO = Number(process.env.MAX_DIFF_RATIO ?? "0.002");
 const DEV_USER = process.env.DEV_USER ?? "dev@gaia.local";
 
 const ROUTES = [
@@ -30,7 +30,28 @@ const ROUTES = [
     effect: "/todos?effect=1",
     selector:
       "div.w-full.flex-1.overflow-y-auto.px-4 > div.flex.w-full.justify-center",
-    waitFor: 'button[aria-label^="Open todo"]',
+    waitFor: "[data-index]",
+  },
+  {
+    name: "notifications",
+    react: "/notifications",
+    effect: "/notifications?effect=1",
+    selector: "div.flex.h-full.w-full.flex-col.overflow-hidden.bg-primary-bg",
+    waitFor: "text=No unread notifications",
+  },
+  {
+    name: "pins",
+    react: "/pins",
+    effect: "/pins?effect=1",
+    selector: "div.flex.h-full.flex-col.justify-between",
+    waitFor: "input[placeholder='Enter a message to filter pins']",
+  },
+  {
+    name: "settings-account",
+    react: "/settings/account",
+    effect: "/settings/account?effect=1",
+    selector: "div.flex-1.overflow-y-auto > div.flex.w-full.justify-center.p-6",
+    waitFor: 'section[aria-label="Profile"]',
   },
 ];
 

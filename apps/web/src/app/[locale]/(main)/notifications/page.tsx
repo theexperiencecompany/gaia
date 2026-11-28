@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
+import { EffectNotificationsPage } from "@/components/effect/pages/EffectNotificationsPage";
 import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
@@ -12,10 +13,26 @@ import {
   type ModalProps,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
+import { EFFECT_UI_ENABLED } from "@/config/effectUi";
 
 const INAPP_CHANNEL = "inapp";
 
-export default function NotificationsPage() {
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1/";
+
+interface NotificationsPageProps {
+  searchParams: Promise<{ effect?: string }>;
+}
+
+export default function NotificationsPage({
+  searchParams,
+}: NotificationsPageProps) {
+  const { effect } = use(searchParams);
+
+  return <NotificationsListPage effect={effect === "1" && EFFECT_UI_ENABLED} />;
+}
+
+function NotificationsListPage({ effect }: { effect: boolean }) {
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
   // `props` is untyped on the wire; the component name is what makes it an EmailPreview payload.
   const modalProps = modalConfig?.props as ModalProps | undefined;
@@ -98,7 +115,13 @@ export default function NotificationsPage() {
         <NotificationConnectBanner variant="full" />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-        {selectedTab === "unread" ? (
+        {effect ? (
+          <EffectNotificationsPage
+            apiBaseUrl={API_BASE_URL}
+            embedded
+            tab={selectedTab === "all" ? "all" : "unread"}
+          />
+        ) : selectedTab === "unread" ? (
           <NotificationsList
             notifications={unreadNotifications}
             loading={unreadLoading}

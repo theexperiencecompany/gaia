@@ -2,7 +2,7 @@
 
 import type { Component } from "@effect/ui";
 import { BrowserHost } from "@effect/ui/html";
-import { ApiLive } from "@heygaia/effect-ui";
+import { ApiLive } from "@heygaia/effect-ui/services/Api";
 import { Effect, Fiber, Layer } from "effect";
 import { useEffect, useRef } from "react";
 
@@ -25,7 +25,15 @@ export function EffectRoot<C extends Component.Any>({
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!host.current) return;
+    const outer = host.current;
+    if (!outer) return;
+
+    // React StrictMode runs setup -> cleanup -> setup. A fresh container per
+    // run plus a synchronous clear keeps the second root from appending beside
+    // the first while its interrupt settles.
+    const container = document.createElement("div");
+    container.className = "contents";
+    outer.replaceChildren(container);
 
     // BrowserHost.mount is generic over the component's Schema. The bridge
     // accepts the erased type because Next cannot carry that inference across
@@ -33,7 +41,8 @@ export function EffectRoot<C extends Component.Any>({
     const main = BrowserHost.mount(
       component as unknown as Parameters<typeof BrowserHost.mount>[0],
       props as never,
-      host.current,
+      container,
+      { head: false },
     ).pipe(Layer.provide(ApiLive(apiBaseUrl))) as Layer.Layer<
       never,
       never,
@@ -43,9 +52,10 @@ export function EffectRoot<C extends Component.Any>({
     const fiber = Effect.runFork(Layer.launch(main));
 
     return () => {
+      outer.replaceChildren();
       Effect.runFork(Fiber.interrupt(fiber));
     };
   }, [apiBaseUrl, component, props]);
 
-  return <div ref={host} data-effect-ui-root />;
+  return <div ref={host} className="contents" data-effect-ui-root />;
 }

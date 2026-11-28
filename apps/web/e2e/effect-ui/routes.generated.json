@@ -1,0 +1,611 @@
+[
+  {
+    "path": "/",
+    "file": "src/app/[locale]/(landing)/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/about",
+    "file": "src/app/[locale]/(landing)/about/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/ai-assistant-like-jarvis",
+    "file": "src/app/[locale]/(landing)/ai-assistant-like-jarvis/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/ai-assistant-that-can-see-your-screen",
+    "file": "src/app/[locale]/(landing)/ai-assistant-that-can-see-your-screen/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/ai-assistant-that-uses-your-computer",
+    "file": "src/app/[locale]/(landing)/ai-assistant-that-uses-your-computer/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/ai-assistant-whatsapp-telegram-imessage",
+    "file": "src/app/[locale]/(landing)/ai-assistant-whatsapp-telegram-imessage/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/ai-assistant-with-memory",
+    "file": "src/app/[locale]/(landing)/ai-assistant-with-memory/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/ai-chief-of-staff",
+    "file": "src/app/[locale]/(landing)/ai-chief-of-staff/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/alternative-to",
+    "file": "src/app/[locale]/(landing)/alternative-to/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/alternative-to/airtable",
+    "file": "src/app/[locale]/(landing)/alternative-to/[slug]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/auth/link-platform",
+    "file": "src/app/[locale]/(main)/auth/link-platform/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/automate",
+    "file": "src/app/[locale]/(landing)/automate/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/automate/gmail-slack",
+    "file": "src/app/[locale]/(landing)/automate/[combo]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/automate/page/2",
+    "file": "src/app/[locale]/(landing)/automate/page/[page]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/automate/with/gmail",
+    "file": "src/app/[locale]/(landing)/automate/with/[app]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/best-ai-assistant",
+    "file": "src/app/[locale]/(landing)/best-ai-assistant/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/best-ai-calendar-assistant",
+    "file": "src/app/[locale]/(landing)/best-ai-calendar-assistant/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/best-ai-email-assistant",
+    "file": "src/app/[locale]/(landing)/best-ai-email-assistant/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/best-ai-executive-assistant",
+    "file": "src/app/[locale]/(landing)/best-ai-executive-assistant/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/blog",
+    "file": "src/app/[locale]/(landing)/blog/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/blog/create",
+    "file": "src/app/[locale]/(landing)/blog/create/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/blog/desktop",
+    "file": "src/app/[locale]/(landing)/blog/[slug]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/bots",
+    "file": "src/app/[locale]/(landing)/bots/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/brand",
+    "file": "src/app/[locale]/(landing)/brand/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/c",
+    "file": "src/app/[locale]/(main)/c/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/c/[id]",
+    "file": "src/app/[locale]/(main)/c/[id]/page.tsx",
+    "ported": false,
+    "skip": true,
+    "reason": "Conversation ids belong to the seeded dev user; /c covers the chat shell."
+  },
+  {
+    "path": "/calendar",
+    "file": "src/app/[locale]/(main)/calendar/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/cli",
+    "file": "src/app/[locale]/(landing)/cli/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/compare",
+    "file": "src/app/[locale]/(landing)/compare/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/compare/activepieces",
+    "file": "src/app/[locale]/(landing)/compare/[slug]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/compare/category/ai-assistants",
+    "file": "src/app/[locale]/(landing)/compare/category/[category]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/compare/page/2",
+    "file": "src/app/[locale]/(landing)/compare/page/[page]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/connect",
+    "file": "src/app/connect/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/contact",
+    "file": "src/app/[locale]/(landing)/contact/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/dashboard",
+    "file": "src/app/[locale]/(main)/dashboard/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/desktop-login",
+    "file": "src/app/[locale]/(landing)/desktop-login/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/desktop-popup",
+    "file": "src/app/[locale]/(desktop)/desktop-popup/page.tsx",
+    "ported": false,
+    "skip": true,
+    "reason": "Desktop-only Electron window; it renders no page chrome."
+  },
+  {
+    "path": "/desktop-popup/feed",
+    "file": "src/app/[locale]/(desktop)/desktop-popup/feed/page.tsx",
+    "ported": false,
+    "skip": true,
+    "reason": "Desktop-only Electron window; it renders no page chrome."
+  },
+  {
+    "path": "/download",
+    "file": "src/app/[locale]/(landing)/download/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/faq",
+    "file": "src/app/[locale]/(landing)/faq/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/features",
+    "file": "src/app/[locale]/(landing)/features/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/features/smart-chat",
+    "file": "src/app/[locale]/(landing)/features/[slug]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/file-icons",
+    "file": "src/app/[locale]/file-icons/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/for",
+    "file": "src/app/[locale]/(landing)/for/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/for/consultants",
+    "file": "src/app/[locale]/(landing)/for/[persona]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/how-to-use-ai-as-a-personal-assistant",
+    "file": "src/app/[locale]/(landing)/how-to-use-ai-as-a-personal-assistant/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/inbox-zero-ai",
+    "file": "src/app/[locale]/(landing)/inbox-zero-ai/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/integrations",
+    "file": "src/app/[locale]/(main)/integrations/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/learn",
+    "file": "src/app/[locale]/(landing)/learn/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/learn/ai-agent",
+    "file": "src/app/[locale]/(landing)/learn/[term]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/learn/category/ai-concepts",
+    "file": "src/app/[locale]/(landing)/learn/category/[category]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/learn/page/2",
+    "file": "src/app/[locale]/(landing)/learn/page/[page]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/live/sample-code",
+    "file": "src/app/[locale]/(live)/live/[code]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/login",
+    "file": "src/app/[locale]/(landing)/login/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/mail",
+    "file": "src/app/[locale]/(main)/mail/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/manifesto",
+    "file": "src/app/[locale]/(landing)/manifesto/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/marketplace",
+    "file": "src/app/[locale]/(landing)/marketplace/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/marketplace/[slug]",
+    "file": "src/app/[locale]/(landing)/marketplace/[slug]/page.tsx",
+    "ported": false,
+    "skip": true,
+    "reason": "Slug list comes from the integrations API at request time."
+  },
+  {
+    "path": "/marketplace/page/2",
+    "file": "src/app/[locale]/(landing)/marketplace/page/[page]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/notifications",
+    "file": "src/app/[locale]/(main)/notifications/page.tsx",
+    "ported": true,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/onboarding",
+    "file": "src/app/[locale]/(main)/onboarding/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/open-source-ai-assistant",
+    "file": "src/app/[locale]/(landing)/open-source-ai-assistant/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/payment/success",
+    "file": "src/app/[locale]/(landing)/payment/success/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/pins",
+    "file": "src/app/[locale]/(main)/pins/page.tsx",
+    "ported": true,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/pricing",
+    "file": "src/app/[locale]/(landing)/pricing/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/privacy",
+    "file": "src/app/[locale]/(landing)/privacy/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/profile/sample-profile",
+    "file": "src/app/[locale]/(landing)/profile/[id]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/redirect",
+    "file": "src/app/[locale]/(main)/redirect/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/settings",
+    "file": "src/app/[locale]/(main)/settings/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/settings/account",
+    "file": "src/app/[locale]/(main)/settings/[section]/page.tsx",
+    "ported": true,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/settings/devices/approve",
+    "file": "src/app/[locale]/(main)/settings/devices/approve/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/setup",
+    "file": "src/app/[locale]/(main)/setup/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/signup",
+    "file": "src/app/[locale]/(landing)/signup/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/terms",
+    "file": "src/app/[locale]/(landing)/terms/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/thanks",
+    "file": "src/app/[locale]/(landing)/thanks/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/todos",
+    "file": "src/app/[locale]/(main)/todos/page.tsx",
+    "ported": true,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/todos/completed",
+    "file": "src/app/[locale]/(main)/todos/completed/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/todos/label/work",
+    "file": "src/app/[locale]/(main)/todos/label/[label]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/todos/priority/high",
+    "file": "src/app/[locale]/(main)/todos/priority/[priority]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/todos/project/sample-project",
+    "file": "src/app/[locale]/(main)/todos/project/[projectId]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/todos/today",
+    "file": "src/app/[locale]/(main)/todos/today/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/todos/upcoming",
+    "file": "src/app/[locale]/(main)/todos/upcoming/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/use-cases",
+    "file": "src/app/[locale]/(landing)/use-cases/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/use-cases/[slug]",
+    "file": "src/app/[locale]/(landing)/use-cases/[slug]/page.tsx",
+    "ported": false,
+    "skip": true,
+    "reason": "Slug list comes from the workflows API at request time."
+  },
+  {
+    "path": "/wake-listener",
+    "file": "src/app/[locale]/(desktop)/wake-listener/page.tsx",
+    "ported": false,
+    "skip": true,
+    "reason": "Desktop-only Electron window; it renders no page chrome."
+  },
+  {
+    "path": "/workflows",
+    "file": "src/app/[locale]/(main)/workflows/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  },
+  {
+    "path": "/workflows/sample-workflow",
+    "file": "src/app/[locale]/(main)/workflows/[id]/page.tsx",
+    "ported": false,
+    "skip": false,
+    "reason": null
+  }
+]

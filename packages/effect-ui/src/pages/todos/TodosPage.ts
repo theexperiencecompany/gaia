@@ -44,6 +44,13 @@ export class ToggleTodo extends Command.Service<ToggleTodo>()(
     args: { id: Schema.String, completed: Schema.Boolean },
     success: TodosMessage,
     invalidates: () => [ListTodos],
+    optimistic: ({ id, completed }) => [
+      ListTodos.patch({}, (todos) =>
+        todos.map((todo) =>
+          todo.id === id ? { ...todo, completed } : todo,
+        ),
+      ),
+    ],
   },
 ) {
   static readonly layer = this.toLayer(
@@ -123,10 +130,6 @@ const TodoRow = (h: TodosH, todo: Todo) => {
       }`,
     )
     .children(
-      h.button
-        .attr("type", "button")
-        .attr("aria-label", `Open todo ${todo.title}`)
-        .class("absolute inset-0 z-10 rounded-xl"),
       h.div
         .class(
           "pointer-events-none relative z-20 flex h-full items-start gap-2",
@@ -135,22 +138,21 @@ const TodoRow = (h: TodosH, todo: Todo) => {
           h.div.class("pointer-events-auto").children(
             h.label
               .class(
-                "group relative max-w-fit inline-flex items-center justify-start cursor-pointer tap-highlight-transparent p-2 -m-2 select-none",
+                "group relative max-w-fit inline-flex items-center justify-start cursor-pointer tap-highlight-transparent p-2 -m-2 select-none rounded-full has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-focus has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
               )
               .attr("data-selected", todo.completed ? "true" : "false")
               .children(
                 h.input
                   .attr("type", "checkbox")
                   .attr("aria-label", `Toggle ${todo.title}`)
-                  .attr("checked", todo.completed ? "" : undefined)
+                  .checked(todo.completed)
                   .class(
                     "font-inherit text-[100%] leading-[1.15] m-0 p-0 overflow-visible box-border absolute top-0 w-full h-full opacity-[0.0001] z-[1] cursor-pointer disabled:cursor-default",
                   )
-                  .on(
-                    "change",
+                  .on("change", ({ checked }) =>
                     TodosMessage.RequestedToggle({
                       id: todo.id,
-                      completed: !todo.completed,
+                      completed: checked,
                     }),
                   ),
                 h.span

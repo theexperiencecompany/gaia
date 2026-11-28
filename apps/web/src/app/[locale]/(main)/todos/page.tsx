@@ -1,6 +1,7 @@
 import { EffectTodosPage } from "@/components/effect/pages/EffectTodosPage";
 import TodoListPage from "@/features/todo/components/TodoListPage";
 import { Priority, type TodoFilters } from "@/types/features/todoTypes";
+import { EFFECT_UI_ENABLED } from "@/config/effectUi";
 
 interface TodosPageProps {
   searchParams: Promise<{
@@ -12,14 +13,14 @@ interface TodosPageProps {
 }
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1/";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1/";
 
 export default async function TodosPage({
   searchParams,
 }: Readonly<TodosPageProps>) {
   const { project, priority, completed, effect } = await searchParams;
 
-  if (effect === "1") {
+  if (effect === "1" && EFFECT_UI_ENABLED) {
     return <EffectTodosPage apiBaseUrl={API_BASE_URL} />;
   }
 

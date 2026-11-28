@@ -5,15 +5,17 @@ Status: in-progress
 Branch: feat/effect-ui-migration
 Worktree: /Users/aryan/Projects/worktrees.noindex/gaia/feat-effect-ui-migration
 Ports: web=3740 api=8740
+PR: https://github.com/theexperiencecompany/gaia/pull/2002
 
-Proof: .context/proofs/effect-ui-visual/todos-{react,effect,diff}.png (0.139%, row order only)
+Proof: .context/proofs/effect-ui-visual/todos-{react,effect,diff}.png (0.000%, 0/277,816 px)
 Proof: apps/web/e2e/effect-ui/todos.spec.ts passes against `/todos?effect=1`
 
 ## Done and proven
 - Effect UI package + Next bridge (`EffectRoot`) — typecheck + runtime verified in browser.
-- Todos list ported 1:1 (classes/DOM from TodoItem/TodoList) — 0.139% pixel diff.
+- Todos list ported 1:1 (classes/DOM from TodoItem/TodoList) — 0.000% pixel diff.
 - Todo toggle + persistence E2E + axe — passed.
 - Unit tests for query/toggle story + scene — passed.
+- Draft PR #2002 pushed.
 
 ## Doing
 - Parallel ports: pins, notifications, settings/account.
@@ -22,8 +24,8 @@ Proof: apps/web/e2e/effect-ui/todos.spec.ts passes against `/todos?effect=1`
 
 ## Next
 - Add visual-parity entries for each ported route.
-- Fix remaining row-order diff in the visual fixture (API order is nondeterministic).
-- Run the full route smoke suite and store proof.
+- Run the all-route smoke suite and store proof.
+- Cut over each route after its gates pass; delete the React branch.
 
 ## Blocked
 - Effect UI is public preview / not npm; snapshot pinned at 82a1750.
