@@ -31,7 +31,6 @@ from app.services.integrations.publish_service import (
     unpublish_custom_integration,
 )
 from app.services.mcp.mcp_client import get_mcp_client
-from app.utils.url_safety import CredentialsNeedHttpsError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnected,
@@ -140,7 +139,7 @@ async def update_custom_mcp_integration(
         )
     except HTTPException:
         raise
-    except CredentialsNeedHttpsError as e:
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         log.error(

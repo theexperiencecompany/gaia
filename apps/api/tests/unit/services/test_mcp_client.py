@@ -4489,7 +4489,6 @@ class TestMCPClientHandleOauthCallback:
                 new_callable=AsyncMock,
                 return_value=_make_oauth_discovery(),
             ),
-            patch("app.services.mcp.mcp_oauth.validate_https_url"),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             client.token_store.get_dcr_client = AsyncMock(return_value=None)
@@ -4532,7 +4531,6 @@ class TestMCPClientHandleOauthCallback:
                 new_callable=AsyncMock,
                 return_value=_make_oauth_discovery(),
             ),
-            patch("app.services.mcp.mcp_oauth.validate_https_url"),
             patch(
                 "app.services.mcp.mcp_oauth.parse_oauth_error_response",
                 return_value={
@@ -7075,7 +7073,6 @@ class TestHandleOauthCallbackNonceEnforcement:
                 new_callable=AsyncMock,
                 return_value=_make_oauth_discovery(),
             ),
-            patch("app.services.mcp.mcp_oauth.validate_https_url"),
             patch("app.services.mcp.mcp_oauth.validate_jwt_issuer", return_value=True),
             patch(
                 "app.services.mcp.mcp_oauth.mcp_http_client",

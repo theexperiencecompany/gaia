@@ -40,6 +40,7 @@ async def test_create_custom_integration_requires_auth(unauthenticated_client: A
     assert response.status_code == 401
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "auth",
     [{"requires_auth": True, "auth_type": "oauth"}, {"bearer_token": "user-api-key"}],
@@ -64,6 +65,7 @@ async def test_adding_a_signed_in_server_on_public_plain_http_is_refused_with_th
     )
 
 
+@pytest.mark.regression
 async def test_editing_a_signed_in_server_to_public_plain_http_is_refused_with_the_https_message(
     test_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

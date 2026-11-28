@@ -44,13 +44,11 @@ from app.services.mcp.oauth_client import resolve_oauth_client
 from app.services.mcp.oauth_discovery import discover_oauth_config
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
-    OAuthSecurityError,
     basic_auth_header,
     mcp_http_client,
     oauth_token_expiry,
     parse_oauth_error_response,
     parse_rejected_scopes,
-    validate_https_url,
     validate_jwt_issuer,
     validate_pkce_support,
 )
@@ -489,17 +487,8 @@ async def handle_oauth_callback(
     # Get OAuth config (should be cached from build_oauth_auth_url)
     oauth_config = await discover_oauth_config(token_store, integration_id, mcp_config)
     token_endpoint = str(oauth_config.as_metadata.token_endpoint)
-
-    # Validate token endpoint uses HTTPS
-    try:
-        validate_https_url(token_endpoint)
-    except OAuthSecurityError as e:
-        log.warning(
-            f"{LogTag.MCP} Token endpoint security warning",
-            error=str(e),
-            error_type=type(e).__name__,
-            integration_id=integration_id,
-        )
+    # The code, the PKCE verifier and any client secret go to it.
+    await assert_may_carry_credentials(token_endpoint)
 
     client = await resolve_oauth_client(token_store, integration_id, mcp_config, oauth_config)
     if client is None:

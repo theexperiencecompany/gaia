@@ -291,6 +291,18 @@ class TestUpdateCustomIntegration:
         assert resp.json()["message"] == str(CredentialsNeedHttpsError())
 
     @pytest.mark.asyncio
+    async def test_an_unresolvable_url_returns_400_not_500(self, client: AsyncClient) -> None:
+        with patch(
+            f"{_CUSTOM}.update_custom_integration",
+            new_callable=AsyncMock,
+            side_effect=ValueError("DNS resolution failed: no such host"),
+        ):
+            resp = await client.patch(f"{BASE}/i1", json={"server_url": "http://nowhere.example"})
+
+        assert resp.status_code == 400
+        assert resp.json()["message"] == "DNS resolution failed: no such host"
+
+    @pytest.mark.asyncio
     async def test_private_ip_server_url_returns_422_on_gaia_cloud(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:

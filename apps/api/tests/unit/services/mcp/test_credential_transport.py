@@ -6,6 +6,7 @@ config, the OAuth authorization URL, a reconnect and adding a custom server.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from mcp.shared.auth import OAuthMetadata
 import pytest
 
 from app.constants.log_tags import LogTag
@@ -14,7 +15,7 @@ from app.models.integration_models import (
     Integration,
     UpdateCustomIntegrationRequest,
 )
-from app.models.mcp_config import MCPConfig
+from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.integrations.custom_crud import (
     create_and_connect_custom_integration,
     update_custom_integration,
@@ -22,6 +23,7 @@ from app.services.integrations.custom_crud import (
 from app.services.integrations.integration_connection_service import connect_mcp_integration
 from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
+from app.services.mcp.token_management import revoke_tokens, try_refresh_token
 from app.utils.url_safety import CredentialsNeedHttpsError
 
 INTEGRATION_ID = "custom-mcp-1"
@@ -283,3 +285,72 @@ class TestEditCustomServer:
         saved = repository.update.await_args.args[1]
         assert saved.mcp_config is not None
         assert saved.mcp_config.server_url == edit.server_url
+
+
+def _discovery_with_endpoints(base: str) -> OAuthDiscovery:
+    return OAuthDiscovery(
+        as_metadata=OAuthMetadata.model_validate(
+            {
+                "issuer": base,
+                "authorization_endpoint": f"{base}/authorize",
+                "token_endpoint": f"{base}/token",
+                "revocation_endpoint": f"{base}/revoke",
+            }
+        ),
+        resource=PUBLIC_HTTP,
+        discovery_method="direct",
+    )
+
+
+@pytest.mark.unit
+class TestAuthorizationServerEndpoints:
+    """A refresh token or a token to revoke goes to the authorization server, under the same rule."""
+
+    async def test_a_refresh_never_posts_to_a_public_plain_http_token_endpoint(self) -> None:
+        store = AsyncMock()
+        store.get_refresh_token = AsyncMock(return_value="refresh-tok")
+        with patch("app.services.mcp.token_management.mcp_http_client") as http:
+            refreshed = await try_refresh_token(
+                store,
+                INTEGRATION_ID,
+                MCPConfig(server_url=PUBLIC_HTTP, client_id="cid"),
+                _discovery_with_endpoints("http://93.184.216.34"),
+            )
+
+        assert refreshed is False
+        http.assert_not_called()
+        store.store_oauth_tokens.assert_not_awaited()
+
+    async def test_a_revocation_never_posts_to_a_public_plain_http_endpoint(self) -> None:
+        store = AsyncMock()
+        store.get_refresh_token = AsyncMock(return_value="refresh-tok")
+        store.get_oauth_token = AsyncMock(return_value="access-tok")
+        with patch("app.services.mcp.token_management.mcp_http_client") as http:
+            await revoke_tokens(
+                store,
+                INTEGRATION_ID,
+                MCPConfig(server_url=PUBLIC_HTTP, client_id="cid"),
+                _discovery_with_endpoints("http://93.184.216.34"),
+            )
+
+        http.assert_not_called()
+
+    async def test_a_refresh_posts_to_a_lan_token_endpoint(self) -> None:
+        store = AsyncMock()
+        store.get_refresh_token = AsyncMock(return_value="refresh-tok")
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"access_token": "new", "token_type": "Bearer"}
+        with patch("app.services.mcp.token_management.mcp_http_client") as http:
+            client = AsyncMock()
+            client.post = AsyncMock(return_value=response)
+            http.return_value.__aenter__ = AsyncMock(return_value=client)
+            http.return_value.__aexit__ = AsyncMock(return_value=False)
+            refreshed = await try_refresh_token(
+                store,
+                INTEGRATION_ID,
+                MCPConfig(server_url=LAN_HTTP, client_id="cid"),
+                _discovery_with_endpoints("http://192.168.1.20"),
+            )
+
+        assert refreshed is True
+        assert client.post.await_args.args[0] == "http://192.168.1.20/token"
