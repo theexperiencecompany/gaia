@@ -22,6 +22,8 @@ export function useInlineIntegrationConnect(
   const [token, setToken] = useState("");
   const [toolsCount, setToolsCount] =
     useState<ConnectIntegrationOutcome["toolsCount"]>(null);
+  const [accountLabel, setAccountLabel] =
+    useState<ConnectIntegrationOutcome["accountLabel"]>(null);
   const [error, setError] = useState<string | undefined>();
 
   const connect = useCallback(
@@ -35,6 +37,7 @@ export function useInlineIntegrationConnect(
         });
         if (result.status === "connected") {
           setToolsCount(result.toolsCount);
+          setAccountLabel(result.accountLabel);
           setToken(""); // drop the secret the moment it's no longer needed
           setPhase("connected");
         } else if (result.status === "redirecting") {
@@ -51,5 +54,5 @@ export function useInlineIntegrationConnect(
     [connectIntegration, integrationId, accountId],
   );
 
-  return { phase, token, setToken, toolsCount, error, connect };
+  return { phase, token, setToken, toolsCount, accountLabel, error, connect };
 }

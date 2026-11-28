@@ -20,6 +20,7 @@ import type {
   IntegrationConnectOptions,
 } from "@/features/integrations/types";
 import { isSettingUpTools } from "@/features/integrations/utils/catalog";
+import { ConnectorDetails } from "./integration-sidebar/ConnectorDetails";
 import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
@@ -132,6 +133,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             onDelete={onDelete}
             onPublish={onPublish}
             onUnpublish={onUnpublish}
+          />
+        )}
+
+        {integration.connector && (
+          <ConnectorDetails
+            integrationId={integration.id}
+            connector={integration.connector}
+            isConnected={isConnected}
           />
         )}
 

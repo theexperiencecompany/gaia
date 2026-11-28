@@ -55,6 +55,7 @@ export const integrationsApi = {
         message: null,
         redirectUrl: null,
         toolsCount: null,
+        accountLabel: null,
         error: null,
       };
 

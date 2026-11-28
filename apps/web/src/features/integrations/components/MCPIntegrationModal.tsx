@@ -231,13 +231,19 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
                   </Description>
                 </TextField>
 
-                <p className="rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
-                  GAIA connects to MCP servers over HTTP (streamable HTTP or
-                  SSE). Servers started as a command (stdio) can&apos;t be added
-                  here: run one with its HTTP transport or behind an HTTP bridge
-                  such as supergateway, or connect it from your computer with
-                  the device bridge in Settings, Devices.
-                </p>
+                <div className="flex flex-col gap-2 rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
+                  <p>
+                    GAIA connects to MCP servers over HTTP (streamable HTTP or
+                    SSE). Servers started as a command (stdio) can&apos;t be
+                    added here: run one with its HTTP transport or behind an
+                    HTTP bridge such as supergateway, or connect it from your
+                    computer with the device bridge in Settings, Devices.
+                  </p>
+                  <p className="text-zinc-300">
+                    Want a service with a CLI, API or SDK instead? Ask GAIA in
+                    chat, like &ldquo;connect Fly.io&rdquo;.
+                  </p>
+                </div>
               </div>
             </Modal.Body>
 

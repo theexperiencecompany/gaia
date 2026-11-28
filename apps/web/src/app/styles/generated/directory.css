@@ -12,6 +12,7 @@
 @import "@heroui/styles/components/input-group.css" layer(components);
 @import "@heroui/styles/components/kbd.css" layer(components);
 @import "@heroui/styles/components/label.css" layer(components);
+@import "@heroui/styles/components/link.css" layer(components);
 @import "@heroui/styles/components/list-box.css" layer(components);
 @import "@heroui/styles/components/list-box-item.css" layer(components);
 @import "@heroui/styles/components/list-box-section.css" layer(components);
@@ -244,6 +245,7 @@
 @source "../../../features/integrations/api/queries.ts";
 @source "../../../features/integrations/api/queryKeys.ts";
 @source "../../../features/integrations/components/BearerTokenModal.tsx";
+@source "../../../features/integrations/components/ConnectorKeyInfo.tsx";
 @source "../../../features/integrations/components/IntegrationIcon.tsx";
 @source "../../../features/integrations/components/IntegrationRelatedIntegrations.tsx";
 @source "../../../features/integrations/components/IntegrationRelatedWorkflows.tsx";

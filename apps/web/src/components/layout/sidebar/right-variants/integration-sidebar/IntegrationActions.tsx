@@ -182,6 +182,8 @@ export function IntegrationActions({
 
   const showRetry = integration.status === "created";
   const isCustom = integration.source === "custom";
+  // Disconnecting a connector forgets the key only; the connector stays to reconnect.
+  const disconnectRemoves = isCustom && integration.managedBy !== "connector";
 
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -194,8 +196,12 @@ export function IntegrationActions({
   const bearer = useBearerTokenModal({
     connect: (id, token) =>
       integrationsApi.connectIntegration(id, { bearerToken: token }),
-    onConnected: () => {
-      toast.success(`Connected to ${integration.name}`);
+    onConnected: (_id, result) => {
+      toast.success(
+        "accountLabel" in result && result.accountLabel
+          ? `Connected as ${result.accountLabel}`
+          : `Connected to ${integration.name}`,
+      );
       invalidateIntegrationCaches(queryClient);
     },
   });
@@ -216,7 +222,7 @@ export function IntegrationActions({
   // A not-yet-connected (created) integration is "removed", not "disconnected".
   const disconnectCopy = getDisconnectDialogCopy(
     integration.name,
-    isCustom,
+    disconnectRemoves,
     isOwnIntegration,
     isConnected,
   );
@@ -226,7 +232,7 @@ export function IntegrationActions({
     integration.isPublic,
   );
 
-  const disconnectIcon = getDisconnectIcon(isCustom);
+  const disconnectIcon = getDisconnectIcon(disconnectRemoves);
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
@@ -392,6 +398,7 @@ export function IntegrationActions({
         onClose={bearer.close}
         integrationId={bearer.integrationId}
         integrationName={bearer.integrationName}
+        connector={integration.connector}
         onSubmit={bearer.submit}
       />
     </>
