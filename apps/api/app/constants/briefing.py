@@ -398,16 +398,25 @@ class BriefingRunOutcome(StrEnum):
 
     SENT = "sent"
     ALREADY_DELIVERED = "already_delivered"
+    #: Another run of the same brief is still writing it.
+    ALREADY_RUNNING = "already_running"
     DORMANT = "dormant"
     WINBACK_BACKOFF = "winback_backoff"
     #: Another quiet day after a quiet note: nothing is sent until something real happens.
     SILENT = "silent"
 
 
+# One run per (user, kind) at a time; the lease outlives a stalled renewal, the hold the brief job's own timeout.
+BRIEF_RUN_LOCK_PREFIX: Final[str] = "briefing:run:"
+BRIEF_RUN_LOCK_LEASE_SECONDS: Final[int] = 60
+BRIEF_RUN_LOCK_RENEW_SECONDS: Final[int] = 20
+BRIEF_RUN_LOCK_MAX_HOLD_SECONDS: Final[int] = 1800
+
 # The workflow execution's summary for each outcome, shown in the run history.
 BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
     BriefingRunOutcome.SENT: "Briefing delivered",
     BriefingRunOutcome.ALREADY_DELIVERED: "Skipped: this briefing was already delivered today",
+    BriefingRunOutcome.ALREADY_RUNNING: "Skipped: this briefing is already being written",
     BriefingRunOutcome.DORMANT: "Skipped: briefings are paused until the user is active again",
     BriefingRunOutcome.WINBACK_BACKOFF: "Skipped: backing off after an unanswered winback",
     BriefingRunOutcome.SILENT: "Skipped: still quiet since the last quiet note",

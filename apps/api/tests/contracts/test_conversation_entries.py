@@ -341,6 +341,33 @@ async def test_deleting_conversations_deletes_their_entries(
     assert await entries_collection.count_documents({}) == 0
 
 
+async def test_only_a_never_written_chat_is_deleted_as_never_written(
+    repo: ConversationRepository, held: HeldFlushes, entries_collection: Any
+) -> None:
+    async def created() -> str:
+        doc = ConversationDocument.model_validate(
+            {
+                "user_id": "u1",
+                "conversation_id": f"c-{uuid.uuid4().hex}",
+                "source": "web",
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+        await repo.create(doc)
+        return doc.conversation_id
+
+    untouched, outboxed = await created(), await created()
+    await _append(outboxed, "u1", [_flushed_at_once("m")])
+    assert await entries_collection.count_documents({}) == 0
+
+    assert await repo.delete_if_never_written(untouched, user_id="u1")
+    assert not await repo.delete_if_never_written(outboxed, user_id="u1")
+    assert await repo.get(untouched, user_id="u1") is None
+    assert await repo.get(outboxed, user_id="u1") is not None
+    await held.run_all()
+    assert await entries_collection.count_documents({"conversation_id": outboxed}) == 1
+
+
 async def test_a_chat_created_while_a_delete_runs_is_kept_with_its_entries(
     repo: ConversationRepository,
     held: HeldFlushes,

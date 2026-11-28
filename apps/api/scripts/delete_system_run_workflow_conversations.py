@@ -3,8 +3,9 @@
 
 Until the fire skipped it, every briefing fire opened a chat titled after its workflow
 ("Daily Briefing") that nothing was ever written to, beside the real Briefings chat.
-Only a chat with no log entries is deleted; one with entries is reported, never touched.
-Nothing ran in these chats, so there are no links, artifacts, files or checkpoints to clean.
+Only a chat nothing was ever committed to (log_head 0, outbox included) is deleted, and the
+delete re-checks that, so a message landing meanwhile keeps its chat. Nothing ran in these
+chats, so there are no links, artifacts, files or checkpoints to clean.
 
 Run from the api directory (or /app inside the container):
 
@@ -33,11 +34,11 @@ class BoundChat:
     conversation_id: str
     user_id: str
     title: str
-    entries: int
+    log_head: int
 
 
 async def bound_chats() -> list[BoundChat]:
-    """Every workflow-execution chat whose workflow runs its own pipeline, with its entry count."""
+    """Every workflow-execution chat whose workflow runs its own pipeline, with its log head."""
     workflow_ids = await get_async_collection("workflows").distinct(
         "_id", {"system_workflow_key": {"$in": sorted(SYSTEM_RUNS)}}
     )
@@ -46,15 +47,14 @@ async def bound_chats() -> list[BoundChat]:
             "system_purpose": SystemPurpose.WORKFLOW_EXECUTION.value,
             "metadata.workflow_id": {"$in": workflow_ids},
         },
-        {"_id": 0, "conversation_id": 1, "user_id": 1, "description": 1},
+        {"_id": 0, "conversation_id": 1, "user_id": 1, "description": 1, "log_head": 1},
     )
-    entries = get_async_collection("conversation_entries")
     return [
         BoundChat(
             conversation_id=row["conversation_id"],
             user_id=row["user_id"],
             title=row.get("description", ""),
-            entries=await entries.count_documents({"conversation_id": row["conversation_id"]}),
+            log_head=row.get("log_head") or 0,
         )
         async for row in cursor
     ]
@@ -63,21 +63,23 @@ async def bound_chats() -> list[BoundChat]:
 async def main() -> None:
     apply = apply_requested(__doc__)
     chats = await bound_chats()
-    empty = [chat for chat in chats if chat.entries == 0]
+    empty = [chat for chat in chats if chat.log_head == 0]
     print("APPLYING" if apply else "DRY RUN: nothing will be written")
     print(f"{len(chats)} bound chat(s), {len(empty)} empty")
     for chat in chats:
-        verdict = "delete" if chat.entries == 0 else f"keep ({chat.entries} entries)"
+        verdict = "delete" if chat.log_head == 0 else f"keep (log head {chat.log_head})"
         print(f"  {chat.conversation_id}  user={chat.user_id}  {chat.title!r}  {verdict}")
     if not apply:
         print("\nRe-run with --apply to delete the empty ones.")
         return
     deleted = 0
     for chat in empty:
-        deleted += await conversation_repository.delete(chat.conversation_id, user_id=chat.user_id)
+        deleted += await conversation_repository.delete_if_never_written(
+            chat.conversation_id, user_id=chat.user_id
+        )
     print(f"\ndeleted {deleted} of {len(empty)}")
     if deleted != len(empty):
-        raise RuntimeError(f"{len(empty) - deleted} empty chat(s) were not deleted")
+        print(f"{len(empty) - deleted} chat(s) were written to since the scan and were kept")
 
 
 if __name__ == "__main__":
