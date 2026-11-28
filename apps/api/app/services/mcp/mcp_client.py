@@ -276,6 +276,7 @@ class MCPClient:
             )
             raise MCPAuthorizationRequiredError(integration_id)
 
+        await assert_may_carry_credentials(mcp_config.server_url)
         log.set_ns(
             "mcp",
             operation="connect",
@@ -537,8 +538,6 @@ class MCPClient:
         )
 
         config = await self._build_config(integration_id, mcp_config)
-        if config["mcpServers"][integration_id].get("auth") is not None:
-            await assert_may_carry_credentials(mcp_config.server_url)
 
         log.info(
             f"{LogTag.MCP} Starting connection to MCP server",

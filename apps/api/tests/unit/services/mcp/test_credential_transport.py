@@ -4,11 +4,11 @@ Each test drives one place a token is attached or a sign-in is started: the sess
 config, the OAuth authorization URL, a reconnect and adding a custom server.
 """
 
-from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.integration_models import CreateCustomIntegrationRequest
 from app.models.mcp_config import MCPConfig
 from app.services.integrations.custom_crud import create_and_connect_custom_integration
@@ -33,46 +33,45 @@ def _session_config(url: str, auth: str | None) -> dict[str, object]:
 
 @pytest.mark.unit
 class TestSessionAttach:
-    @pytest.fixture(autouse=True)
-    def _dialable(self) -> Iterator[None]:
-        with patch(
-            "app.services.mcp.mcp_client.assert_endpoint_url_allowed", new_callable=AsyncMock
-        ):
-            yield
-
-    async def test_a_token_is_never_attached_for_public_plain_http(self) -> None:
-        client = MCPClient(user_id=USER_ID)
-        with (
-            patch.object(
-                client, "_build_config", AsyncMock(return_value=_session_config(PUBLIC_HTTP, "tok"))
-            ),
-            patch("app.services.mcp.mcp_client.BaseMCPClient") as base_client,
-            pytest.raises(CredentialsNeedHttpsError, match=REFUSAL),
-        ):
-            await client._open_session(INTEGRATION_ID, MCPConfig(server_url=PUBLIC_HTTP))
-
-        base_client.assert_not_called()
+    """_build_config is where a stored token joins the session config."""
 
     @pytest.mark.parametrize(
-        ("url", "auth"),
-        [(LAN_HTTP, "tok"), ("https://mcp.example.com/mcp", "tok"), (PUBLIC_HTTP, None)],
-        ids=["lan-http-with-token", "https-with-token", "public-http-without-token"],
+        ("bearer", "oauth"), [("user-api-key", None), (None, "oauth-tok")], ids=["bearer", "oauth"]
     )
-    async def test_the_session_opens_when_no_token_crosses_public_plain_http(
-        self, url: str, auth: str | None
+    async def test_a_token_is_never_attached_for_public_plain_http(
+        self, monkeypatch: pytest.MonkeyPatch, bearer: str | None, oauth: str | None
     ) -> None:
         client = MCPClient(user_id=USER_ID)
-        base = AsyncMock()
-        with (
-            patch.object(
-                client, "_build_config", AsyncMock(return_value=_session_config(url, auth))
-            ),
-            patch("app.services.mcp.mcp_client.BaseMCPClient", return_value=base),
-        ):
-            opened = await client._open_session(INTEGRATION_ID, MCPConfig(server_url=url))
+        monkeypatch.setattr(client.token_store, "get_bearer_token", AsyncMock(return_value=bearer))
+        monkeypatch.setattr(client.token_store, "get_oauth_token", AsyncMock(return_value=oauth))
 
-        assert opened is base
-        base.create_session.assert_awaited_once_with(INTEGRATION_ID)
+        with pytest.raises(CredentialsNeedHttpsError, match=REFUSAL):
+            await client._build_config(
+                INTEGRATION_ID, MCPConfig(server_url=PUBLIC_HTTP, requires_auth=True)
+            )
+
+    @pytest.mark.parametrize("url", [LAN_HTTP, "https://mcp.example.com/mcp"])
+    async def test_a_token_is_attached_over_https_or_the_lan(
+        self, monkeypatch: pytest.MonkeyPatch, url: str
+    ) -> None:
+        client = MCPClient(user_id=USER_ID)
+        monkeypatch.setattr(
+            client.token_store, "get_bearer_token", AsyncMock(return_value="user-api-key")
+        )
+
+        config = await client._build_config(INTEGRATION_ID, MCPConfig(server_url=url))
+
+        assert config["mcpServers"][INTEGRATION_ID]["auth"] == "user-api-key"
+
+    async def test_a_server_without_a_token_connects_over_public_plain_http(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = MCPClient(user_id=USER_ID)
+        monkeypatch.setattr(client.token_store, "get_bearer_token", AsyncMock(return_value=None))
+
+        config = await client._build_config(INTEGRATION_ID, MCPConfig(server_url=PUBLIC_HTTP))
+
+        assert config["mcpServers"][INTEGRATION_ID]["auth"] is None
 
 
 @pytest.mark.unit
@@ -119,7 +118,8 @@ class TestReconnect:
             )
 
         assert result.status == "error"
-        assert result.error is not None and REFUSAL in result.error
+        assert result.error == str(CredentialsNeedHttpsError())
+        assert result.message == "This server needs an https:// URL to sign in."
         token_store.assert_not_called()
         oauth_url.assert_not_awaited()
         mcp_client.connect.assert_not_awaited()
@@ -185,8 +185,15 @@ class TestAddCustomServer:
                 f"{_CRUD}.build_oauth_auth_url",
                 AsyncMock(side_effect=CredentialsNeedHttpsError()),
             ),
+            patch(f"{_CRUD}.log") as log,
         ):
             _, result = await create_and_connect_custom_integration(USER_ID, request, mcp_client)
 
         assert result.status == "failed"
         assert result.error == str(CredentialsNeedHttpsError())
+        log.warning.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Custom integration connect failed",
+            error=str(CredentialsNeedHttpsError()),
+            error_type="CredentialsNeedHttpsError",
+            integration_id=INTEGRATION_ID,
+        )

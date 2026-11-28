@@ -331,8 +331,28 @@ async def test_plain_http_to_the_local_network_may_carry_a_token(url: str) -> No
 
 @pytest.mark.parametrize("url", PUBLIC_HTTP_URLS)
 async def test_plain_http_to_a_public_host_may_not_carry_a_token(url: str) -> None:
-    with pytest.raises(CredentialsNeedHttpsError, match=r"has to start with https://"):
+    with pytest.raises(CredentialsNeedHttpsError) as raised:
         await assert_may_carry_credentials(url)
+    assert str(raised.value) == (
+        "This server needs a sign-in, so its URL has to start with https://. "
+        "Plain http works only for a server on this machine or your local network."
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:8080/mcp",
+        "http://LOCALHOST./mcp",
+        "http://printer.local./mcp",
+        "http://10.1.2.3/mcp",
+        "http://[::1]/mcp",
+    ],
+)
+async def test_local_names_and_literal_addresses_are_judged_without_a_lookup(url: str) -> None:
+    with patch("app.utils.url_safety._resolve", return_value=["93.184.216.34"]) as resolve:
+        await assert_may_carry_credentials(url)
+    resolve.assert_not_called()
 
 
 async def test_https_carries_a_token_without_a_lookup() -> None:
