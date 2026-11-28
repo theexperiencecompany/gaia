@@ -283,14 +283,17 @@ function classify(comp, dim, value, v3) {
 
 /* --------------------- joint color x variant combos --------------------- */
 
-/** Real table from the Button guide: the colour folds INTO the variant. */
+/** Real table from the Button guide: the colour folds INTO the variant.
+ *  GAIA's *-soft fills are the v2 flat look (tokens.css: the colour at 20%);
+ *  v3's tertiary is a neutral fill, so flat-with-colour must stay soft. */
 const BUTTON_PAIRS = {
   "default|solid": "primary", "primary|solid": "primary", "secondary|solid": "secondary",
   "success|solid": "primary", "warning|solid": "primary", "danger|solid": "danger",
-  "primary|bordered": "secondary", "primary|light": "tertiary", "primary|flat": "tertiary",
+  "primary|bordered": "secondary", "primary|light": "tertiary", "primary|flat": "accent-soft",
   "primary|faded": "secondary", "primary|ghost": "ghost", "danger|flat": "danger-soft",
-  "danger|bordered": "danger-soft", "default|bordered": "secondary", "default|flat": "tertiary",
+  "danger|bordered": "danger-soft", "default|bordered": "secondary", "default|flat": "default-soft",
   "default|light": "tertiary",
+  "warning|flat": "warning-soft", "success|flat": "success-soft",
 };
 const CHIP_PAIRS = { solid: "primary", bordered: "secondary", faded: "secondary", flat: "tertiary", light: "tertiary", shadow: "primary", dot: "primary" };
 const CHIP_COLORS = { primary: "accent", secondary: "accent" };

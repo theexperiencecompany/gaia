@@ -12,7 +12,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const HERE = __dirname;
-const LOG = path.join(process.cwd(), "tools/heroui-migration/manual-review.log");
+const LOG = path.join(HERE, "..", "manual-review.log");
 const log = (line) => fs.appendFileSync(LOG, line + "\n");
 
 let DECISIONS = { drop: {}, decisions: {} };
@@ -24,17 +24,23 @@ try {
 
 const { drop = {}, decisions = {} } = DECISIONS;
 
-/** Documented Button table: colour folds INTO variant, so map the pair. */
+/** Documented Button table: colour folds INTO variant, so map the pair.
+ *  GAIA's *-soft fills are the v2 `flat` look (tokens.css: the colour at 20%);
+ *  v3's `tertiary` is a neutral fill, so flat-with-colour must stay soft. */
 const BUTTON_PAIRS = {
   "default|solid": "primary", "primary|solid": "primary", "secondary|solid": "secondary",
   "success|solid": "primary", "warning|solid": "primary", "danger|solid": "danger",
-  "primary|bordered": "secondary", "primary|light": "tertiary", "primary|flat": "tertiary",
+  "primary|bordered": "secondary", "primary|light": "tertiary", "primary|flat": "accent-soft",
   "primary|faded": "secondary", "primary|ghost": "ghost", "danger|flat": "danger-soft",
-  "danger|bordered": "danger-soft", "default|bordered": "secondary", "default|flat": "tertiary",
-  "default|light": "tertiary", "default|ghost": "ghost", "secondary|flat": "tertiary",
+  "danger|bordered": "danger-soft", "default|bordered": "secondary", "default|flat": "default-soft",
+  "default|light": "tertiary", "default|ghost": "ghost", "secondary|flat": "default-soft",
   "secondary|light": "tertiary", "secondary|bordered": "secondary",
+  "warning|flat": "warning-soft", "success|flat": "success-soft",
 };
-const V3_BUTTON_VARIANTS = new Set(["primary", "secondary", "tertiary", "outline", "ghost", "danger", "danger-soft"]);
+const V3_BUTTON_VARIANTS = new Set([
+  "primary", "secondary", "tertiary", "outline", "ghost", "danger",
+  "danger-soft", "accent-soft", "default-soft", "success-soft", "warning-soft",
+]);
 
 const CHIP_VARIANT = { solid: "primary", bordered: "secondary", faded: "secondary", flat: "tertiary", light: "tertiary", shadow: "primary", dot: "primary" };
 const V3_CHIP_VARIANTS = new Set(["primary", "secondary", "tertiary", "soft"]);
@@ -82,6 +88,53 @@ module.exports = function transform(file, api) {
     "Card", "Switch", "Checkbox", "Avatar", "Popover", "Dropdown", "Slider", "Spinner",
     "Badge", "Link", "Kbd", "Skeleton", "Tooltip", "ScrollShadow", "Table", "Pagination",
   ]);
+
+  /** A Button inside a menu belongs to the menu, not to the group's action row. */
+  const MENU_WRAPPERS = new Set(["DropdownMenu", "DropdownItem", "Menu", "MenuItem"]);
+  const insideMenu = (start, groupNode) => {
+    for (let p = start.parent; p && p.node !== groupNode; p = p.parent) {
+      if (
+        p.node?.type === "JSXElement" &&
+        MENU_WRAPPERS.has(p.node.openingElement.name.name)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // v2's flat ButtonGroup tinted every child, but the per-element Button pass
+  // below only sees the button's own props. Resolve the group's fill onto its
+  // descendant buttons first, including Tooltip- and Dropdown.Trigger-wrapped
+  // actions, which is how the sidebar action groups are built.
+  root.findJSXElements("ButtonGroup").forEach((p) => {
+    const group = p.node.openingElement;
+    if (attrValue(getAttr(group, "variant")) !== "flat") return;
+    const groupColor = attrValue(getAttr(group, "color")) ?? "default";
+
+    j(p.node)
+      .findJSXElements("Button")
+      .forEach((child) => {
+        if (insideMenu(child, p.node)) return;
+        const button = child.node.openingElement;
+        // A child variant wins over the group in v2; leave it to the Button pass.
+        if (getAttr(button, "variant")) return;
+        const color = attrValue(getAttr(button, "color")) ?? groupColor;
+        const mapped = BUTTON_PAIRS[`${color}|flat`];
+        if (!mapped) {
+          log(`${rel}:${line(button)}  Button: UNMAPPED flat ButtonGroup color="${color}" — decide manually`);
+          return;
+        }
+        setAttr(j, button, "variant", mapped);
+        dropAttr(button, "color");
+        changed = true;
+      });
+
+    // v3's ButtonGroup has no flat variant or colour; the fill lives on the children.
+    dropAttr(group, "variant");
+    dropAttr(group, "color");
+    changed = true;
+  });
 
   for (const name of componentNames) {
     visit(name, (el) => {

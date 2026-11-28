@@ -48,7 +48,7 @@ So **96% of variant usage is mechanically determined**. The 17 that aren't:
 | ~12 | `Modal size="xl/3xl/4xl/5xl"` | as above | collapse |
 
 **Critical detail:** v3 folds `color` *into* `variant` for Button. Mapping the props
-independently is wrong — `color="primary" variant="flat"` → `variant="tertiary"`, but
+independently is wrong — `color="primary" variant="flat"` → `variant="accent-soft"`, and
 `color="danger" variant="flat"` → `variant="danger-soft"`. The report has a dedicated
 joint `color × variant` table built from your actual pairs:
 
@@ -59,6 +59,14 @@ joint `color × variant` table built from your actual pairs:
  35x  primary|flat          -> tertiary
   9x  danger|light          -> DECIDE
 ```
+
+That table is the 2026-11-01 snapshot. GAIA's `*-soft` fills landed after it
+(`df9adb857d`), so the codemod now maps `flat` with a colour to
+`accent-soft` / `default-soft` / `danger-soft` / `warning-soft` / `success-soft`.
+It also carries a flat `ButtonGroup`'s colour onto its descendant buttons,
+including Tooltip- and `Dropdown.Trigger`-wrapped actions, because the
+per-element scan cannot see group inheritance. Fixture:
+`__fixtures__/flat-button-group.tsx`, run with `pnpm test`.
 
 Open `tools/heroui-migration/variants-report.html`.
 
