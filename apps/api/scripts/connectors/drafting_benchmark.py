@@ -21,7 +21,6 @@ import httpx
 from app.constants.connectors import MANAGED_BY_CONNECTOR
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
-from app.db.repositories.users import user_repository
 from app.models.connector_models import ConnectorSpec
 from app.services.connectors.docker_runner import DockerConnectorRunner
 from app.services.connectors.e2b_runner import E2BConnectorRunner
@@ -186,18 +185,26 @@ def _print(scores: list[Score]) -> None:
                 print(f"  {score.tool.name} {column}: {result.detail}")
 
 
-async def _main(only: list[str], api: str, email: str) -> int:
-    user = await user_repository.get_by_email(email)
-    if user is None:
-        print(f"no user {email}: boot the stack with `mise infisical -- dev --agent` first")
-        return 1
+async def _fresh_pro_user(client: httpx.AsyncClient, api: str, tool: Tool) -> tuple[str, str]:
+    """Mint one Pro dev user per tool, so no draft is scored against another tool's connector."""
+    slug = "".join(ch for ch in tool.name.lower() if ch.isalnum())
+    email = f"delivered+bench-{slug}@resend.dev"
+    minted = await client.post(f"{api}/api/v1/dev/users", json={"email": email, "name": tool.name})
+    minted.raise_for_status()
+    seeded = await client.post(f"{api}/api/v1/dev/seed", json={"email": email, "pro": True})
+    seeded.raise_for_status()
+    return email, str(minted.json()["id"])
+
+
+async def _main(only: list[str], api: str) -> int:
     tools = [t for t in TOOLS if not only or t.name.lower() in {o.lower() for o in only}]
     gate = asyncio.Semaphore(_PARALLEL_TOOLS)
     async with httpx.AsyncClient(timeout=_EXECUTOR_TIMEOUT_SECONDS) as client:
 
         async def one(tool: Tool) -> Score:
             async with gate:
-                score = await score_tool(client, api, email, str(user.id), tool)
+                email, user_id = await _fresh_pro_user(client, api, tool)
+                score = await score_tool(client, api, email, user_id, tool)
                 print(f"scored {tool.name}", flush=True)
                 return score
 
@@ -210,6 +217,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tools", nargs="*", help="tool names to run (default: all thirty)")
     parser.add_argument("--api", default=f"http://localhost:{os.environ.get('API_PORT', '8000')}")
-    parser.add_argument("--email", default=os.environ.get("DEV_USER", "delivered+dev@resend.dev"))
     args = parser.parse_args()
-    raise SystemExit(asyncio.run(_main(args.tools, args.api, args.email)))
+    raise SystemExit(asyncio.run(_main(args.tools, args.api)))
