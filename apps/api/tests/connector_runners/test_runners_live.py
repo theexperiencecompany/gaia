@@ -272,15 +272,32 @@ async def test_the_rest_helper_refuses_a_host_escape_path(backend: _Backend, gh_
     assert result.stdout == ""
 
 
-async def test_e2b_denies_a_host_outside_the_call_hosts() -> None:
-    runner = E2BConnectorRunner()
-    probe = ("curl", "-sS", "-m", "10", "-o", "/dev/null", "-w", "%{http_code}")
+_PROBE = ("curl", "-sS", "-m", "10", "-o", "/dev/null", "-w", "%{http_code}")
 
-    allowed = await runner.run(_request((*probe, f"https://{_GITHUB_API}/zen")))
-    denied = await runner.run(_request((*probe, "https://example.com/")))
 
-    assert (allowed.outcome, allowed.stdout) == (RunOutcome.OK, "200")
+async def test_a_host_outside_the_call_hosts_is_denied(backend: _Backend) -> None:
+    allowed = await backend.runner.run(_request((*_PROBE, f"https://{_GITHUB_API}/zen")))
+    denied = await backend.runner.run(_request((*_PROBE, "https://example.com/")))
+
+    assert (allowed.outcome, allowed.stdout) == (RunOutcome.OK, "200"), allowed.stderr
     assert denied.outcome is RunOutcome.EXIT_NONZERO
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        (*_PROBE, "--noproxy", "*", f"https://{_GITHUB_API}/zen"),
+        ("python3", "-c", f"import socket; socket.create_connection(('{_GITHUB_API}', 443), 5)"),
+        ("getent", "hosts", "example.com"),
+    ],
+)
+async def test_docker_a_call_that_skips_the_egress_proxy_reaches_nothing(
+    argv: tuple[str, ...],
+) -> None:
+    result = await DockerConnectorRunner().run(_request(argv))
+
+    assert result.outcome is RunOutcome.EXIT_NONZERO, result.stdout
+    assert _connector_containers() == []
 
 
 async def test_docker_never_puts_the_secret_in_a_host_process_argv() -> None:
