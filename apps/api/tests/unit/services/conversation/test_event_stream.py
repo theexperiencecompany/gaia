@@ -53,10 +53,12 @@ from app.services.conversation.screen import TOOL_CALL_CARD
 from shared.py.conversation_wire import (
     BubbleTextDelta,
     ReplyDeltaFrame,
+    ReplyItem,
+    ReplyOutcome,
     ToolDataEntry,
 )
 from tests.helpers import captured_wide_event
-from tests.unit.services.conversation.log_helpers import asked, opened, settled, user
+from tests.unit.services.conversation.log_helpers import asked, at, opened, settled, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
 pytestmark = pytest.mark.unit
@@ -371,6 +373,40 @@ async def test_an_open_reads_the_log_only_from_what_its_client_may_lack(
     await _opening(runtime, after)
 
     assert reads == [read_after]
+
+
+async def test_a_resume_past_the_open_reply_still_follows_it_to_its_settled_text(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for a bot resumed past a reply still being written posting its first words only."""
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1")
+    await _logged(runtime, fake_redis, opened("o1").model_copy(update={"text": "Added"}))
+    await _said(runtime, fake_redis, "u2")
+    written = opened("o1").model_copy(update={"text": "Added fast-yes.", "revision": 1})
+
+    async def follow(
+        log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
+    ) -> AsyncGenerator[StreamedFrame | None]:
+        yield StreamedFrame(stream_id="1-0", frame=EntryUpdatedFrame(seq=2, entry=written))
+        settle = EntryFrame(seq=4, at=at(4), entry=settled("s1", ["u1"], 1))
+        yield StreamedFrame(stream_id="2-0", frame=settle)
+
+    monkeypatch.setattr(event_stream, "follow", follow)
+    frames = follow_screen(runtime.log, CONVERSATION, USER, 3)
+    opening, *patches = [await anext(frames) for _ in range(3)]
+    await frames.aclose()
+
+    assert isinstance(opening, ScreenFrame)
+    replies = [
+        patch.item
+        for patch in patches
+        if isinstance(patch, ScreenUpdateFrame) and isinstance(patch.item, ReplyItem)
+    ]
+    assert [(reply.bubbles, reply.outcome) for reply in replies] == [
+        (("Added fast-yes.",), None),
+        (("Added fast-yes.",), ReplyOutcome.ANSWERED),
+    ]
 
 
 async def test_a_reply_the_client_held_is_projected_with_its_conversation_s_links(

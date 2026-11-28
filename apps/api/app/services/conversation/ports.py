@@ -97,7 +97,7 @@ class ConversationLog(Protocol):
         """Return the entries after after (the newest limit when None) that a screen projects from.
 
         The run reaches back to the newest user message, to the opener of every span it holds and
-        of running work, and carries the entries its items read beside them.
+        of running work and the reply being written, and carries the entries its items read beside them.
         """
         ...
 

@@ -297,7 +297,7 @@ async def screen_window(
             start,
         )
     running = [work.task_id for work in state.work]
-    while missing := openers_outside(entries[start:], running):
+    while missing := openers_outside(entries[start:], running, state.open_reply):
         openers = [
             i
             for i, logged in enumerate(entries[:start])

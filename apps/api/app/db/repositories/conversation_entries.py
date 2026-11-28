@@ -166,10 +166,10 @@ def current_state(head: ConversationHead) -> ConversationState:
 
 
 def openers_outside(
-    page: Sequence[LoggedEntry], running: Iterable[str] = ()
+    page: Sequence[LoggedEntry], running: Iterable[str] = (), replying: str | None = None
 ) -> dict[str, list[str]]:
-    """Return, by the field that names them, the openers page's entries complete, or of running tasks, that page lacks."""
-    replies: set[str] = set()
+    """Return, by the field that names them, the openers page's entries complete, or of running tasks and the open reply, that page lacks."""
+    replies: set[str] = set() if replying is None else {replying}
     tasks: set[str] = set(running)
     approvals: set[str] = set()
     held_replies: set[str] = set()

@@ -747,11 +747,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def _with_openers(
-        self, head: Head, page: list[LoggedEntry], running: Sequence[str] = ()
+        self,
+        head: Head,
+        page: list[LoggedEntry],
+        running: Sequence[str] = (),
+        replying: str | None = None,
     ) -> list[LoggedEntry]:
-        """Extend page back until it holds the opener of everything it completes, and of running, that the log has."""
+        """Extend page back until it holds the opener of everything it completes, of running and of replying, that the log has."""
         while page:
-            missing = openers_outside(page, running)
+            missing = openers_outside(page, running, replying)
             if not missing:
                 return page
             # Both only narrow the read: an opener is the earliest entry naming it, before the page.

@@ -71,8 +71,10 @@ class LogReadRepository(ConversationRepository):
         )
         run = await self._read(head, tail)
         run = await self._from_newest_message(head, run, limit)
-        running = [work.task_id for work in current_state(head.document).work]
-        run = await self._with_openers(head, run, running)
+        # Running work and the reply being written change on screen until they end.
+        state = current_state(head.document)
+        running = [work.task_id for work in state.work]
+        run = await self._with_openers(head, run, running, state.open_reply)
 
         # A reply the run holds settles in the run, so only the entries it names are ever missing.
         async def lookup(ids: Sequence[str], _replies: Sequence[str]) -> list[StoredRow]:

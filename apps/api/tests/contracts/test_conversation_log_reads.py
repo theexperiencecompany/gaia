@@ -198,3 +198,11 @@ async def test_a_screen_window_after_the_head_holds_only_the_newest_entry_and_it
     assert _window(await read(after=9, limit=1)) == (["n1"], 2)
     # Within the newest limit seqs, the log's first entry is reached for.
     assert _window(await read(after=9, limit=2)) == (["u1", "n1"], 1)
+
+
+async def test_a_screen_window_reaches_back_to_the_reply_still_being_written(
+    log: MongoConversationLog, conversation: str
+) -> None:
+    await _append_all(log, conversation, [user("u1"), opened("o1"), user("u2"), notice("n1")])
+    window = await LogReadRepository().read_screen(conversation, user_id=UID, after=3, limit=1)
+    assert _window(window) == (["o1", "u2", "n1"], 2)

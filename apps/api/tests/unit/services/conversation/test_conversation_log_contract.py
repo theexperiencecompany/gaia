@@ -232,6 +232,13 @@ class ConversationLogContract:
         assert await self._window(subject, after=11, limit=1) == ([10, 11], 10)
         assert await self._window(subject, after=99, limit=1) == ([10, 11], 10)
 
+    async def test_a_screen_window_holds_the_reply_still_being_written(
+        self, subject: LogUnderTest
+    ) -> None:
+        for entry in (user("u1"), opened("o1"), user("u2"), notice("n1")):
+            await subject.log.append(CID, UID, entry)
+        assert await self._window(subject, after=3, limit=1) == ([2, 3, 4], 2)
+
     async def test_an_empty_log_s_screen_window_is_empty(self, subject: LogUnderTest) -> None:
         assert await self._window(subject, after=None, limit=600) == ([], 1)
 
