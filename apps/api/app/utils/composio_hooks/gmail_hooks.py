@@ -25,7 +25,6 @@ from app.constants.email import (
 from app.constants.log_tags import LogTag
 from app.models.agent_models import current_stream_writer
 from app.models.composio_schemas.google_people import (
-    ContactCard,
     ContactSummary,
     GoogleContactsResponseData,
     GooglePeopleSearchResponseData,
@@ -52,11 +51,19 @@ from app.models.integrations.gmail import (
     GmailSentDraftMessage,
     GmailThreadView,
 )
+from app.models.mail_card_models import (
+    AttachmentDisplay,
+    ContactCard,
+    EmailComposeCard,
+    EmailSentDraftCard,
+    EmailThreadCard,
+    EmailThreadItem,
+)
+from app.models.tool_card_registry import tool_card
 from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
 from .file_upload_hooks import (
-    AttachmentDisplay,
     resolve_tool_attachments,
     swapped_upload_param,
 )
@@ -86,40 +93,6 @@ _PAGE_SIZE_PARAM = "page_size"
 _DEFAULT_CONTACTS_PAGE_SIZE = 50
 
 
-@dataclass(slots=True)
-class ComposeCard:
-    """The compose/sent card for one Gmail compose call, as the chat UI renders it.
-
-    draft_id is set only on a draft card that must be sent as the stored
-    draft (see gmail_create_draft_after_hook); the payload omits it otherwise.
-    """
-
-    to: list[str]
-    subject: str | None
-    body: str | None
-    thread_id: str | None
-    bcc: list[str] | str | None
-    cc: list[str] | str | None
-    is_html: bool | None
-    attachments: list[AttachmentDisplay]
-    draft_id: str | None = None
-
-    def payload(self) -> dict[str, object]:
-        card: dict[str, object] = {
-            "to": self.to,
-            "subject": self.subject,
-            "body": self.body,
-            "thread_id": self.thread_id,
-            "bcc": self.bcc,
-            "cc": self.cc,
-            "is_html": self.is_html,
-            "attachments": self.attachments,
-        }
-        if self.draft_id is not None:
-            card["draft_id"] = self.draft_id
-        return card
-
-
 class SentDraftSummary(TypedDict):
     id: str | None
     successful: bool
@@ -140,7 +113,7 @@ class PeopleSearchSummary(TypedDict):
 # The draft compose card, built before the tool runs but streamed after it, once
 # Gmail has returned the draft id the card's Send button needs. Set and read
 # within one tool execution, so a ContextVar is the whole lifetime.
-_pending_draft_card: ContextVar[ComposeCard | None] = ContextVar(
+_pending_draft_card: ContextVar[EmailComposeCard | None] = ContextVar(
     "gmail_pending_draft_card", default=None
 )
 
@@ -195,12 +168,9 @@ class _Contact:
         )
 
     def card(self) -> ContactCard:
-        return {
-            "name": self.name,
-            "email": self.email,
-            "phone": self.phone,
-            "resource_name": self.resource_name,
-        }
+        return ContactCard(
+            name=self.name, email=self.email, phone=self.phone, resource_name=self.resource_name
+        )
 
     def summary(self) -> ContactSummary:
         """Trim the contact for the LLM: name always, email/phone only when known."""
@@ -344,17 +314,24 @@ def _compose_recipients(tool: str, compose: GmailComposeArguments) -> list[str]:
     return [compose.recipient_email, *extra_recipients]
 
 
+def _address_list(value: list[str] | str | None) -> list[str]:
+    """Return a recipient field as a list: the model may send one address as a bare string."""
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else value
+
+
 def _compose_card(
     tool: str, compose: GmailComposeArguments, attachment_display: list[AttachmentDisplay]
-) -> ComposeCard:
+) -> EmailComposeCard:
     """Build the compose/sent card for one Gmail compose call."""
-    return ComposeCard(
+    return EmailComposeCard(
         to=_compose_recipients(tool, compose),
         subject=compose.subject,
         body=compose.body,
         thread_id=compose.thread_id,
-        bcc=compose.bcc,
-        cc=compose.cc,
+        bcc=_address_list(compose.bcc),
+        cc=_address_list(compose.cc),
         is_html=compose.is_html,
         attachments=attachment_display,
     )
@@ -371,7 +348,7 @@ def _stream_compose_preview(
     if tool == "GMAIL_CREATE_EMAIL_DRAFT":
         _pending_draft_card.set(card)
         return
-    current_stream_writer()({"email_sent_data": [card.payload()]})
+    current_stream_writer()(tool_card("email_sent_data", [card]))
 
 
 @register_before_hook(
@@ -455,8 +432,7 @@ def gmail_create_draft_after_hook(
         # what makes Send send this draft, and it is why the card renders
         # read-only (the draft's files cannot be re-attached to an edited copy).
         card.draft_id = draft_id
-    writer = current_stream_writer()
-    writer({"email_compose_data": [card.payload()]})
+    current_stream_writer()(tool_card("email_compose_data", [card]))
     return data
 
 
@@ -467,8 +443,6 @@ def gmail_thread_after_hook(
     """Process thread response and send data to frontend."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = current_stream_writer()
-
         if not isinstance(raw, dict) or "error" in raw:
             return raw
 
@@ -476,29 +450,27 @@ def gmail_thread_after_hook(
         thread = GmailThreadView.model_validate(processed_response)
 
         if thread.messages:
-            # Transform to EmailThreadData format for frontend
-            thread_messages = [
-                {
-                    "id": msg.id,
-                    "from": msg.sender,
-                    "subject": msg.subject,
-                    "time": msg.time,
-                    "snippet": msg.snippet,
-                    "body": msg.body,
-                    "content": msg.content if msg.content is not None else "",
-                }
-                for msg in thread.messages
-            ]
-
-            # Send thread data to frontend
-            payload = {
-                "email_thread_data": {
-                    "thread_id": thread.id,
-                    "messages": thread_messages,
-                    "messages_count": thread.message_count,
-                }
-            }
-            writer(payload)
+            current_stream_writer()(
+                tool_card(
+                    "email_thread_data",
+                    EmailThreadCard(
+                        thread_id=thread.id,
+                        messages=[
+                            EmailThreadItem(
+                                id=msg.id,
+                                sender=msg.sender,
+                                subject=msg.subject,
+                                time=msg.time,
+                                snippet=msg.snippet,
+                                body=msg.body,
+                                content=msg.content if msg.content is not None else "",
+                            )
+                            for msg in thread.messages
+                        ],
+                        messages_count=thread.message_count,
+                    ),
+                )
+            )
 
         # Return processed response for LLM
         return processed_response
@@ -772,8 +744,6 @@ def gmail_send_draft_after_hook(
     """Process draft sending response."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = current_stream_writer()
-
         sent = GmailSentDraftData.model_validate(raw)
         # ``successful`` reads with two defaults: the card streams unless the key
         # says otherwise, the LLM summary only when the key is present and true.
@@ -783,18 +753,20 @@ def gmail_send_draft_after_hook(
             # Send email sent data to frontend
             message_data = sent.message or GmailSentDraftMessage()
 
-            payload = {
-                "email_sent_data": [
-                    {
-                        "message_id": sent.id,
-                        "message": "Draft sent successfully!",
-                        "timestamp": sent.timestamp,
-                        "recipients": message_data.to,
-                        "subject": message_data.subject,
-                    }
-                ]
-            }
-            writer(payload)
+            current_stream_writer()(
+                tool_card(
+                    "email_sent_data",
+                    [
+                        EmailSentDraftCard(
+                            message_id=sent.id,
+                            message="Draft sent successfully!",
+                            timestamp=sent.timestamp,
+                            recipients=_address_list(message_data.to),
+                            subject=message_data.subject,
+                        )
+                    ],
+                )
+            )
 
         # Keep the response minimal for LLM
         if successful_present and sent.successful:
@@ -822,8 +794,6 @@ def gmail_get_contacts_after_hook(
     """Process contacts list response to minimize raw data."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = current_stream_writer()
-
         if not isinstance(raw, dict) or "error" in raw:
             return raw
 
@@ -837,12 +807,7 @@ def gmail_get_contacts_after_hook(
 
         # Send to frontend
         if contact_list:
-            payload = {
-                "contacts_data": contact_list,
-                "total_count": total_count,
-                "next_page_token": data.next_page_token,
-            }
-            writer(payload)
+            current_stream_writer()(tool_card("contacts_data", contact_list))
 
         # Return minimal data for LLM
         summary: ContactsSummary = {
@@ -868,8 +833,6 @@ def gmail_search_people_after_hook(
     """Process people search response to minimize raw data."""
     raw = ComposioToolResponse.model_validate(response).data
     try:
-        writer = current_stream_writer()
-
         if not isinstance(raw, dict) or "error" in raw:
             return raw
 
@@ -882,11 +845,7 @@ def gmail_search_people_after_hook(
 
         # Send to frontend
         if people_list:
-            payload = {
-                "people_search_data": people_list,
-                "result_count": len(people_list),
-            }
-            writer(payload)
+            current_stream_writer()(tool_card("people_search_data", people_list))
 
         # Return minimal data for LLM
         summary: PeopleSearchSummary = {

@@ -1,9 +1,9 @@
 import { PuzzleIcon } from "@icons";
+import type { ConnectOptionsData } from "@shared/api/generated";
 import { useRouter } from "next/navigation";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
-import type { ConnectOptionsData } from "@/features/integrations/types";
 
 interface ConnectOptionsProps {
   connect_options: ConnectOptionsData;

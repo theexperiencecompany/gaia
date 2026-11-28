@@ -20,8 +20,8 @@ function MessagesRegionImpl({ state }: MessagesRegionProps) {
   // Narrowed to exactly the fields the transcript derives from so the memo
   // skips recompute on unrelated updates (e.g. typing a draft).
   const { responses, questionIndex, selectedNeeds, otherNeed } = state;
-  const { name, email } = useCurrentUser();
-  const firstName = firstNameOf(name, email);
+  const user = useCurrentUser();
+  const firstName = firstNameOf(user);
   const messages = useMemo(
     () =>
       getMessages({

@@ -1,5 +1,6 @@
 import type { EventProperties } from "@gaia/shared/analytics/events";
 import { ApiError } from "@shared/api";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -10,13 +11,13 @@ import { integrationsApi } from "../api/integrationsApi";
 import { integrationQueries } from "../api/queries";
 import { integrationKeys, invalidateIntegrationCaches } from "../api/queryKeys";
 import type {
+  ConnectIntegrationOutcome,
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
-  Integration,
   IntegrationConnectOptions,
   IntegrationStatus,
 } from "../types";
-import { byConnectionStateThenName, toIntegration } from "../utils/catalog";
+import { byConnectionStateThenName } from "../utils/catalog";
 
 /** The failure's status and machine code for integration:error; never its message, which can echo user input. */
 function integrationFailure(
@@ -39,7 +40,7 @@ function connectFailureMessage(
 
 export interface UseIntegrationsReturn {
   // Data
-  integrations: Integration[];
+  integrations: MyIntegrationItem[];
   isLoading: boolean;
   /** No catalogue yet (first paint, or the fetch has not started): show placeholders. */
   isPending: boolean;
@@ -54,7 +55,7 @@ export interface UseIntegrationsReturn {
   connectIntegration: (
     integrationId: string,
     options?: IntegrationConnectOptions,
-  ) => Promise<{ status: string; toolsCount?: number }>;
+  ) => Promise<ConnectIntegrationOutcome>;
   disconnectIntegration: (integrationId: string) => Promise<void>;
   createCustomIntegration: (
     request: CreateCustomIntegrationRequest,
@@ -87,10 +88,10 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
   // Sorted by state (expired → created → connected → not_connected) then name.
   const integrations = useMemo(
-    (): Integration[] =>
-      (myIntegrationsData?.integrations ?? [])
-        .map(toIntegration)
-        .toSorted(byConnectionStateThenName),
+    (): MyIntegrationItem[] =>
+      (myIntegrationsData?.integrations ?? []).toSorted(
+        byConnectionStateThenName,
+      ),
     [myIntegrationsData],
   );
 
@@ -123,7 +124,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     async (
       integrationId: string,
       options?: IntegrationConnectOptions,
-    ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
+    ): Promise<ConnectIntegrationOutcome> => {
       const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );

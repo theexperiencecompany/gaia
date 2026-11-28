@@ -1,4 +1,4 @@
-import type { ToolCallEntry } from "@/config/registries/toolRegistry";
+import type { ToolCallsDataEntryData } from "@shared/api/generated";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 
 // Matches LoadingIndicator's expand animation.
@@ -7,7 +7,7 @@ export const expandTransition = {
   ease: [0.32, 0.72, 0, 1] as const,
 };
 
-function inputPath(call: ToolCallEntry): unknown {
+function inputPath(call: ToolCallsDataEntryData): unknown {
   const { inputs } = call;
   return inputs && typeof inputs === "object"
     ? (inputs as { path?: unknown }).path
@@ -18,7 +18,7 @@ function inputPath(call: ToolCallEntry): unknown {
 // prefix stops it parsing as markdown — stripped here for display so
 // SKILL.md etc. render properly; the agent still gets the numbered version.
 const MARKDOWN_READ_PATH = /\.(md|markdown|mdx)$/i;
-export function displayToolOutput(call: ToolCallEntry): unknown {
+export function displayToolOutput(call: ToolCallsDataEntryData): unknown {
   const { output } = call;
   if (call.tool_name === "read" && typeof output === "string") {
     const rawPath = inputPath(call);
@@ -38,7 +38,7 @@ const SKILL_TOOL_LABELS: Record<string, string> = {
   write: "Writing a Skill",
   edit: "Editing a Skill",
 };
-function skillToolLabel(call: ToolCallEntry): string | null {
+function skillToolLabel(call: ToolCallsDataEntryData): string | null {
   const label = SKILL_TOOL_LABELS[call.tool_name];
   if (!label) return null;
   const rawPath = inputPath(call);
@@ -71,7 +71,9 @@ export interface ToolCallDisplay {
   hasDetails: boolean;
 }
 
-export function deriveToolCallDisplay(call: ToolCallEntry): ToolCallDisplay {
+export function deriveToolCallDisplay(
+  call: ToolCallsDataEntryData,
+): ToolCallDisplay {
   // The skill label wins over any backend-provided custom message.
   const skillLabel = skillToolLabel(call);
   const primaryLabel =

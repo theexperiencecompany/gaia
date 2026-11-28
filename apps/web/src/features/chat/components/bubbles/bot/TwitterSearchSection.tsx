@@ -10,7 +10,10 @@ import {
 } from "@icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { format, parseISO } from "date-fns";
-import type { TwitterTweetData } from "@/types/features/twitterTypes";
+import type {
+  TwitterSearchData,
+  TwitterTweetData,
+} from "@/types/features/twitterTypes";
 
 const formatNumber = (num: number | undefined) => {
   if (!num) return "0";
@@ -34,6 +37,8 @@ const formatDate = (dateStr?: string) => {
  */
 function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
   const author = tweet.author || { username: "unknown", name: "Unknown" };
+  // A tweet whose author the API could not resolve carries only a name and handle.
+  const profile = "verified" in author ? author : undefined;
   const metrics = tweet.public_metrics || {};
 
   const handleOpenTweet = () => {
@@ -53,7 +58,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
       <div className="flex items-start gap-3">
         <Avatar className="h-10 w-10 shrink-0 rounded-full overflow-hidden">
           <AvatarImage
-            src={author.profile_image_url}
+            src={profile?.profile_image_url ?? undefined}
             alt={author.name}
             className="h-full w-full object-cover"
           />
@@ -67,7 +72,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
             <span className="font-semibold text-foreground text-sm truncate">
               {author.name}
             </span>
-            {author.verified && (
+            {profile?.verified && (
               <CheckmarkBadge02Icon className="h-4 w-4 text-[#1d9bf0] shrink-0" />
             )}
           </div>
@@ -117,11 +122,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
 export default function TwitterSearchSection({
   twitter_search_data,
 }: {
-  twitter_search_data: {
-    tweets: TwitterTweetData[];
-    result_count?: number;
-    next_token?: string;
-  };
+  twitter_search_data: TwitterSearchData;
 }) {
   const { tweets, result_count } = twitter_search_data;
 

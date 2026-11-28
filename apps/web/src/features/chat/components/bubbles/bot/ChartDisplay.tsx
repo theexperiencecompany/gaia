@@ -6,6 +6,7 @@ import {
   Image02Icon,
   MaximizeScreenIcon,
 } from "@icons";
+import type { CodeChartData } from "@shared/chat";
 import Image from "next/image";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -24,30 +25,8 @@ import {
 
 const tabsStyles = tabsVariants({ variant: "light" });
 
-interface ChartData {
-  id: string;
-  url: string;
-  text: string;
-  type?: string;
-  title?: string;
-  description?: string;
-  chart_data?: {
-    type: string;
-    title: string;
-    x_label: string;
-    y_label: string;
-    x_unit?: string | null;
-    y_unit?: string | null;
-    elements: Array<{
-      label: string;
-      value: number;
-      group: string;
-    }>;
-  };
-}
-
 interface ChartDisplayProps {
-  charts: ChartData[];
+  charts: CodeChartData[];
 }
 
 // Chart configuration
@@ -71,7 +50,7 @@ const transformChartData = (
 // recharts is heavy and only needed when a chart carries interactive data, so
 // it is loaded on demand instead of shipping in the initial bundle.
 // Interactive chart renderer
-const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
+const InteractiveChart: React.FC<{ chart: CodeChartData }> = ({ chart }) => {
   const [Recharts, setRecharts] = useState<RechartsModule | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -196,7 +175,7 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
 
 // Static chart component
 const StaticChartItem: React.FC<{
-  chart: ChartData;
+  chart: CodeChartData;
   onFullscreen: () => void;
   onDownload: () => void;
 }> = ({ chart, onFullscreen, onDownload }) => (
@@ -240,7 +219,7 @@ const StaticChartItem: React.FC<{
 
 // Dynamic chart component
 const DynamicChartItem: React.FC<{
-  chart: ChartData;
+  chart: CodeChartData;
   onFullscreen: () => void;
 }> = ({ chart, onFullscreen }) => (
   <div className="group relative m-1 mb-5 space-y-2 rounded-lg p-3 outline-1 outline-zinc-600 backdrop-blur-sm transition-colors">
@@ -272,7 +251,7 @@ const DynamicChartItem: React.FC<{
 
 // Downloads a chart image as a file. Module scope so its identity is stable
 // across renders of ChartDisplay.
-const handleDownload = async (chart: ChartData) => {
+const handleDownload = async (chart: CodeChartData) => {
   try {
     const response = await fetch(chart.url);
     if (!response.ok) {
@@ -294,9 +273,9 @@ const handleDownload = async (chart: ChartData) => {
 
 // Modal component
 const ChartModal: React.FC<{
-  chart: ChartData;
+  chart: CodeChartData;
   onClose: () => void;
-  onDownload: (chart: ChartData) => void;
+  onDownload: (chart: CodeChartData) => void;
 }> = ({ chart, onClose, onDownload }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
     <div className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl">
@@ -345,7 +324,9 @@ const ChartModal: React.FC<{
 
 // Main component
 const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
-  const [selectedChart, setSelectedChart] = useState<ChartData | null>(null);
+  const [selectedChart, setSelectedChart] = useState<CodeChartData | null>(
+    null,
+  );
   const [viewMode, setViewMode] = useState<"static" | "dynamic">("static");
 
   if (!charts || charts.length === 0) {

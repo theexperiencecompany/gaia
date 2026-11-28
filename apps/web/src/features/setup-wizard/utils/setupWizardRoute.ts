@@ -1,4 +1,4 @@
-import type { CurrentUser } from "@/features/auth/utils/toCurrentUser";
+import type { UserInfo } from "@/features/auth/api/authApi";
 import type { SetupStatus } from "@/features/settings/api/providersApi";
 
 /**
@@ -18,7 +18,7 @@ export function setupWizardOwed(status: SetupStatus): boolean {
  */
 export function opensSetupWizard(
   status: SetupStatus,
-  role: CurrentUser["role"],
+  role: UserInfo["role"],
 ): boolean {
   if (!setupWizardOwed(status)) return false;
   return !status.has_admin_account || role === "admin";

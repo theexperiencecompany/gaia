@@ -1,3 +1,7 @@
+import type {
+  NotificationActionView,
+  NotificationView,
+} from "@gaia/shared/api/generated";
 import { useMutation } from "@tanstack/react-query";
 import { Button, Chip } from "heroui-native";
 import { useState } from "react";
@@ -12,36 +16,18 @@ import { Text } from "@/components/ui/text";
 import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
 
-// Types mirror NotificationRecord from
-// apps/web/src/types/features/notificationTypes.ts; fields are optional to
-// render loose tool output streamed from the agent.
+export type NotificationActionItem = NotificationActionView;
 
-export interface NotificationActionItem {
-  id: string;
-  label: string;
-  style?: "primary" | "secondary" | "danger";
-  disabled?: boolean;
-  executed?: boolean;
-}
-
-export interface NotificationItem {
-  id?: string;
+/** One notification; the flat title, body and metadata only records stored before the typed payload carry. */
+export type NotificationItem = NotificationView & {
   title?: string;
   body?: string;
-  type?: string;
-  status?: string;
-  created_at?: string;
   metadata?: { reminder_id?: string };
-  /** Web NotificationRecord nests title/body/actions under `content`. */
-  content?: {
-    title?: string;
-    body?: string;
-    actions?: NotificationActionItem[];
-  };
-}
+};
 
+/** The notification_data card (NotificationListCard); a title only cards stored before the typed payload carry. */
 export interface NotificationData {
-  notifications?: NotificationItem[];
+  notifications: NotificationItem[];
   title?: string;
 }
 
@@ -109,7 +95,9 @@ function NotificationRow({
   const actions = item.content?.actions ?? [];
   const unread = isUnread(item);
   const relativeTime = formatDistanceToNow(item.created_at);
-  const categoryLabel = item.metadata?.reminder_id ? "reminder" : "system";
+  const isReminder =
+    item.details?.kind === "reminder" || !!item.metadata?.reminder_id;
+  const categoryLabel = isReminder ? "reminder" : "system";
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [isMarking, setIsMarking] = useState(false);
 
@@ -176,7 +164,7 @@ function NotificationRow({
         </View>
 
         {/* Mark as read icon button — only visible while unread */}
-        {unread && item.id && onMarkAsRead && (
+        {unread && !!item.id && onMarkAsRead && (
           <Button
             variant="secondary"
             size="sm"

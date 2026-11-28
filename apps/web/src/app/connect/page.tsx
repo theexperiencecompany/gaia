@@ -1,12 +1,9 @@
-import { ConnectIcon } from "@icons";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
-import { RaisedButton } from "@/components/ui/raised-button";
-import {
-  CONNECT_LINK_COOKIE,
-  CONNECT_LINK_ERROR_MESSAGES,
-} from "@/features/integrations/constants/connect";
+import { ConnectLinkCard } from "@/features/integrations/components/ConnectLinkCard";
+import { ConnectLinkExpired } from "@/features/integrations/components/ConnectLinkExpired";
+import { CONNECT_LINK_COOKIE } from "@/features/integrations/constants/connect";
 import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
@@ -32,30 +29,10 @@ export default async function ConnectLinkPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-black p-4">
       <div className="w-full max-w-md rounded-3xl bg-zinc-900 p-8 text-center">
-        <ConnectIcon className="mx-auto mb-5 h-12 w-12 text-accent" />
-        <h1 className="mb-2 text-xl font-semibold text-white">
-          Connect your integration
-        </h1>
         {code ? (
-          <form method="post" action={action}>
-            <input type="hidden" name="code" value={code} />
-            <p className="mb-6 text-sm text-zinc-400">
-              GAIA sent you this link to connect an account. It works once and
-              expires an hour after it was sent.
-            </p>
-            <RaisedButton
-              type="submit"
-              size="lg"
-              color="#00bbff"
-              className="w-full font-medium"
-            >
-              Continue
-            </RaisedButton>
-          </form>
+          <ConnectLinkCard code={code} action={action} />
         ) : (
-          <p className="text-sm text-zinc-400">
-            {CONNECT_LINK_ERROR_MESSAGES.invalid_or_expired_link}
-          </p>
+          <ConnectLinkExpired />
         )}
       </div>
     </div>

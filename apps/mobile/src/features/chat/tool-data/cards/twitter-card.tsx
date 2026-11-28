@@ -1,3 +1,9 @@
+import type {
+  TwitterSearchData,
+  TwitterTweetData,
+  TwitterUserData,
+} from "@gaia/shared";
+import type { TwitterUnknownAuthor } from "@gaia/shared/api/generated";
 import { Image } from "expo-image";
 import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
@@ -25,45 +31,12 @@ const TEXT_PRIMARY = "#f4f4f5"; // zinc-100
 const TEXT_SECONDARY = "#a1a1aa"; // zinc-400
 const TEXT_TERTIARY = "#71717a"; // zinc-500
 
-export interface TwitterUserData {
-  id: string;
-  username: string;
-  name: string;
-  description?: string;
-  profile_image_url?: string;
-  verified?: boolean;
-  public_metrics?: {
-    followers_count?: number;
-    following_count?: number;
-    tweet_count?: number;
-    listed_count?: number;
-  };
-  created_at?: string;
-  location?: string;
-  url?: string;
-}
+export type { TwitterSearchData, TwitterTweetData, TwitterUserData };
 
-export interface TwitterTweetData {
-  id: string;
-  text: string;
-  created_at?: string;
-  author: TwitterUserData;
-  public_metrics?: {
-    retweet_count?: number;
-    reply_count?: number;
-    like_count?: number;
-    quote_count?: number;
-    bookmark_count?: number;
-    impression_count?: number;
-  };
-  conversation_id?: string;
-}
-
-export interface TwitterSearchData {
-  tweets: TwitterTweetData[];
-  result_count?: number;
-  next_token?: string;
-}
+const UNKNOWN_AUTHOR: TwitterUnknownAuthor = {
+  username: "unknown",
+  name: "Unknown",
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -76,7 +49,7 @@ function formatNumber(num: number | undefined): string {
   return num.toString();
 }
 
-function formatTweetDate(dateStr?: string): string {
+function formatTweetDate(dateStr: string): string {
   if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
@@ -91,7 +64,7 @@ function formatTweetDate(dateStr?: string): string {
   }
 }
 
-function formatJoinDate(dateStr?: string): string {
+function formatJoinDate(dateStr: string): string {
   if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
@@ -124,7 +97,7 @@ function Avatar({
   name,
   size,
 }: {
-  uri?: string;
+  uri: string | null | undefined;
   name?: string;
   size: number;
 }) {
@@ -243,9 +216,9 @@ function MetricRow({
 }
 
 function TweetItem({ tweet }: { tweet: TwitterTweetData }) {
-  const author =
-    tweet.author ||
-    ({ username: "unknown", name: "Unknown" } as TwitterUserData);
+  const author = tweet.author || UNKNOWN_AUTHOR;
+  // An author the API could not resolve carries only a name and a handle.
+  const profile = "id" in author ? author : null;
   const metrics = tweet.public_metrics || {};
 
   return (
@@ -260,7 +233,7 @@ function TweetItem({ tweet }: { tweet: TwitterTweetData }) {
     >
       {/* Author row */}
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-        <Avatar uri={author.profile_image_url} name={author.name} size={40} />
+        <Avatar uri={profile?.profile_image_url} name={author.name} size={40} />
 
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -275,7 +248,7 @@ function TweetItem({ tweet }: { tweet: TwitterTweetData }) {
             >
               {author.name}
             </Text>
-            {author.verified && <VerifiedBadge />}
+            {profile?.verified && <VerifiedBadge />}
           </View>
           <View
             style={{

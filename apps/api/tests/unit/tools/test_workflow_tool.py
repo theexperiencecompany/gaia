@@ -18,6 +18,7 @@ from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.trigger_config import TriggerSearchResult
+from app.models.workflow_card_models import WorkflowDraftData
 from app.models.workflow_models import TriggerType
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
@@ -94,7 +95,19 @@ def _make_draft(
     draft.title = title
     draft.trigger_type = trigger_type
     draft.direct_create = direct_create
-    draft.to_stream_payload.return_value = {"workflow_draft": {"title": title}}
+    draft.to_card.return_value = WorkflowDraftData(
+        suggested_title=title,
+        suggested_description="",
+        prompt="",
+        trigger_type=TriggerType.MANUAL,
+        trigger_slug=None,
+        integration_ids=[],
+        cron_expression=None,
+        runs_only_when=None,
+        direct_create=direct_create,
+        delivery=WorkflowDelivery.NOW,
+        draft_id="draft-1",
+    )
     return draft
 
 
@@ -148,7 +161,7 @@ class TestCreateWorkflow:
 
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
-        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW, ANY)
+        draft.to_card.assert_called_once_with(WorkflowDelivery.NOW, ANY)
 
     @pytest.mark.parametrize(("trigger_type", "waits"), [("integration", True), ("manual", False)])
     async def test_an_integration_draft_keeps_the_chat_waiting_on_its_trigger_setup(
@@ -170,7 +183,7 @@ class TestCreateWorkflow:
                 config=_make_config(), user_request="digest my PRs", delivery=WorkflowDelivery.NOW
             )
 
-        delivery, draft_id = draft.to_stream_payload.call_args.args
+        delivery, draft_id = draft.to_card.call_args.args
         assert delivery == WorkflowDelivery.NOW
         assert UUID(draft_id).version == 4
         if waits:
@@ -367,7 +380,7 @@ class TestCreateWorkflow:
 
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
-        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW, ANY)
+        draft.to_card.assert_called_once_with(WorkflowDelivery.NOW, ANY)
         capture.assert_not_called()  # the confirmed draft is counted by POST /workflows
 
 

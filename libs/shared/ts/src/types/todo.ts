@@ -1,6 +1,8 @@
 import type {
   Priority as PriorityLiteral,
+  ProjectResponse,
   SubTaskOutput,
+  TodoLabelCount,
   TodoModel,
   TodoResponse,
   TodoUpdateRequest,
@@ -88,17 +90,7 @@ export interface TodoFilters {
   priority_filter?: string;
 }
 
-export interface Project {
-  id: string;
-  user_id: string;
-  name: string;
-  description?: string;
-  color?: string;
-  is_default: boolean;
-  todo_count: number;
-  created_at: string;
-  updated_at: string;
-}
+export type Project = ProjectResponse;
 
 export enum WorkflowStatus {
   NOT_STARTED = "not_started",
@@ -111,7 +103,4 @@ export type TodoCreate = TodoModel;
 
 export type ProjectUpdate = UpdateProjectRequest;
 
-export interface TodoLabel {
-  name: string;
-  count: number;
-}
+export type TodoLabel = TodoLabelCount;

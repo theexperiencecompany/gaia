@@ -12,7 +12,13 @@ const THREAD = {
 const CARD = {
   ...NONE,
   cards: [
-    { key: "weather_data-c1", card: { tool_name: "weather_data", data: {} } },
+    {
+      key: "screenshot_data-c1",
+      card: {
+        tool_name: "screenshot_data" as const,
+        data: { thumbnail: "", width: null, height: null },
+      },
+    },
   ],
 };
 

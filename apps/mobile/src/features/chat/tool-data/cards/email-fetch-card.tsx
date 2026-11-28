@@ -1,3 +1,4 @@
+import type { EmailFetchData } from "@gaia/shared";
 import { Chip, PressableFeedback } from "heroui-native";
 import { ScrollView, View } from "react-native";
 import { Mail01Icon } from "@/components/icons";
@@ -8,15 +9,8 @@ import {
 } from "@/features/chat/tool-data/primitives";
 
 // -- Types --------------------------------------------------------------------
-// Matches web `EmailFetchData` (apps/web/src/types/features/mailTypes.ts).
 
-export interface EmailFetchItem {
-  from?: string;
-  subject?: string;
-  time?: string;
-  thread_id?: string;
-  id?: string;
-}
+export type EmailFetchItem = EmailFetchData;
 
 interface EmailFetchCardProps {
   data: EmailFetchItem[];

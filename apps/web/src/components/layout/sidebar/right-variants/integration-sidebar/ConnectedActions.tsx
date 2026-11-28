@@ -7,11 +7,11 @@ import {
   RemoveCircleIcon,
   Share08Icon,
 } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
-import type { Integration } from "@/features/integrations/types";
 
 /** The disconnect/remove action; presence decides whether the button renders. */
 interface DisconnectAction {
@@ -28,12 +28,12 @@ interface PublishAction {
 }
 
 interface ConnectedActionsProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   /** Collapse buttons to icon-only when three or more actions are visible. */
   useIconOnly: boolean;
   disconnect?: DisconnectAction | null;
   publish?: PublishAction | null;
-  onShare: () => void;
+  onShare: (slug: string) => void;
 }
 
 /** Actions for a connected integration: disconnect, marketplace, publish, share. */
@@ -45,6 +45,7 @@ export function ConnectedActions({
   onShare,
 }: ConnectedActionsProps) {
   const { isOwnIntegration } = useIntegrationOwnership(integration);
+  const publicSlug = integration.isPublic ? integration.slug : null;
 
   return (
     <ButtonGroup variant="tertiary" className="w-full" fullWidth>
@@ -66,13 +67,13 @@ export function ConnectedActions({
         </Tooltip>
       )}
 
-      {integration.isPublic && (
+      {publicSlug && (
         <Tooltip>
           <LinkButton
             variant="primary"
             isIconOnly={useIconOnly}
             className="w-full"
-            href={marketplacePath(integration.slug)}
+            href={marketplacePath(publicSlug)}
             aria-label="View on Marketplace"
           >
             <LinkSquareIcon width={18} height={18} className="outline-none!" />
@@ -124,13 +125,13 @@ export function ConnectedActions({
         </Tooltip>
       )}
 
-      {integration.isPublic && (
+      {publicSlug && (
         <Tooltip>
           <GaiaButton
             variant="default-solid"
             isIconOnly={useIconOnly}
             className="w-full"
-            onPress={onShare}
+            onPress={() => onShare(publicSlug)}
             aria-label="Share"
           >
             <Share08Icon width={18} height={18} />

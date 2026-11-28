@@ -12,7 +12,7 @@ from app.agents.llm.client import ainvoke_llm, resolve_model
 from app.constants.cache import SIX_HOUR_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
-from app.utils.search.models import ResearchSearchResult
+from app.models.web_search_models import ResearchSearchResult
 from shared.py.wide_events import log
 
 

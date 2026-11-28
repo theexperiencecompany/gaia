@@ -195,12 +195,12 @@ export default function HomePage() {
             {simpleGreeting}
           </h2>
           <div className="flex items-center gap-2">
-            {user?.profilePicture && (
+            {user?.picture && (
               <Avatar
                 size="sm"
                 className="shrink-0 ml-1 hover:scale-120 rotate-6 transition"
               >
-                <Avatar.Image src={user?.profilePicture} />
+                <Avatar.Image src={user?.picture} />
                 <Avatar.Fallback>{user?.name?.[0] ?? "U"}</Avatar.Fallback>
               </Avatar>
             )}

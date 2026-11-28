@@ -20,6 +20,7 @@ from app.constants.browser import (
     BROWSER_JOB_WORKER_STOPPED_SUMMARY,
     BROWSER_NO_CHROME_HOST,
     BROWSER_RUN_CANCELLED_SUMMARY,
+    BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
     BrowserEngine,
     BrowserRunFailure,
@@ -32,6 +33,7 @@ from app.constants.chat import BROWSER_GROUP_PREFIX
 from app.constants.log_tags import LogTag
 from app.models.chat_models import SourceCategory
 from app.models.stream_events import ToolOutputPayload
+from app.models.tool_card_registry import tool_card_data
 from app.schemas.browser import (
     BrowserActionOutput,
     BrowserCardSnapshot,
@@ -65,7 +67,7 @@ from app.services.browser.handoff import (
     reply_address,
 )
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.job_events import JOB_TERMINAL_FRAME, card_frame, publish_job_event
+from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.job_teller import end_job
 from app.services.browser.jobs import (
     clear_job_wait,
@@ -300,7 +302,7 @@ class ProgressEmitter:
                 snapshot.session_id, self._live_view_owner, snapshot.handoff_id
             )
             snapshot = snapshot.model_copy(update={"live_view_url": link})
-        await self._publish(card_frame(snapshot))
+        await self._publish({BROWSER_TASK_EVENT: tool_card_data(BROWSER_TASK_EVENT, snapshot)})
         if isinstance(snapshot, BrowserResultSnapshot):
             # Only once it is on the feed: a stop's abort before then must still end the run on it.
             self.result = snapshot

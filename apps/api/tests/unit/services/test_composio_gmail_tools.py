@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 import re
 from typing import Any, ClassVar
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, ValidationError
@@ -1247,7 +1247,7 @@ class TestTheInlineEmailCard:
             )
 
         payload = writer.call_args.args[0]
-        assert payload["resultSize"] == 1
+        assert set(payload) == {"email_fetch_data"}
         (row,) = payload["email_fetch_data"]
         assert set(row) == {"from", "subject", "time", "thread_id", "id"}
         assert row["from"] == "Alice <alice@example.com>"
@@ -1433,7 +1433,18 @@ class TestTheThreadRead:
             )
 
         assert (result["fetched_threads"], result["total_messages"]) == (1, 3)
-        assert writer.call_args.args[0]["resultSize"] == 3
+        assert writer.call_args.args[0] == {
+            "email_fetch_data": [
+                {
+                    "from": "Alice <alice@example.com>",
+                    "subject": "Lease renewal",
+                    "time": ANY,
+                    "thread_id": "thread-1",
+                    "id": f"msg-{n}",
+                }
+                for n in (1, 2, 3)
+            ]
+        }
 
     def test_a_thread_read_at_the_message_limit_stays_grouped(self, mock_proxy: MagicMock) -> None:
         mock_proxy.side_effect = self._threads(count=OFFLOAD_MIN_MESSAGES)

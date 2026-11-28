@@ -35,12 +35,16 @@ function renderArtifact() {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <FileArtifactSection
-        artifact_data={{
-          session_id: "conv-1",
-          path: FILENAME,
-          size_bytes: 2048,
-          content_type: "text/markdown",
-        }}
+        artifact_data={[
+          {
+            session_id: "conv-1",
+            event: "upsert",
+            path: FILENAME,
+            size_bytes: 2048,
+            mtime: 0,
+            content_type: "text/markdown",
+          },
+        ]}
       />
     </QueryClientProvider>,
   );

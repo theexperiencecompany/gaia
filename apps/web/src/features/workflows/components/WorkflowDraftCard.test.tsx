@@ -15,7 +15,13 @@ function renderDraft(cron: string) {
     suggested_description: "Summarise standup notes",
     prompt: "Summarise standup notes",
     trigger_type: "schedule",
+    trigger_slug: null,
     cron_expression: cron,
+    integration_ids: [],
+    delivery: "now",
+    runs_only_when: null,
+    draft_id: "draft-1",
+    direct_create: false,
   };
   render(<WorkflowDraftCard draft={draft} />);
 }

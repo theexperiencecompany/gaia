@@ -408,7 +408,7 @@ function RowDetail({ call }: { call: ActivityToolCall }) {
           content={formatDetailText(call.output)}
         />
       ) : null}
-      <RawJsonToggle inputs={call.inputs} output={call.output} />
+      <RawJsonToggle inputs={call.inputs} output={call.output ?? undefined} />
     </ScrollView>
   );
 }
@@ -509,7 +509,7 @@ function ActivityRow({
             <View style={{ height: ROW_HEIGHT, justifyContent: "center" }}>
               <CategoryIcon
                 category={call.tool_category || "general"}
-                iconUrl={call.icon_url}
+                iconUrl={call.icon_url ?? undefined}
                 size={16}
               />
             </View>
@@ -655,7 +655,7 @@ function ThinkingRow({
 }
 
 function countGroupTools(group: EnrichedSubagentGroup): number {
-  let total = group.tool_calls.filter((tc) => tc.reasoning == null).length;
+  let total = group.tool_calls.filter((tc) => !("reasoning" in tc)).length;
   for (const nested of group.nested_subagents) {
     total += countGroupTools(nested as EnrichedSubagentGroup);
   }
@@ -696,7 +696,7 @@ function SubagentBlock({
   }, [running]);
 
   const toolCount = countGroupTools(group);
-  const childRows = group.tool_calls;
+  const childRows: ActivityToolCall[] = group.tool_calls;
   const nested = group.nested_subagents;
   const indent = Math.min(depth + 1, MAX_INDENT_DEPTH) * SUBAGENT_INDENT;
   const flattenNested = depth + 1 >= MAX_INDENT_DEPTH;
@@ -916,7 +916,7 @@ export function ActivityBlock({
         iconUrl:
           item.kind === "subagent"
             ? (item.group.icon_url ?? undefined)
-            : item.call.icon_url,
+            : (item.call.icon_url ?? undefined),
       });
       if (unique.length >= MAX_SUMMARY_ICONS) break;
     }

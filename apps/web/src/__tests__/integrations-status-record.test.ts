@@ -16,7 +16,6 @@ import { describe, expect, it } from "vitest";
 import {
   byConnectionStateThenName,
   findIntegrationStatus,
-  toIntegration,
 } from "@/features/integrations/utils/catalog";
 
 function item(overrides: Partial<MyIntegrationItem> = {}): MyIntegrationItem {
@@ -90,24 +89,6 @@ describe("findIntegrationStatus", () => {
   });
 });
 
-describe("toIntegration", () => {
-  it("carries expiredAt through so the row can say when the grant died", () => {
-    const mapped = toIntegration(
-      item({ status: "expired", expiredAt: "2026-08-15T09:00:00Z" }),
-    );
-
-    expect(mapped.expiredAt).toBe("2026-08-15T09:00:00Z");
-  });
-
-  it("normalizes a null expiredAt to undefined", () => {
-    const mapped = toIntegration(
-      item({ status: "connected", expiredAt: null }),
-    );
-
-    expect(mapped.expiredAt).toBeUndefined();
-  });
-});
-
 describe("byConnectionStateThenName", () => {
   it("puts what needs attention first, then connected, then the rest", () => {
     const sorted = [
@@ -116,7 +97,6 @@ describe("byConnectionStateThenName", () => {
       item({ id: "gmail", name: "Gmail", status: "expired" }),
       item({ id: "linear", name: "Linear", status: "created" }),
     ]
-      .map(toIntegration)
       .toSorted(byConnectionStateThenName)
       .map((i) => i.id);
 
@@ -128,7 +108,6 @@ describe("byConnectionStateThenName", () => {
       item({ id: "zulip", name: "Zulip", status: "connected" }),
       item({ id: "asana", name: "Asana", status: "connected" }),
     ]
-      .map(toIntegration)
       .toSorted(byConnectionStateThenName)
       .map((i) => i.name);
 

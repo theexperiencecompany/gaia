@@ -12,7 +12,8 @@ import { reportOnboardingStep } from "../api/onboardingApi";
  * conversation later is a no-op there.
  */
 export function useReportFirstChatOpened(conversationId: string | null): void {
-  const seededId = useCurrentUser().onboarding?.getting_started_conversation_id;
+  const seededId =
+    useCurrentUser()?.onboarding?.getting_started_conversation_id;
   const reportedRef = useRef(false);
 
   useEffect(() => {

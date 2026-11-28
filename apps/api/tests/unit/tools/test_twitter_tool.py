@@ -44,7 +44,10 @@ def _tools() -> dict[str, Any]:
     captured: dict[str, Any] = {}
     composio = MagicMock()
 
-    def custom_tool(**_kwargs: Any) -> Any:
+    def custom_tool(**kwargs: Any) -> Any:
+        # Composio prefixes and authenticates a custom tool by this toolkit slug.
+        assert kwargs == {"toolkit": "TWITTER"}
+
         def decorator(fn: Any) -> Any:
             captured[fn.__name__] = fn
             return fn
@@ -329,11 +332,27 @@ class TestCreateThread:
 
     def test_fewer_than_two_tweets_raises(self, tools, writer) -> None:
         with patch(UTILS_PROXY) as utils_proxy:
-            with pytest.raises(ValueError, match="at least 2 tweets"):
+            with pytest.raises(ValueError, match=r"^Thread must have at least 2 tweets$"):
                 tools["CUSTOM_CREATE_THREAD"](
                     CreateThreadInput.model_construct(tweets=["only"]), EXECUTE_REQUEST, AUTH
                 )
         utils_proxy.assert_not_called()
+
+    def test_tweets_past_the_media_list_post_without_media(self, tools, writer) -> None:
+        with (
+            patch(UTILS_PROXY, side_effect=[_created("tw1"), _created("tw2")]) as utils_proxy,
+            patch(f"{MODULE}.proxy_request_sync", return_value=None),
+        ):
+            tools["CUSTOM_CREATE_THREAD"](
+                CreateThreadInput(tweets=["first", "second"], media_ids=[["m1"]]),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
+
+        assert [c.args[0].body for c in utils_proxy.call_args_list] == [
+            {"text": "first", "media": {"media_ids": ["m1"]}},
+            {"text": "second", "reply": {"in_reply_to_tweet_id": "tw1"}},
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -448,12 +467,14 @@ class TestBatchFollow:
 
     def test_no_targets_raises(self, tools, writer) -> None:
         with patch(UTILS_PROXY, return_value=_ME_ID):
-            with pytest.raises(ValueError, match="Either usernames or user_ids"):
+            with pytest.raises(
+                ValueError, match=r"^Either usernames or user_ids must be provided$"
+            ):
                 tools["CUSTOM_BATCH_FOLLOW"](BatchFollowInput(), EXECUTE_REQUEST, AUTH)
 
     def test_unresolvable_self_id_raises(self, tools, writer) -> None:
         with patch(UTILS_PROXY, return_value={}):
-            with pytest.raises(ValueError, match="Could not get authenticated user ID"):
+            with pytest.raises(ValueError, match=r"^Could not get authenticated user ID$"):
                 tools["CUSTOM_BATCH_FOLLOW"](
                     BatchFollowInput(user_ids=["u1"]), EXECUTE_REQUEST, AUTH
                 )
@@ -488,7 +509,13 @@ class TestBatchUnfollow:
                 BatchUnfollowInput(user_ids=["u1"], usernames=["ada"]), EXECUTE_REQUEST, AUTH
             )
 
-        assert [c.args[0] for c in proxy.call_args_list[1:]] == [
+        assert [c.args[0] for c in proxy.call_args_list] == [
+            ProxyRequest(
+                user_id="user-42",
+                toolkit="TWITTER",
+                endpoint=f"{TWITTER_API_BASE}/users/me",
+                method="GET",
+            ),
             ProxyRequest(
                 user_id="user-42",
                 toolkit="TWITTER",
@@ -541,6 +568,24 @@ class TestBatchUnfollow:
             "failed_count": 1,
         }
 
+    def test_every_failed_unfollow_is_counted(self, tools, writer) -> None:
+        with patch(
+            UTILS_PROXY,
+            side_effect=[_ME_ID, RuntimeError("nope"), RuntimeError("gone"), {"data": {}}],
+        ):
+            out = tools["CUSTOM_BATCH_UNFOLLOW"](
+                BatchUnfollowInput(user_ids=["u1", "u2", "u3"]), EXECUTE_REQUEST, AUTH
+            )
+
+        assert (out["unfollowed_count"], out["failed_count"]) == (1, 2)
+
+    def test_unresolvable_self_id_raises(self, tools, writer) -> None:
+        with patch(UTILS_PROXY, return_value={}):
+            with pytest.raises(ValueError, match=r"^Could not get authenticated user ID$"):
+                tools["CUSTOM_BATCH_UNFOLLOW"](
+                    BatchUnfollowInput(user_ids=["u1"]), EXECUTE_REQUEST, AUTH
+                )
+
     def test_all_failures_raise(self, tools, writer) -> None:
         with patch(UTILS_PROXY, side_effect=[_ME_ID, {}]):
             with pytest.raises(RuntimeError, match="Failed to unfollow all users"):
@@ -550,7 +595,9 @@ class TestBatchUnfollow:
 
     def test_no_targets_raises(self, tools, writer) -> None:
         with patch(UTILS_PROXY, return_value=_ME_ID):
-            with pytest.raises(ValueError, match="Either usernames or user_ids"):
+            with pytest.raises(
+                ValueError, match=r"^Either usernames or user_ids must be provided$"
+            ):
                 tools["CUSTOM_BATCH_UNFOLLOW"](BatchUnfollowInput(), EXECUTE_REQUEST, AUTH)
 
     def test_progress_is_streamed_every_five_users(self, tools, writer) -> None:
@@ -578,6 +625,7 @@ _SEARCH = {
                 "username": "ada",
                 "name": "Ada",
                 "description": "b" * 200,
+                "profile_image_url": "https://pbs.twimg.com/ada.jpg",
                 "verified": True,
                 "public_metrics": {
                     "followers_count": 99,
@@ -586,6 +634,8 @@ _SEARCH = {
                     "listed_count": 1,
                     "like_count": 7,
                 },
+                "created_at": "2010-03-01T00:00:00.000Z",
+                "location": "London",
             },
             {"id": "u1", "username": "dup", "name": "Dup"},
             {"id": "u2", "username": "bob", "name": "Bob"},
@@ -653,7 +703,7 @@ class TestSearchUsers:
             "username": "ada",
             "name": "Ada",
             "description": "b" * 200,
-            "profile_image_url": None,
+            "profile_image_url": "https://pbs.twimg.com/ada.jpg",
             "verified": True,
             "public_metrics": {
                 "followers_count": 99,
@@ -662,8 +712,9 @@ class TestSearchUsers:
                 "listed_count": 1,
                 "like_count": 7,
             },
-            "created_at": None,
-            "location": None,
+            "created_at": "2010-03-01T00:00:00.000Z",
+            "location": "London",
+            "url": None,
         }
         assert streamed[1] == {
             "id": "u2",
@@ -675,6 +726,7 @@ class TestSearchUsers:
             "public_metrics": {},
             "created_at": None,
             "location": None,
+            "url": None,
         }
 
     def test_no_matches_streams_nothing_extra(self, tools, writer) -> None:

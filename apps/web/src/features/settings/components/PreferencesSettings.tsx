@@ -210,9 +210,9 @@ export default function PreferencesSettings({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [preferences, setPreferences] = useState<PreferenceValues>({
-    profession: user.onboarding?.preferences?.profession || "",
-    response_style: user.onboarding?.preferences?.response_style || "",
-    timezone: normalizeTimezone(user.timezone || "UTC"),
+    profession: user?.onboarding?.preferences?.profession || "",
+    response_style: user?.onboarding?.preferences?.response_style || "",
+    timezone: normalizeTimezone(user?.timezone || "UTC"),
   });
 
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -252,7 +252,7 @@ export default function PreferencesSettings({
         if (response.success) {
           patchCurrentUser(
             queryClient,
-            mergedOnboardingUpdate(user.onboarding, {
+            mergedOnboardingUpdate(user?.onboarding, {
               profession: profession || undefined,
               response_style: response_style || undefined,
             }),
@@ -281,7 +281,7 @@ export default function PreferencesSettings({
         setIsUpdating(false);
       }
     },
-    [updateTimezone, queryClient, user.onboarding],
+    [updateTimezone, queryClient, user?.onboarding],
   );
 
   // Debounced update function
@@ -345,13 +345,13 @@ export default function PreferencesSettings({
   // Update preferences when user data changes
   useEffect(() => {
     const newPreferences = {
-      profession: user.onboarding?.preferences?.profession || "",
-      response_style: user.onboarding?.preferences?.response_style || "",
-      timezone: normalizeTimezone(user.timezone || "") || "UTC", // Normalize legacy timezone names
+      profession: user?.onboarding?.preferences?.profession || "",
+      response_style: user?.onboarding?.preferences?.response_style || "",
+      timezone: normalizeTimezone(user?.timezone || "") || "UTC", // Normalize legacy timezone names
     };
     setPreferences(newPreferences);
     lastSavedPreferences.current = newPreferences;
-  }, [user.onboarding?.preferences, user.timezone]);
+  }, [user?.onboarding?.preferences, user?.timezone]);
 
   return (
     <SettingsPage>

@@ -93,20 +93,6 @@ class GooglePeopleSearchResponseData(BaseModel):
     results: list[GooglePeopleSearchResult] = Field(default_factory=list)
 
 
-class ContactCard(TypedDict):
-    """A person flattened to their primary name/email/phone, for the chat UI.
-
-    Every field is optional because People may send a key as an explicit
-    ``null``, which the hook forwards untouched rather than normalizing — see
-    ``_contact_card``.
-    """
-
-    name: str | None
-    email: str | None
-    phone: str | None
-    resource_name: str | None
-
-
 class ContactSummary(TypedDict):
     """The same contact trimmed for the LLM — blank fields are omitted, not sent empty."""
 

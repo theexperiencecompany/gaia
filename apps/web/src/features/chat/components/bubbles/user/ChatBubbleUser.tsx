@@ -194,7 +194,10 @@ export default function ChatBubbleUser({
             <div className="min-w-10">
               {!isGroupedWithNext && (
                 <Avatar className="rounded-full bg-black">
-                  <AvatarImage src={user?.profilePicture} alt="User Avatar" />
+                  <AvatarImage
+                    src={user?.picture ?? undefined}
+                    alt="User Avatar"
+                  />
                   <AvatarFallback>
                     <Image
                       src={"/images/avatars/default.webp"}

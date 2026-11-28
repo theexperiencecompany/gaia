@@ -63,11 +63,11 @@ describe("ChatBubbleBot visibility", () => {
         steps: [],
         cards: [
           {
-            key: "weather_data-c1",
+            key: "screenshot_data-c1",
             card: {
-              tool_name: "weather_data",
-              tool_category: "weather",
-              data: {},
+              tool_name: "screenshot_data",
+              tool_category: "desktop",
+              data: { thumbnail: "", width: null, height: null },
             },
           },
         ],

@@ -13,6 +13,8 @@ from app.schemas.common import ResponseModel, SuccessResponse
 
 # Base model that auto-converts snake_case to camelCase for JSON serialization
 class CamelModel(BaseModel):
+    """Base that serializes snake_case fields as camelCase."""
+
     model_config = ConfigDict(
         populate_by_name=True,
         alias_generator=to_camel,
@@ -30,6 +32,8 @@ class CloneCountMixin(BaseModel):
 
 
 class IntegrationConfigItem(CamelModel):
+    """One integration in the platform's integration catalog."""
+
     id: str
     name: str
     description: str
@@ -51,19 +55,27 @@ class IntegrationConfigItem(CamelModel):
 
 
 class IntegrationsConfigResponse(BaseModel):
+    """The platform's integration catalog."""
+
     integrations: list[IntegrationConfigItem]
 
 
 class IntegrationSuccessResponse(SuccessResponse, CamelModel):
+    """A successful action on one integration."""
+
     integration_id: str
 
 
 class AddUserIntegrationResponse(SuccessResponse, CamelModel):
+    """An integration added to the user's workspace, and its connection state."""
+
     integration_id: str
     connection_status: IntegrationStatus
 
 
 class CustomIntegrationConnectionResult(CamelModel):
+    """How connecting a newly created custom integration went."""
+
     status: Literal[
         IntegrationStatus.CREATED, IntegrationStatus.CONNECTED, "requires_oauth", "failed"
     ]
@@ -73,12 +85,16 @@ class CustomIntegrationConnectionResult(CamelModel):
 
 
 class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
+    """A created custom integration and its first connection attempt."""
+
     integration_id: str
     name: str
     connection: CustomIntegrationConnectionResult
 
 
 class IntegrationTool(BaseModel):
+    """One tool an integration exposes."""
+
     name: str
     description: str | None = None
     # HIL default: this tool is gated (irreversible) unless the user overrides it.
@@ -88,6 +104,8 @@ class IntegrationTool(BaseModel):
 
 
 class IntegrationToolApproval(IntegrationTool):
+    """A tool with the key its per-tool approval override is stored under."""
+
     approval_key: str = Field(
         description="Key the user's per-tool approval override is stored under; send it back unchanged."
     )
@@ -120,6 +138,8 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
 
 
 class MarketplaceResponse(BaseModel):
+    """The integration marketplace: featured and all listed integrations."""
+
     featured: list[IntegrationResponse] = []
     integrations: list[IntegrationResponse] = []
     total: int = 0
@@ -181,6 +201,8 @@ class IntegrationToolsResponse(CamelModel, ResponseModel):
 
 
 class ConnectIntegrationResponse(ResponseModel, CamelModel):
+    """The outcome of starting an integration's connect flow."""
+
     status: Literal["connected", "redirect", "error"]
     integration_id: str
     name: str
@@ -191,11 +213,15 @@ class ConnectIntegrationResponse(ResponseModel, CamelModel):
 
 
 class PublishIntegrationResponse(SuccessResponse, CamelModel):
+    """A custom integration published to the marketplace."""
+
     integration_id: str
     public_url: str
 
 
 class UnpublishIntegrationResponse(SuccessResponse, CamelModel):
+    """A custom integration removed from the marketplace."""
+
     integration_id: str
 
 
@@ -300,3 +326,12 @@ class SearchIntegrationsResponse(BaseModel):
 
     integrations: list[SearchIntegrationItem] = []
     query: str
+
+
+class ConnectLinkPreviewResponse(ResponseModel):
+    """What a connect link will connect, shown before the user spends it."""
+
+    integration_id: str
+    integration_name: str
+    icon_url: str | None = None
+    account_email: str | None = Field(description="The GAIA account's email, masked")

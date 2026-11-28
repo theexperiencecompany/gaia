@@ -1,133 +1,24 @@
-// Tool data types for various AI-powered features
-
-// Define image data structure for image generation
 import type {
+  ArtifactDataCard,
+  ArtifactFileEvent,
   ArtifactRegistryEntry,
-  WorkflowDelivery,
 } from "@shared/api/generated";
 
-export type { ImageData } from "@shared/api/generated";
+export type {
+  ImageData,
+  WorkflowCreatedData,
+  WorkflowDraftData,
+} from "@shared/api/generated";
+export type { CodeData, GoogleDocsData } from "@shared/chat";
 
-// Define memory data structure for memory operations
-export type MemoryData = {
-  operation?: string;
-  status?: string;
-  results?: Array<{
-    id: string;
-    content: string;
-    relevance_score?: number;
-    metadata?: Record<string, unknown>;
-  }>;
-  memories?: Array<{
-    id: string;
-    content: string;
-    metadata?: Record<string, unknown>;
-    created_at?: string;
-  }>;
-  count?: number;
-  content?: string;
-  memory_id?: string;
-  error?: string;
-};
+/** Inline contents only artifact_data cards stored before the artifact registry carry. */
+export interface LegacyArtifactEventFields {
+  body?: string;
+}
 
-// Define code execution data structure
-export type CodeData = {
-  language: string;
-  code: string;
-  output?: {
-    stdout: string;
-    stderr: string;
-    results: string[];
-    error: string | null;
-  } | null;
-  charts?: Array<{
-    id: string;
-    url: string;
-    text: string;
-    type?: string;
-    title?: string;
-    description?: string;
-    chart_data?: {
-      type: string;
-      title: string;
-      x_label: string;
-      y_label: string;
-      x_unit?: string | null;
-      y_unit?: string | null;
-      elements: Array<{
-        label: string;
-        value: number;
-        group: string;
-      }>;
-    };
-  }> | null;
-  status?: "executing" | "completed" | "error";
-};
-
-// Define Google Docs data structure for Google Docs operations
-export type GoogleDocsData = {
-  document: {
-    id: string;
-    title: string;
-    url: string;
-    created_time: string;
-    modified_time: string;
-    type: string;
-  };
-  query?: string | null;
-  action: string;
-  message: string;
-  type: string;
-};
-
-// Define workflow draft data structure for workflow creation
-export type WorkflowDraftData = {
-  /** Suggested title for the workflow */
-  suggested_title: string;
-  /** Short description for display in cards/UI (1-2 sentences) */
-  suggested_description: string;
-  /** Detailed prompt/instructions for the workflow execution */
-  prompt: string;
-  trigger_type: "manual" | "schedule" | "integration";
-  /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */
-  trigger_slug?: string | null;
-  /** Cron expression for scheduled triggers */
-  cron_expression?: string | null;
-  /**
-   * Integrations the assistant grounded this workflow in, including the trigger's.
-   * Carried through to create so the workflow records what it actually depends on
-   * rather than falling back to every integration the user has connected.
-   */
-  integration_ids?: string[] | null;
-  /**
-   * How each run's result reaches the user, chosen by the agent from the user's
-   * words. Absent on drafts saved before workflows had a delivery mode.
-   */
-  delivery?: WorkflowDelivery;
-  /** Which events are worth a run, as GAIA drafted it; null when every event is */
-  runs_only_when?: string | null;
-  /** Sent back on create, so the chat that drafted it picks back up once it is set up */
-  draft_id?: string;
-};
-
-// Define workflow created data for when a workflow is automatically created
-export type WorkflowCreatedData = {
-  /** Workflow ID for navigation/editing */
-  id: string;
-  /** Workflow title */
-  title: string;
-  /** Workflow description */
-  description: string;
-  /** Trigger configuration */
-  trigger_config: {
-    type: "manual" | "schedule" | "integration";
-    cron_expression?: string | null;
-    trigger_name?: string | null;
-    enabled?: boolean;
-  };
-  /** Whether workflow is activated */
-  activated: boolean;
-};
+/** One artifact_data card: a file written or removed, as the timeline groups them. */
+export type ArtifactEvent = ArtifactDataCard["data"] &
+  LegacyArtifactEventFields;
 
 /** A stored registry entry as the client holds it: stamped with its conversation. */
 export const fromRegistryEntries = (
@@ -143,20 +34,10 @@ export const fromRegistryEntries = (
     body: entry.body,
   }));
 
-export interface ArtifactData {
-  /** Conversation id the artifact belongs to (used to build fetch URLs). */
-  session_id: string;
-  /** "upsert" adds or refreshes a card; "remove" drops it. */
-  event?: "upsert" | "remove";
-  /** Path relative to the session's artifacts/ (or the upload name). */
-  path: string;
-  size_bytes: number;
-  mtime?: number;
-  content_type?: string | null;
-  /**
-   * UTF-8 file contents inlined when small + textual. When present, the
-   * preview renders instantly without a follow-up fetch and survives reload
-   * via the persisted conversation. Absent for large or binary files.
-   */
-  body?: string;
-}
+/** A file the conversation holds: a registry entry or a live file event, stamped with its conversation. */
+export type ArtifactData = Pick<
+  ArtifactFileEvent,
+  "session_id" | "path" | "size_bytes" | "content_type"
+> &
+  Partial<Pick<ArtifactFileEvent, "event" | "mtime">> &
+  Partial<Pick<ArtifactRegistryEntry, "body">>;

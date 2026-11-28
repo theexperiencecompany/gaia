@@ -307,7 +307,7 @@ function deriveDetail(
     ).values(),
   );
   return {
-    title: "title" in data ? data.title : "",
+    workflow: data,
     workflowPrompt: useCase?.prompt || communityWorkflow?.prompt,
     sourceIntegration:
       useCase?.source_integration ?? communityWorkflow?.source_integration,
@@ -328,10 +328,6 @@ function deriveDetail(
     runCountText: deriveRunCountText(communityWorkflow, useCase),
     steps,
     stepsFormatted: deriveFormattedSteps(useCase, communityWorkflow),
-    description:
-      useCase?.detailed_description ||
-      useCase?.description ||
-      communityWorkflow?.description,
   };
 }
 
@@ -357,7 +353,7 @@ export default function UseCaseDetailClient({
   );
   if (!detail) return null;
   const {
-    title,
+    workflow,
     workflowPrompt,
     sourceIntegration,
     heroIcon,
@@ -368,7 +364,6 @@ export default function UseCaseDetailClient({
     runCountText,
     steps,
     stepsFormatted,
-    description,
   } = detail;
 
   // Prepare trigger info (only for community workflows)
@@ -382,9 +377,9 @@ export default function UseCaseDetailClient({
     <div className="relative">
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
-        title={title}
+        workflow={workflow}
         icon={heroIcon}
-        id={currentSlug}
+        slug={currentSlug}
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
         metaInfo={
@@ -416,7 +411,6 @@ export default function UseCaseDetailClient({
             </div>
           ) : undefined
         }
-        description={description}
         steps={
           steps && steps.length > 0 ? (
             <div className="w-fit shrink-0">

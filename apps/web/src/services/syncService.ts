@@ -7,7 +7,7 @@ import {
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { applyConversationPages } from "@/features/chat/live/connection";
-import type { RequestOrigin } from "@/lib/api/typed";
+import type { RequestOrigin } from "@/lib/api/typed.types";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import { fromRegistryEntries } from "@/types/features/toolDataTypes";

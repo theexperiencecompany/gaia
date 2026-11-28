@@ -15,6 +15,8 @@ conversation to them, addressed by the job they gave.
 from pydantic import BaseModel
 
 from app.models.chat_models import ConversationSource
+from app.models.integration_card_models import ConnectOption, ConnectOptionsData
+from app.models.tool_card_registry import tool_card_data
 from app.models.user_models import OnboardingPreferences
 from app.services.onboarding.first_message import (
     _ARTICLES,
@@ -26,6 +28,7 @@ from app.services.onboarding.welcome_copy import (
     WelcomeCopy,
     welcome_copy,
 )
+from shared.py.conversation_wire import ToolDataEntry
 
 INTEGRATIONS_PATH = "/integrations"
 GMAIL_INTEGRATION_ID = "gmail"
@@ -71,30 +74,35 @@ class FirstConversation(BaseModel):
     opening: list[str]
     question: str
     follow_ups: list[str]
-    connect_options: list[dict[str, str]]
+    connect_options: list[ConnectOption]
 
     @property
     def lines(self) -> list[str]:
         """Every bubble in order, for anything that reads the thread as text."""
         return [*self.opening, self.question]
 
-    def connect_tool_data(self) -> dict[str, object]:
-        return {"tool_name": CONNECT_OPTIONS_TOOL_NAME, "data": {"options": self.connect_options}}
+    def connect_tool_data(self) -> ToolDataEntry:
+        return {
+            "tool_name": CONNECT_OPTIONS_TOOL_NAME,
+            "data": tool_card_data(
+                CONNECT_OPTIONS_TOOL_NAME, ConnectOptionsData(options=self.connect_options)
+            ),
+        }
 
 
-def _connect_options(copy: WelcomeCopy) -> list[dict[str, str]]:
+def _connect_options(copy: WelcomeCopy) -> list[ConnectOption]:
     return [
-        {
-            "integration_id": GMAIL_INTEGRATION_ID,
-            "label": copy.connect_gmail,
-            "href": connect_link(GMAIL_INTEGRATION_ID),
-        },
-        {
-            "integration_id": CALENDAR_INTEGRATION_ID,
-            "label": copy.connect_calendar,
-            "href": connect_link(CALENDAR_INTEGRATION_ID),
-        },
-        {"label": copy.all_integrations, "href": INTEGRATIONS_PATH},
+        ConnectOption(
+            integration_id=GMAIL_INTEGRATION_ID,
+            label=copy.connect_gmail,
+            href=connect_link(GMAIL_INTEGRATION_ID),
+        ),
+        ConnectOption(
+            integration_id=CALENDAR_INTEGRATION_ID,
+            label=copy.connect_calendar,
+            href=connect_link(CALENDAR_INTEGRATION_ID),
+        ),
+        ConnectOption(label=copy.all_integrations, href=INTEGRATIONS_PATH),
     ]
 
 

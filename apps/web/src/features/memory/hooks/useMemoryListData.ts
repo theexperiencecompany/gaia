@@ -23,7 +23,7 @@ export function useMemoryListData() {
     try {
       const response = await memoryApi.listMemories({
         page: pageToLoad,
-        pageSize: MEMORY_PAGE_SIZE,
+        page_size: MEMORY_PAGE_SIZE,
       });
       setData(response);
     } catch {

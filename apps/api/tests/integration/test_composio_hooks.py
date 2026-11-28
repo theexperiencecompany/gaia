@@ -471,7 +471,7 @@ class TestGmailBeforeHooks:
         assert payload["email_compose_data"][0]["subject"] == "Draft subject"
         # This draft has no attachments, so the card stays editable: carrying the
         # id would make Send ignore the user's edits and post the stored draft.
-        assert "draft_id" not in payload["email_compose_data"][0]
+        assert payload["email_compose_data"][0]["draft_id"] is None
 
 
 # ---------------------------------------------------------------------------

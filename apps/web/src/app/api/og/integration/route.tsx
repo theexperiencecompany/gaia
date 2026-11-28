@@ -1,3 +1,4 @@
+import type { PublicIntegrationDetailResponse } from "@shared/api/generated";
 import { ImageResponse } from "next/og";
 import { getIconPaths } from "@/config/iconPaths.generated";
 import { getOgIconPath, getToolIconConfig } from "@/config/toolIconConfig";
@@ -19,21 +20,10 @@ import {
 } from "../lib";
 import { CategoryBadge } from "../shared";
 
-interface OgIntegration {
-  name?: string;
-  description?: string;
-  category?: string;
-  creator?: { name?: string; picture?: string };
-  cloneCount?: number;
-  toolCount?: number;
-  integrationId?: string;
-  iconUrl?: string;
-}
-
 async function fetchIntegration(
   apiBaseUrl: string,
   identifier: string,
-): Promise<OgIntegration | null> {
+): Promise<PublicIntegrationDetailResponse | null> {
   try {
     const response = await fetch(
       `${apiBaseUrl}/integrations/public/${identifier}`,

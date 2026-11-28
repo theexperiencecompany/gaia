@@ -1,4 +1,4 @@
-import type { InAppNotification } from "../types/notification";
+import type { NotificationView } from "../api/generated";
 import { NotificationStatus } from "../types/notification";
 
 export const NotificationQueryKeys = {
@@ -19,9 +19,9 @@ export interface NotificationFilter {
 }
 
 export function filterNotifications(
-  notifications: InAppNotification[],
+  notifications: NotificationView[],
   filter: NotificationFilter,
-): InAppNotification[] {
+): NotificationView[] {
   return notifications.filter((notification) => {
     if (filter.unreadOnly) {
       const isUnread =
@@ -43,9 +43,9 @@ export function filterNotifications(
 }
 
 export function groupNotificationsByDate(
-  notifications: InAppNotification[],
-): Record<string, InAppNotification[]> {
-  const groups: Record<string, InAppNotification[]> = {};
+  notifications: NotificationView[],
+): Record<string, NotificationView[]> {
+  const groups: Record<string, NotificationView[]> = {};
 
   for (const notification of notifications) {
     const date = new Date(notification.created_at);

@@ -2,20 +2,18 @@ import type React from "react";
 
 import { CARD_CLASSES } from "./constants";
 import { RotatingExperienceLogo } from "./RotatingExperienceLogo";
+import type { HoloCardDisplayData } from "./types";
 
 interface FrontCardContentProps {
-  name: string;
-  personalityPhrase?: string;
-  accountNumber: string | number;
-  memberSince: string | number;
+  card: Pick<
+    HoloCardDisplayData,
+    "name" | "personality_phrase" | "account_number" | "member_since"
+  >;
   isStatic?: boolean;
 }
 
 export const FrontCardContent: React.FC<FrontCardContentProps> = ({
-  name,
-  personalityPhrase,
-  accountNumber,
-  memberSince,
+  card,
   isStatic = false,
 }) => {
   return (
@@ -39,10 +37,10 @@ export const FrontCardContent: React.FC<FrontCardContentProps> = ({
               : "font-serif text-4xl text-white"
           }
         >
-          {name}
+          {card.name}
         </div>
         <div className="mb-10 font-light text-white italic">
-          {personalityPhrase}
+          {card.personality_phrase}
         </div>
 
         <div className="flex w-full items-center justify-between">
@@ -54,7 +52,7 @@ export const FrontCardContent: React.FC<FrontCardContentProps> = ({
                   : "text-sm text-white/80 font-mono uppercase"
               }
             >
-              User {accountNumber}
+              User #{card.account_number}
             </span>
             <span
               className={
@@ -63,7 +61,7 @@ export const FrontCardContent: React.FC<FrontCardContentProps> = ({
                   : "text-xs text-white/50 font-mono uppercase"
               }
             >
-              {memberSince}
+              {card.member_since}
             </span>
           </div>
         </div>

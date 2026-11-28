@@ -9,9 +9,10 @@ import type {
   TodoRunWake,
   ToolTimeline,
 } from "@shared/api/generated";
+import type { SharedMemoryData } from "@shared/chat";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
-import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
+import type { ImageData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { AttachedFileData } from "@/types/shared/fileTypes";
 
@@ -44,7 +45,7 @@ export const BASE_MESSAGE_SCHEMA = {
   error: undefined as string | null | undefined,
   // Core non-tool fields
   image_data: undefined as ImageData | null | undefined,
-  memory_data: undefined as MemoryData | null | undefined,
+  memory_data: undefined as SharedMemoryData | null | undefined,
   todo_progress: undefined as TodoProgressData | null | undefined,
   replyToMessage: undefined as
     | { id: string; content: string; role: "user" | "assistant" }

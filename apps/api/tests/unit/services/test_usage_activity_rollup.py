@@ -18,7 +18,10 @@ from app.db.repositories.usage_daily import (
     UsageDailyIncrement,
     usage_daily_repository,
 )
+from app.db.repositories.users import user_repository
+from app.schemas.usage import BadgeTier
 from app.services.usage_activity import (
+    _record_tier,
     count_daily_actions,
     get_activity,
     record_cost,
@@ -379,3 +382,23 @@ class TestGetActivity:
         assert all(day.count == 0 and day.tokens == 0 for day in result.days)
         assert (result.total, result.total_tokens, result.streak) == (0, 0, 0)
         assert result.percentile is None and result.tier is None
+
+
+@pytest.mark.parametrize(
+    ("tier", "replaceable"),
+    [
+        ("bronze", []),
+        ("silver", ["bronze"]),
+        ("gold", ["bronze", "silver"]),
+        ("diamond", ["bronze", "silver", "gold"]),
+    ],
+)
+async def test_a_tier_promotion_may_only_replace_a_weaker_stored_tier(
+    tier: BadgeTier, replaceable: list[str]
+) -> None:
+    with patch.object(
+        user_repository, "record_activity_tier_promotion", AsyncMock(return_value=None)
+    ) as promote:
+        assert await _record_tier(USER, tier) is None
+
+    promote.assert_awaited_once_with(USER, tier, replaceable)

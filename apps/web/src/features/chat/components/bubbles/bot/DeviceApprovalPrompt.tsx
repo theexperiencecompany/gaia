@@ -2,14 +2,14 @@
 
 import { Chip } from "@heroui/react";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
+import type { DeviceApprovalCard } from "@shared/api/generated";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { devicesApi } from "@/features/devices/api/devicesApi";
 import { BRIDGE_UP_COMMAND } from "@/features/devices/constants";
-import type { DeviceApprovalRequiredData } from "@/features/devices/types";
 
 interface DeviceApprovalPromptProps {
-  device_approval_required: DeviceApprovalRequiredData;
+  device_approval_required: DeviceApprovalCard;
 }
 
 export function DeviceApprovalPrompt({

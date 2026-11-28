@@ -14,7 +14,7 @@ import bson
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
+from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME, TOOL_CALLS_CARD
 from app.constants.conversation import TOOL_OUTPUT_RETENTION
 from app.db.repositories.conversation_entries import OUTPUTS_DROPPED_FIELD
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -32,7 +32,6 @@ from app.services.conversation.tool_cards import (
     MCP_APP_CARD,
     OUTPUT_ORIGINAL_LENGTH,
     REASONING_STEP,
-    TOOL_CALLS_CARD,
 )
 from app.utils.errors import ConversationStoreError
 from app.workers.tasks import conversation_retention_tasks

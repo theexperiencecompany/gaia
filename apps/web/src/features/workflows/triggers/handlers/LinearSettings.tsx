@@ -40,13 +40,13 @@ export function LinearSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as LinearConfig;
   const triggerData = config.trigger_data;
   const integrationId = "linear";
 
-  const isConnected =
-    integrations.find((i) => i.id === integrationId)?.status === "connected";
+  const integration = integrations.find((i) => i.id === integrationId);
+  const isConnected = integration?.status === "connected";
 
   const [useManualInput, setUseManualInput] = useState(false);
   const triggerSlug = config.trigger_name || "";
@@ -75,14 +75,7 @@ export function LinearSettings({
   };
 
   if (!isConnected) {
-    return (
-      <TriggerConnectionPrompt
-        integrationName="Linear"
-        integrationId={integrationId}
-        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
-        onConnect={() => connectIntegration(integrationId)}
-      />
-    );
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
 
   return (

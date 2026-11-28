@@ -2,21 +2,21 @@
 
 import { Skeleton } from "@heroui/react";
 import { PlusSignIcon } from "@icons";
-import type { IntegrationAccountResponse } from "@shared/api/generated";
+import type {
+  IntegrationAccountResponse,
+  MyIntegrationItem,
+} from "@shared/api/generated";
 import { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIntegrationAccounts } from "@/features/integrations/hooks/useIntegrationAccounts";
-import type {
-  Integration,
-  IntegrationConnectOptions,
-} from "@/features/integrations/types";
+import type { IntegrationConnectOptions } from "@/features/integrations/types";
 import { IntegrationAccountRenameModal } from "./IntegrationAccountRenameModal";
 import { IntegrationAccountRow } from "./IntegrationAccountRow";
 
 interface IntegrationAccountsProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   /** Starts a connect: a new account, or with accountId that expired account signed back in. */
   onConnect: (
     integrationId: string,

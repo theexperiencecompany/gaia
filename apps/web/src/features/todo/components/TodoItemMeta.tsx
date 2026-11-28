@@ -176,7 +176,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
           className={shapeVariants({ shape: "sm" })}
           size="sm"
           variant="soft"
-          style={{ color: todoProject.color }}
+          style={{ color: todoProject.color ?? undefined }}
         >
           <Folder02Icon width={15} height={15} className="mx-1" />
           <Chip.Label>{todoProject.name}</Chip.Label>

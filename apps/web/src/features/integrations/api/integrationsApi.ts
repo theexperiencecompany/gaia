@@ -1,20 +1,14 @@
-import type {
-  AddIntegrationResponse,
-  UpdateIntegrationAccountRequest,
-} from "@shared/api/generated";
+import type { UpdateIntegrationAccountRequest } from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 
 import type {
+  AddIntegrationOutcome,
   CommunityIntegration,
+  ConnectIntegrationOutcome,
   CreateCustomIntegrationRequest,
   IntegrationConnectOptions,
 } from "../types";
-
-/** `addIntegration`'s result: the API's answer plus the two client-side states. */
-export type AddIntegrationOutcome = Omit<AddIntegrationResponse, "status"> & {
-  status: AddIntegrationResponse["status"] | "redirecting" | "bearer_required";
-};
 
 export const integrationsApi = {
   /**
@@ -52,9 +46,17 @@ export const integrationsApi = {
   connectIntegration: async (
     integrationId: string,
     { bearerToken, accountId }: IntegrationConnectOptions = {},
-  ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
+  ): Promise<ConnectIntegrationOutcome> => {
     if (typeof window === "undefined")
-      return { status: "error", name: "Unknown" };
+      return {
+        status: "error",
+        integrationId,
+        name: "Unknown",
+        message: null,
+        redirectUrl: null,
+        toolsCount: null,
+        error: null,
+      };
 
     const url = new URL(window.location.href);
     url.searchParams.delete("integration");
@@ -80,18 +82,14 @@ export const integrationsApi = {
         throw new Error("Invalid redirect URL received from server");
       }
       window.location.href = safeUrl;
-      return { status: "redirecting", name: response.name };
+      return { ...response, status: "redirecting" };
     }
 
     if (response.status === "error") {
       throw new Error(response.error || "Failed to connect integration");
     }
 
-    return {
-      status: response.status,
-      name: response.name,
-      toolsCount: response.toolsCount ?? undefined,
-    };
+    return response;
   },
 
   /**

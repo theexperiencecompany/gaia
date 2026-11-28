@@ -204,7 +204,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
                 isSelected={selectedTodoId === todo.id}
                 onUpdate={handleTodoUpdate}
                 onClick={handleTodoClick}
-                timezone={user?.timezone}
+                timezone={user?.timezone ?? undefined}
               />
             ))}
           </div>

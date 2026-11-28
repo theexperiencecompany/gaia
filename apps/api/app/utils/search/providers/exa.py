@@ -3,7 +3,7 @@
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.utils.search.models import SearchResponse, SearchResultItem
+from app.models.web_search_models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import CredentialSearchProvider
 
 _ENDPOINT = "https://api.exa.ai/search"

@@ -769,7 +769,7 @@ class TestTokenRefresh:
         token_store = _make_token_store()
         token_store.get_refresh_token = AsyncMock(return_value="valid-refresh")
         token_store.get_dcr_client = AsyncMock(return_value=None)
-        token_store.clear_oauth_grant = AsyncMock()
+        token_store.forget_rejected_grant = AsyncMock()
 
         # No client_id anywhere
         mcp_config = _make_mcp_config(client_id=None)
@@ -778,7 +778,7 @@ class TestTokenRefresh:
         result = await try_refresh_token(token_store, "no-cid-int", mcp_config, oauth_config)
 
         assert result is False
-        token_store.clear_oauth_grant.assert_not_awaited()
+        token_store.forget_rejected_grant.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

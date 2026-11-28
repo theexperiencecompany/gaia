@@ -14,10 +14,13 @@ from pydantic import BaseModel, Field
 
 from app.agents.tools.coding._context import get_session_id, get_user_id
 from app.agents.workspace.paths import session_screenshot_relpath
+from app.constants.chat import SCREENSHOT_CARD
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.agent_models import current_stream_writer, read_agent_configurable
 from app.models.chat_models import ConversationSource
+from app.models.desktop_card_models import ScreenshotCard
+from app.models.tool_card_registry import tool_card_data
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
 from app.services.storage import write_session_file
 from app.templates.docstrings.desktop_tool_docs import (
@@ -30,6 +33,7 @@ from app.templates.docstrings.desktop_tool_docs import (
 )
 from app.utils.image_codec import ImageCodec, InlineImage, InvalidImageError
 from app.utils.multimodal import ContentBlock, text_content_block
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
 
 _NOT_DESKTOP_ERROR = (
@@ -97,18 +101,14 @@ async def _run_desktop_action(
     )
 
 
-def _emit_tool_data(tool_name: str, data: dict[str, object]) -> None:
-    """Stream a unified tool_data entry so the chat UI renders a card."""
-    writer = current_stream_writer()
-    writer(
-        {
-            "tool_data": {
-                "tool_name": tool_name,
-                "data": data,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        }
+def _emit_screenshot_card(card: ScreenshotCard) -> None:
+    """Stream the capture's tool_data entry so the chat UI renders its card."""
+    entry = ToolDataEntry(
+        tool_name=SCREENSHOT_CARD,
+        data=tool_card_data(SCREENSHOT_CARD, card),
+        timestamp=datetime.now(UTC).isoformat(),
     )
+    current_stream_writer()({"tool_data": entry})
 
 
 async def _save_screenshot(config: RunnableConfig, image: InlineImage) -> str:
@@ -154,13 +154,12 @@ async def take_screenshot(
         return "Could not capture the screen: the desktop app returned no image."
 
     if shot.thumbnail_b64:
-        _emit_tool_data(
-            "screenshot_data",
-            {
-                "thumbnail": f"data:image/jpeg;base64,{shot.thumbnail_b64}",
-                "width": shot.width,
-                "height": shot.height,
-            },
+        _emit_screenshot_card(
+            ScreenshotCard(
+                thumbnail=f"data:image/jpeg;base64,{shot.thumbnail_b64}",
+                width=shot.width,
+                height=shot.height,
+            )
         )
 
     try:

@@ -15,7 +15,7 @@ import FilePreview, {
 } from "@/features/chat/components/files/FilePreview";
 import { FileTypeIcon } from "@/features/chat/components/files/FileTypeIcon";
 import { FILE_TYPE_STYLES } from "@/features/chat/components/files/fileTypeConfig";
-import type { ArtifactData } from "@/types/features/toolDataTypes";
+import type { ArtifactEvent } from "@/types/features/toolDataTypes";
 import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 const SESSION_ID = "dev-files-showcase";
@@ -99,18 +99,19 @@ function artifact(
   sizeBytes: number,
   body?: string,
   contentType?: string,
-): ArtifactData {
+): ArtifactEvent {
   return {
     session_id: SESSION_ID,
     event: "upsert",
     path,
     size_bytes: sizeBytes,
+    mtime: 0,
     body,
-    content_type: contentType,
+    content_type: contentType ?? null,
   };
 }
 
-const GENERATED_FILES: ArtifactData[] = [
+const GENERATED_FILES: ArtifactEvent[] = [
   artifact("weekly-summary.md", 3_204, "# Weekly summary\n\nAll green."),
   artifact("landing.html", 12_480, "<h1>Hello</h1>", "text/html"),
   artifact("report.pdf", 482_104),

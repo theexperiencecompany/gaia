@@ -118,7 +118,7 @@ function TreeFolder({ node, depth, actions }: TreeFolderProps) {
       try {
         const response = await memoryApi.listMemories({
           category: node.path,
-          pageSize: 50,
+          page_size: 50,
         });
         setMemories(response.memories ?? []);
       } catch {

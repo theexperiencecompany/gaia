@@ -2,16 +2,15 @@
  * Shared types for trigger UI components
  */
 
+import type { MyIntegrationItem } from "@shared/api/generated";
+
 export interface OptionItem {
   value: string;
   label: string;
 }
 
 export interface TriggerConnectionPromptProps {
-  integrationName: string;
-  integrationId: string;
-  iconUrl?: string | null;
-  onConnect: () => void;
+  integrationId: MyIntegrationItem["id"];
 }
 
 export interface TriggerTagInputProps {

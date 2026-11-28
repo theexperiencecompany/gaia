@@ -1,5 +1,6 @@
 "use client";
 
+import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import WorkflowSteps from "../shared/WorkflowSteps";
 
 // Shared surface for every "steps" card (tabbed Steps/History panel, read-only
@@ -8,15 +9,8 @@ import WorkflowSteps from "../shared/WorkflowSteps";
 export const STEPS_CARD_SURFACE =
   "flex min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-zinc-800/50 p-4 lg:h-full";
 
-interface WorkflowStepData {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-}
-
 interface WorkflowStepsPreviewCardProps {
-  steps: WorkflowStepData[];
+  steps: PublicWorkflowStep[];
   emptyMessage?: string;
 }
 

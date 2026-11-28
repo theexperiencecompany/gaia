@@ -61,7 +61,7 @@ export default function PaymentSuccessPage() {
   // Send the user straight to onboarding when we already know it's incomplete,
   // so they don't land on /c and get bounced by the onboarding guard a couple
   // seconds later (once the user-info fetch resolves). Default to chat.
-  const isMidOnboarding = !!user.onboarding && !user.onboarding.completed;
+  const isMidOnboarding = !!user?.onboarding && !user.onboarding.completed;
   const continueDestination = isMidOnboarding ? "/onboarding" : "/c";
 
   const [status, setStatus] = useState<PaymentStatus>("verifying");
@@ -194,7 +194,7 @@ export default function PaymentSuccessPage() {
                 nextBillingDate={receipt.nextBillingDate}
                 planName={receipt.planName}
                 purchasedAt={receipt.purchasedAt}
-                customerEmail={user.email || undefined}
+                customerEmail={user?.email || undefined}
                 quantity={receipt.quantity}
                 stage={printerStage}
                 subscriptionRef={receipt.subscriptionRef}

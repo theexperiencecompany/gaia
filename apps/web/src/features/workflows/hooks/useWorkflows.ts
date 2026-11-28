@@ -19,7 +19,7 @@ const EMPTY_WORKFLOWS: Workflow[] = [];
 
 export const useWorkflows = (enabled: boolean = true): UseWorkflowsReturn => {
   // A user's workflows need their session; a signed-out visitor would get a 401.
-  const { userId } = useCurrentUser();
+  const userId = useCurrentUser()?.user_id;
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: workflowKeys.list(),
     queryFn: async () => (await workflowApi.listWorkflows()).workflows,

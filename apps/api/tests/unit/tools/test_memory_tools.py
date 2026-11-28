@@ -47,6 +47,7 @@ from app.constants.memory import (
 from app.memory.management import MemoryNotFoundError
 from app.memory.retrieval import EpisodeHit
 from app.models.agent_models import RunUserMissingError
+from app.models.memory_card_models import MemoryForgetCard
 from app.models.memory_models import (
     MemoryDocument,
     MemoryEntry,
@@ -55,6 +56,7 @@ from app.models.memory_models import (
     MemoryEpisodesResponse,
     MemorySearchResult,
 )
+from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,6 +111,13 @@ def stream() -> Iterator[MagicMock]:
         yield writer
 
 
+_FORGET_CARD = MemoryForgetCard(memory_id="mem-1", reason="outdated", message="Memory forgotten")
+
+
+def _journal_json(hits: list[EpisodeHit]) -> list[dict[str, Any]]:
+    return [day.model_dump(mode="json") for day in _hits_to_episode_payloads(hits)]
+
+
 def _payloads(stream: MagicMock) -> list[dict[str, Any]]:
     return [call.args[0]["memory_data"] for call in stream.call_args_list]
 
@@ -120,20 +129,29 @@ def _payloads(stream: MagicMock) -> list[dict[str, Any]]:
 
 class TestStreamMemoryData:
     def test_wraps_the_payload_under_the_registry_key(self, stream: MagicMock) -> None:
-        _stream_memory_data({"action": "add"})
-        stream.assert_called_once_with({"memory_data": {"action": "add"}})
+        _stream_memory_data(_FORGET_CARD)
+        stream.assert_called_once_with(
+            {
+                "memory_data": {
+                    "action": "forget",
+                    "memory_id": "mem-1",
+                    "reason": "outdated",
+                    "message": "Memory forgotten",
+                }
+            }
+        )
 
     def test_outside_a_graph_run_it_is_a_silent_no_op(self) -> None:
         # Real langgraph raises RuntimeError here; a tool called from a script,
         # a worker or a test must not blow up because nobody is streaming.
-        _stream_memory_data({"action": "add"})
+        _stream_memory_data(_FORGET_CARD)
 
     def test_a_non_runtime_error_is_not_swallowed(self) -> None:
         with (
             patch(f"{MODULE}.current_stream_writer", side_effect=ValueError("boom")),
             pytest.raises(ValueError),
         ):
-            _stream_memory_data({"action": "add"})
+            _stream_memory_data(_FORGET_CARD)
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +186,7 @@ class TestCap:
 class TestEntryPayload:
     def test_serializes_json_mode_with_snake_case_keys(self) -> None:
         entry = MemoryEntry(id="mem-1", content="short", category_path="work/gaia")
-        payload = _entry_payload(entry)
+        payload = _entry_payload(entry).model_dump(mode="json")
         assert payload["id"] == "mem-1"
         assert payload["category_path"] == "work/gaia"
         # mode="json" — datetimes/enums must already be JSON-native.
@@ -176,7 +194,7 @@ class TestEntryPayload:
 
     def test_long_content_is_capped_for_the_frontend(self) -> None:
         entry = MemoryEntry(id="m", content="x" * (MEMORY_TOOL_CONTENT_MAX_CHARS + 50))
-        payload = _entry_payload(entry)
+        payload = _entry_payload(entry).model_dump(mode="json")
         assert len(payload["content"]) == MEMORY_TOOL_CONTENT_MAX_CHARS
         assert payload["content"].endswith("...")
 
@@ -193,7 +211,7 @@ class TestEpisodePayload:
             entries=[MemoryEpisodeEntry(time="09:30", text="shipped", source="conversation")],
             summary="a good day",
         )
-        assert _episode_payload(episode) == {
+        assert _episode_payload(episode).model_dump(mode="json") == {
             "date": "2026-03-12",
             "entries": [{"time": "09:30", "text": "shipped", "source": "conversation"}],
             "summary": "a good day",
@@ -201,7 +219,7 @@ class TestEpisodePayload:
 
     def test_absent_summary_stays_null(self) -> None:
         episode = MemoryEpisode(date="2026-03-12", entries=[], summary=None)
-        assert _episode_payload(episode)["summary"] is None
+        assert _episode_payload(episode).summary is None
 
     def test_long_entry_text_and_summary_are_capped(self) -> None:
         long = "x" * (MEMORY_TOOL_CONTENT_MAX_CHARS + 50)
@@ -210,14 +228,14 @@ class TestEpisodePayload:
             entries=[MemoryEpisodeEntry(time="09:30", text=long, source="email")],
             summary=long,
         )
-        payload = _episode_payload(episode)
+        payload = _episode_payload(episode).model_dump(mode="json")
         assert len(payload["entries"][0]["text"]) == MEMORY_TOOL_CONTENT_MAX_CHARS
         assert len(payload["summary"]) == MEMORY_TOOL_CONTENT_MAX_CHARS
 
 
 class TestDocumentPayload:
     def test_serializes_the_document_contract(self) -> None:
-        assert _document_payload(_make_document()) == {
+        assert _document_payload(_make_document()).model_dump(mode="json") == {
             "doc_type": "user_md",
             "content": "# About the user\nLikes coffee.",
             "version": 3,
@@ -227,12 +245,12 @@ class TestDocumentPayload:
     def test_content_uses_the_larger_document_cap(self) -> None:
         # A document must NOT be squeezed to the 400-char memory cap.
         content = "x" * (MEMORY_TOOL_CONTENT_MAX_CHARS + 100)
-        payload = _document_payload(_make_document(content=content))
+        payload = _document_payload(_make_document(content=content)).model_dump(mode="json")
         assert payload["content"] == content
 
     def test_oversized_document_is_capped(self) -> None:
         content = "x" * (MEMORY_TOOL_DOCUMENT_MAX_CHARS + 10)
-        payload = _document_payload(_make_document(content=content))
+        payload = _document_payload(_make_document(content=content)).model_dump(mode="json")
         assert len(payload["content"]) == MEMORY_TOOL_DOCUMENT_MAX_CHARS
 
 
@@ -247,7 +265,7 @@ class TestHitsToEpisodePayloads:
 
     def test_groups_hits_of_the_same_day_into_one_entry_list(self) -> None:
         day = date_type(2026, 3, 12)
-        payloads = _hits_to_episode_payloads(
+        payloads = _journal_json(
             [
                 EpisodeHit(date=day, text="morning", time="09:30"),
                 EpisodeHit(date=day, text="evening", time="18:00"),
@@ -266,7 +284,7 @@ class TestHitsToEpisodePayloads:
 
     def test_a_timeless_hit_becomes_the_day_summary(self) -> None:
         day = date_type(2026, 3, 12)
-        payloads = _hits_to_episode_payloads(
+        payloads = _journal_json(
             [
                 EpisodeHit(date=day, text="a quiet day", time=None),
                 EpisodeHit(date=day, text="shipped", time="09:30"),
@@ -276,7 +294,7 @@ class TestHitsToEpisodePayloads:
         assert [entry["text"] for entry in payloads[0]["entries"]] == ["shipped"]
 
     def test_days_are_returned_newest_first(self) -> None:
-        payloads = _hits_to_episode_payloads(
+        payloads = _journal_json(
             [
                 EpisodeHit(date=date_type(2025, 1, 1), text="old", time="09:00"),
                 EpisodeHit(date=date_type(2026, 3, 12), text="new", time="09:00"),
@@ -290,16 +308,12 @@ class TestHitsToEpisodePayloads:
         ]
 
     def test_dates_are_serialized_as_iso_strings(self) -> None:
-        payloads = _hits_to_episode_payloads(
-            [EpisodeHit(date=date_type(2026, 3, 12), text="t", time="09:00")]
-        )
+        payloads = _journal_json([EpisodeHit(date=date_type(2026, 3, 12), text="t", time="09:00")])
         assert payloads[0]["date"] == "2026-03-12"
 
     def test_long_hit_text_is_capped(self) -> None:
         long = "x" * (MEMORY_TOOL_CONTENT_MAX_CHARS + 50)
-        payloads = _hits_to_episode_payloads(
-            [EpisodeHit(date=date_type(2026, 3, 12), text=long, time="09:00")]
-        )
+        payloads = _journal_json([EpisodeHit(date=date_type(2026, 3, 12), text=long, time="09:00")])
         assert len(payloads[0]["entries"][0]["text"]) == MEMORY_TOOL_CONTENT_MAX_CHARS
 
 
@@ -446,7 +460,7 @@ class TestAddMemory:
             return_value=self._retained(stored, ReconcileOutcome.NEW)
         )
 
-        result = await add_memory.coroutine(
+        result = await tool_coroutine(add_memory, str)(
             config=_make_config(),
             content="User likes coffee",
         )
@@ -467,7 +481,9 @@ class TestAddMemory:
             return_value=self._retained(stored, ReconcileOutcome.NEW)
         )
 
-        await add_memory.coroutine(config=_make_config(), content="c", folder="work/gaia")
+        await tool_coroutine(add_memory, str)(
+            config=_make_config(), content="c", folder="work/gaia"
+        )
 
         assert mock_engine.retain_single.await_args.kwargs["category_path"] == "work/gaia"
 
@@ -492,7 +508,7 @@ class TestAddMemory:
         stored = MemoryEntry(id="mem-1", content="c", category_path="work")
         mock_engine.retain_single = AsyncMock(return_value=self._retained(stored, outcome))
 
-        result = await add_memory.coroutine(config=_make_config(), content="c")
+        result = await tool_coroutine(add_memory, str)(config=_make_config(), content="c")
 
         assert expected_phrase in result
         payload = _payloads(stream)[0]
@@ -508,7 +524,7 @@ class TestAddMemory:
             return_value=self._retained(stored, ReconcileOutcome.NEW)
         )
 
-        await add_memory.coroutine(config=_make_config(), content="c")
+        await tool_coroutine(add_memory, str)(config=_make_config(), content="c")
 
         payload = _payloads(stream)[0]
         assert payload["action"] == "add"
@@ -517,14 +533,14 @@ class TestAddMemory:
 
     async def test_no_user_id_is_refused(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await add_memory.coroutine(
+            await tool_coroutine(add_memory, str)(
                 config=_make_config_no_user(),
                 content="data",
             )
 
     async def test_no_config_is_refused(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await add_memory.coroutine(
+            await tool_coroutine(add_memory, str)(
                 config={},
                 content="data",
             )
@@ -534,7 +550,7 @@ class TestAddMemory:
         mock_engine.retain_single = AsyncMock()
 
         with pytest.raises(RunUserMissingError):
-            await add_memory.coroutine(config=_make_config_no_user(), content="data")
+            await tool_coroutine(add_memory, str)(config=_make_config_no_user(), content="data")
 
         mock_engine.retain_single.assert_not_awaited()
 
@@ -546,7 +562,7 @@ class TestAddMemory:
         """When the engine raises an exception, tool returns a failure message."""
         mock_engine.retain_single = AsyncMock(side_effect=Exception("storage failed"))
 
-        result = await add_memory.coroutine(
+        result = await tool_coroutine(add_memory, str)(
             config=_make_config(),
             content="data",
         )
@@ -560,7 +576,7 @@ class TestAddMemory:
     ) -> None:
         mock_engine.retain_single = AsyncMock(side_effect=RuntimeError("db down"))
 
-        await add_memory.coroutine(config=_make_config(), content="data")
+        await tool_coroutine(add_memory, str)(config=_make_config(), content="data")
 
         stream.assert_not_called()
 
@@ -587,7 +603,7 @@ class TestSearchMemory:
             return_value=MemorySearchResult(memories=memories, total_count=2)
         )
 
-        result = await search_memory.coroutine(
+        result = await tool_coroutine(search_memory, str)(
             config=_make_config(),
             query="coffee",
         )
@@ -607,7 +623,7 @@ class TestSearchMemory:
         """Custom limit is passed to service."""
         mock_engine.recall = AsyncMock(return_value=MemorySearchResult(memories=[], total_count=0))
 
-        await search_memory.coroutine(
+        await tool_coroutine(search_memory, str)(
             config=_make_config(),
             query="anything",
             limit=10,
@@ -624,7 +640,7 @@ class TestSearchMemory:
 
         mock_engine.recall = AsyncMock(return_value=MemorySearchResult(memories=[], total_count=0))
 
-        await search_memory.coroutine(config=_make_config(), query="q", limit=0)
+        await tool_coroutine(search_memory, str)(config=_make_config(), query="q", limit=0)
 
         assert mock_engine.recall.await_args.kwargs["limit"] == DEFAULT_RECALL_LIMIT
 
@@ -636,7 +652,7 @@ class TestSearchMemory:
         """Empty search results returns appropriate message."""
         mock_engine.recall = AsyncMock(return_value=MemorySearchResult(memories=[], total_count=0))
 
-        result = await search_memory.coroutine(
+        result = await tool_coroutine(search_memory, str)(
             config=_make_config(),
             query="nonexistent",
         )
@@ -649,7 +665,7 @@ class TestSearchMemory:
     ) -> None:
         mock_engine.recall = AsyncMock(return_value=MemorySearchResult(memories=[], total_count=0))
 
-        result = await search_memory.coroutine(
+        result = await tool_coroutine(search_memory, str)(
             config=_make_config(), query="q", folder="relationships"
         )
 
@@ -667,7 +683,7 @@ class TestSearchMemory:
             )
         )
 
-        await search_memory.coroutine(config=_make_config(), query="coffee")
+        await tool_coroutine(search_memory, str)(config=_make_config(), query="coffee")
 
         payload = _payloads(stream)[0]
         assert payload["action"] == "search"
@@ -681,20 +697,20 @@ class TestSearchMemory:
     ) -> None:
         mock_engine.recall = AsyncMock(return_value=MemorySearchResult(memories=[], total_count=0))
 
-        await search_memory.coroutine(config=_make_config(), query="q")
+        await tool_coroutine(search_memory, str)(config=_make_config(), query="q")
 
         assert _payloads(stream)[0]["memories"] == []
 
     async def test_no_user_id_is_refused(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await search_memory.coroutine(
+            await tool_coroutine(search_memory, str)(
                 config=_make_config_no_user(),
                 query="test",
             )
 
     async def test_no_config_is_refused(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await search_memory.coroutine(
+            await tool_coroutine(search_memory, str)(
                 config={},
                 query="test",
             )
@@ -707,7 +723,7 @@ class TestSearchMemory:
         mock_engine.recall = AsyncMock(side_effect=RuntimeError("chroma down"))
 
         with pytest.raises(RuntimeError, match="chroma down"):
-            await search_memory.coroutine(config=_make_config(), query="q")
+            await tool_coroutine(search_memory, str)(config=_make_config(), query="q")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_memory_without_score_omits_score(
@@ -724,7 +740,7 @@ class TestSearchMemory:
             return_value=MemorySearchResult(memories=[memory], total_count=1)
         )
 
-        result = await search_memory.coroutine(
+        result = await tool_coroutine(search_memory, str)(
             config=_make_config(),
             query="test",
         )
@@ -747,7 +763,7 @@ class TestSearchMemory:
             return_value=MemorySearchResult(memories=memories, total_count=3)
         )
 
-        result = await search_memory.coroutine(
+        result = await tool_coroutine(search_memory, str)(
             config=_make_config(),
             query="all",
         )
@@ -770,7 +786,7 @@ class TestUpdateMemory:
         updated = MemoryEntry(id="mem-2", content="new", category_path="home", version=2)
         mock_engine.update_memory = AsyncMock(return_value=updated)
 
-        result = await update_memory.coroutine(
+        result = await tool_coroutine(update_memory, str)(
             config=_make_config(), memory_id="mem-1", new_content="new"
         )
 
@@ -786,7 +802,9 @@ class TestUpdateMemory:
         updated = MemoryEntry(id="mem-2", content="new", version=2)
         mock_engine.update_memory = AsyncMock(return_value=updated)
 
-        await update_memory.coroutine(config=_make_config(), memory_id="mem-1", new_content="new")
+        await tool_coroutine(update_memory, str)(
+            config=_make_config(), memory_id="mem-1", new_content="new"
+        )
 
         payload = _payloads(stream)[0]
         assert payload["action"] == "update"
@@ -802,7 +820,7 @@ class TestUpdateMemory:
         mock_engine.update_memory = AsyncMock(side_effect=MemoryNotFoundError("gone"))
 
         with pytest.raises(MemoryNotFoundError):
-            await update_memory.coroutine(
+            await tool_coroutine(update_memory, str)(
                 config=_make_config(), memory_id="gone", new_content="new"
             )
 
@@ -810,7 +828,7 @@ class TestUpdateMemory:
 
     async def test_missing_user_id_returns_error(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await update_memory.coroutine(
+            await tool_coroutine(update_memory, str)(
                 config=_make_config_no_user(), memory_id="m", new_content="c"
             )
 
@@ -819,7 +837,9 @@ class TestUpdateMemory:
         mock_engine.update_memory = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
-            await update_memory.coroutine(config=_make_config(), memory_id="m", new_content="c")
+            await tool_coroutine(update_memory, str)(
+                config=_make_config(), memory_id="m", new_content="c"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -834,7 +854,7 @@ class TestForgetMemory:
     ) -> None:
         mock_engine.forget_memory = AsyncMock(return_value=True)
 
-        result = await forget_memory.coroutine(
+        result = await tool_coroutine(forget_memory, str)(
             config=_make_config(), memory_id="mem-1", reason="user moved"
         )
 
@@ -848,7 +868,9 @@ class TestForgetMemory:
     ) -> None:
         mock_engine.forget_memory = AsyncMock(return_value=True)
 
-        await forget_memory.coroutine(config=_make_config(), memory_id="mem-1", reason="outdated")
+        await tool_coroutine(forget_memory, str)(
+            config=_make_config(), memory_id="mem-1", reason="outdated"
+        )
 
         assert _payloads(stream)[0] == {
             "action": "forget",
@@ -863,21 +885,27 @@ class TestForgetMemory:
     ) -> None:
         mock_engine.forget_memory = AsyncMock(return_value=False)
 
-        result = await forget_memory.coroutine(config=_make_config(), memory_id="gone", reason="r")
+        result = await tool_coroutine(forget_memory, str)(
+            config=_make_config(), memory_id="gone", reason="r"
+        )
 
         assert result == "Error: memory gone not found."
         stream.assert_not_called()
 
     async def test_missing_user_id_returns_error(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await forget_memory.coroutine(config=_make_config_no_user(), memory_id="m", reason="r")
+            await tool_coroutine(forget_memory, str)(
+                config=_make_config_no_user(), memory_id="m", reason="r"
+            )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
         mock_engine.forget_memory = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
-            await forget_memory.coroutine(config=_make_config(), memory_id="m", reason="r")
+            await tool_coroutine(forget_memory, str)(
+                config=_make_config(), memory_id="m", reason="r"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -896,7 +924,7 @@ class TestSearchJournal:
             ]
         )
 
-        result = await search_journal.coroutine(config=_make_config(), query="shipped")
+        result = await tool_coroutine(search_journal, str)(config=_make_config(), query="shipped")
 
         assert "- 2026-03-12 09:30: shipped the API" in result
         mock_engine.recall_episodes.assert_awaited_once_with(FAKE_USER_ID, "shipped")
@@ -909,7 +937,7 @@ class TestSearchJournal:
             return_value=[EpisodeHit(date=date_type(2026, 3, 12), text="a quiet day", time=None)]
         )
 
-        result = await search_journal.coroutine(config=_make_config(), query="quiet")
+        result = await tool_coroutine(search_journal, str)(config=_make_config(), query="quiet")
 
         assert "- 2026-03-12 (day summary): a quiet day" in result
 
@@ -925,7 +953,7 @@ class TestSearchJournal:
             ]
         )
 
-        result = await search_journal.coroutine(config=_make_config(), query="q")
+        result = await tool_coroutine(search_journal, str)(config=_make_config(), query="q")
 
         assert "Found journal activity on 1 days" in result
 
@@ -937,7 +965,7 @@ class TestSearchJournal:
             return_value=[EpisodeHit(date=date_type(2026, 3, 12), text="shipped", time="09:30")]
         )
 
-        await search_journal.coroutine(config=_make_config(), query="shipped")
+        await tool_coroutine(search_journal, str)(config=_make_config(), query="shipped")
 
         payload = _payloads(stream)[0]
         assert payload["action"] == "journal"
@@ -950,21 +978,21 @@ class TestSearchJournal:
     ) -> None:
         mock_engine.recall_episodes = AsyncMock(return_value=[])
 
-        result = await search_journal.coroutine(config=_make_config(), query="nothing")
+        result = await tool_coroutine(search_journal, str)(config=_make_config(), query="nothing")
 
         assert result == "No journal entries matching 'nothing'."
         assert _payloads(stream)[0]["episodes"] == []
 
     async def test_missing_user_id_returns_error(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await search_journal.coroutine(config=_make_config_no_user(), query="q")
+            await tool_coroutine(search_journal, str)(config=_make_config_no_user(), query="q")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
         mock_engine.recall_episodes = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
-            await search_journal.coroutine(config=_make_config(), query="q")
+            await tool_coroutine(search_journal, str)(config=_make_config(), query="q")
 
 
 # ---------------------------------------------------------------------------
@@ -979,7 +1007,9 @@ class TestSearchConversations:
             return_value=[("2026-03-12", "the exact passage", 0.9123)]
         )
 
-        result = await search_conversations.coroutine(config=_make_config(), query="passage")
+        result = await tool_coroutine(search_conversations, str)(
+            config=_make_config(), query="passage"
+        )
 
         assert "[2026-03-12] (match 0.91)" in result
         assert "the exact passage" in result
@@ -992,7 +1022,7 @@ class TestSearchConversations:
         long = "x" * (MEMORY_TOOL_DOCUMENT_MAX_CHARS + 100)
         mock_engine.recall_transcripts = AsyncMock(return_value=[("2026-03-12", long, 0.9)])
 
-        result = await search_conversations.coroutine(config=_make_config(), query="q")
+        result = await tool_coroutine(search_conversations, str)(config=_make_config(), query="q")
 
         assert "x" * MEMORY_TOOL_DOCUMENT_MAX_CHARS not in result
         assert result.endswith("...")
@@ -1003,7 +1033,7 @@ class TestSearchConversations:
             return_value=[("2026-03-12", "first", 0.9), ("2025-01-01", "second", 0.5)]
         )
 
-        result = await search_conversations.coroutine(config=_make_config(), query="q")
+        result = await tool_coroutine(search_conversations, str)(config=_make_config(), query="q")
 
         assert "first" in result
         assert "second" in result
@@ -1012,7 +1042,9 @@ class TestSearchConversations:
     async def test_no_hits_reports_the_query_back(self, mock_engine: MagicMock) -> None:
         mock_engine.recall_transcripts = AsyncMock(return_value=[])
 
-        result = await search_conversations.coroutine(config=_make_config(), query="nothing")
+        result = await tool_coroutine(search_conversations, str)(
+            config=_make_config(), query="nothing"
+        )
 
         assert result == "No past-conversation passages matching 'nothing'."
 
@@ -1024,20 +1056,22 @@ class TestSearchConversations:
         # contract — raw transcript text must not be pushed to the tool card.
         mock_engine.recall_transcripts = AsyncMock(return_value=[("2026-03-12", "text", 0.9)])
 
-        await search_conversations.coroutine(config=_make_config(), query="q")
+        await tool_coroutine(search_conversations, str)(config=_make_config(), query="q")
 
         stream.assert_not_called()
 
     async def test_missing_user_id_returns_error(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await search_conversations.coroutine(config=_make_config_no_user(), query="q")
+            await tool_coroutine(search_conversations, str)(
+                config=_make_config_no_user(), query="q"
+            )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
         mock_engine.recall_transcripts = AsyncMock(side_effect=RuntimeError("chroma down"))
 
         with pytest.raises(RuntimeError, match="chroma down"):
-            await search_conversations.coroutine(config=_make_config(), query="q")
+            await tool_coroutine(search_conversations, str)(config=_make_config(), query="q")
 
 
 # ---------------------------------------------------------------------------
@@ -1064,7 +1098,7 @@ class TestGetJournal:
         )
         mock_engine.get_episodes = AsyncMock(return_value=self._response(episode))
 
-        result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+        result = await tool_coroutine(get_journal, str)(config=_make_config(), date="2026-03-12")
 
         assert "Journal for 2026-03-12 (2 entries)" in result
         assert "Summary: a productive day" in result
@@ -1081,7 +1115,7 @@ class TestGetJournal:
         episode = MemoryEpisode(date="2026-03-12", entries=[], summary="a quiet day")
         mock_engine.get_episodes = AsyncMock(return_value=self._response(episode))
 
-        result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+        result = await tool_coroutine(get_journal, str)(config=_make_config(), date="2026-03-12")
 
         assert "Summary: a quiet day" in result
         assert "(0 entries)" in result
@@ -1097,7 +1131,7 @@ class TestGetJournal:
         )
         mock_engine.get_episodes = AsyncMock(return_value=self._response(episode))
 
-        result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+        result = await tool_coroutine(get_journal, str)(config=_make_config(), date="2026-03-12")
 
         assert "Summary:" not in result
         assert "- 09:30 shipped" in result
@@ -1113,7 +1147,7 @@ class TestGetJournal:
         )
         mock_engine.get_episodes = AsyncMock(return_value=self._response(episode))
 
-        await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+        await tool_coroutine(get_journal, str)(config=_make_config(), date="2026-03-12")
 
         payload = _payloads(stream)[0]
         assert payload["action"] == "journal"
@@ -1126,7 +1160,7 @@ class TestGetJournal:
     ) -> None:
         mock_engine.get_episodes = AsyncMock(return_value=self._response(None))
 
-        result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+        result = await tool_coroutine(get_journal, str)(config=_make_config(), date="2026-03-12")
 
         assert result == "No journal entries for 2026-03-12."
         assert _payloads(stream)[0]["episodes"] == []
@@ -1138,7 +1172,7 @@ class TestGetJournal:
         episode = MemoryEpisode(date="2026-03-12", entries=[], summary=None)
         mock_engine.get_episodes = AsyncMock(return_value=self._response(episode))
 
-        result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+        result = await tool_coroutine(get_journal, str)(config=_make_config(), date="2026-03-12")
 
         assert result == "No journal entries for 2026-03-12."
 
@@ -1152,7 +1186,7 @@ class TestGetJournal:
         mock_local_today.return_value = date_type(2026, 8, 27)
         mock_engine.get_episodes = AsyncMock(return_value=self._response(None))
 
-        result = await get_journal.coroutine(config=_make_config(), date="")
+        result = await tool_coroutine(get_journal, str)(config=_make_config(), date="")
 
         mock_local_today.assert_awaited_once_with(FAKE_USER_ID)
         mock_engine.get_episodes.assert_awaited_once_with(
@@ -1171,7 +1205,7 @@ class TestGetJournal:
         mock_local_today.return_value = date_type(2026, 8, 27)
         mock_engine.get_episodes = AsyncMock(return_value=self._response(None))
 
-        result = await get_journal.coroutine(config=_make_config())
+        result = await tool_coroutine(get_journal, str)(config=_make_config())
 
         mock_local_today.assert_awaited_once_with(FAKE_USER_ID)
         assert result == "No journal entries for 2026-08-27."
@@ -1186,7 +1220,7 @@ class TestGetJournal:
     ) -> None:
         mock_engine.get_episodes = AsyncMock()
 
-        result = await get_journal.coroutine(config=_make_config(), date=bad_date)
+        result = await tool_coroutine(get_journal, str)(config=_make_config(), date=bad_date)
 
         # The exact model-facing refusal: the echoed input and the format hint.
         assert result == f"Error: invalid date '{bad_date}'. Use YYYY-MM-DD."
@@ -1199,14 +1233,14 @@ class TestGetJournal:
 
     async def test_missing_user_id_returns_error(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await get_journal.coroutine(config=_make_config_no_user(), date="2026-03-12")
+            await tool_coroutine(get_journal, str)(config=_make_config_no_user(), date="2026-03-12")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
         mock_engine.get_episodes = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
-            await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+            await tool_coroutine(get_journal, str)(config=_make_config(), date="2026-03-12")
 
 
 # ---------------------------------------------------------------------------
@@ -1224,7 +1258,9 @@ class TestReadMemoryDocument:
         content = "y" * (MEMORY_TOOL_DOCUMENT_MAX_CHARS + 100)
         mock_engine.get_document = AsyncMock(return_value=_make_document(content=content))
 
-        result = await read_memory_document.coroutine(config=_make_config(), doc_type="user")
+        result = await tool_coroutine(read_memory_document, str)(
+            config=_make_config(), doc_type="user"
+        )
 
         assert result == content
         assert len(_payloads(stream)[0]["document"]["content"]) == MEMORY_TOOL_DOCUMENT_MAX_CHARS
@@ -1237,7 +1273,9 @@ class TestReadMemoryDocument:
             return_value=_make_document(doc_type=MemoryDocType.PEOPLE_MD)
         )
 
-        await read_memory_document.coroutine(config=_make_config(), doc_type="  People.md ")
+        await tool_coroutine(read_memory_document, str)(
+            config=_make_config(), doc_type="  People.md "
+        )
 
         mock_engine.get_document.assert_awaited_once_with(FAKE_USER_ID, MemoryDocType.PEOPLE_MD)
 
@@ -1247,7 +1285,7 @@ class TestReadMemoryDocument:
     ) -> None:
         mock_engine.get_document = AsyncMock(return_value=_make_document())
 
-        await read_memory_document.coroutine(config=_make_config(), doc_type="user")
+        await tool_coroutine(read_memory_document, str)(config=_make_config(), doc_type="user")
 
         payload = _payloads(stream)[0]
         assert payload["action"] == "document"
@@ -1261,7 +1299,9 @@ class TestReadMemoryDocument:
     ) -> None:
         mock_engine.get_document = AsyncMock(return_value=None)
 
-        result = await read_memory_document.coroutine(config=_make_config(), doc_type="agenda")
+        result = await tool_coroutine(read_memory_document, str)(
+            config=_make_config(), doc_type="agenda"
+        )
 
         assert "The 'agenda' document is empty" in result
         stream.assert_not_called()
@@ -1273,7 +1313,9 @@ class TestReadMemoryDocument:
     ) -> None:
         mock_engine.get_document = AsyncMock(return_value=_make_document(content=blank))
 
-        result = await read_memory_document.coroutine(config=_make_config(), doc_type="user")
+        result = await tool_coroutine(read_memory_document, str)(
+            config=_make_config(), doc_type="user"
+        )
 
         assert "is empty" in result
         stream.assert_not_called()
@@ -1282,7 +1324,9 @@ class TestReadMemoryDocument:
     async def test_unknown_doc_type_lists_the_valid_choices(self, mock_engine: MagicMock) -> None:
         mock_engine.get_document = AsyncMock()
 
-        result = await read_memory_document.coroutine(config=_make_config(), doc_type="diary")
+        result = await tool_coroutine(read_memory_document, str)(
+            config=_make_config(), doc_type="diary"
+        )
 
         assert "unknown document 'diary'" in result
         for filename in MEMORY_DOC_FILENAMES.values():
@@ -1291,14 +1335,16 @@ class TestReadMemoryDocument:
 
     async def test_missing_user_id_returns_error(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await read_memory_document.coroutine(config=_make_config_no_user(), doc_type="user")
+            await tool_coroutine(read_memory_document, str)(
+                config=_make_config_no_user(), doc_type="user"
+            )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
         mock_engine.get_document = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
-            await read_memory_document.coroutine(config=_make_config(), doc_type="user")
+            await tool_coroutine(read_memory_document, str)(config=_make_config(), doc_type="user")
 
 
 # ---------------------------------------------------------------------------
@@ -1313,7 +1359,7 @@ class TestUpdateMemoryDocument:
     ) -> None:
         mock_engine.update_document = AsyncMock(return_value=_make_document(version=4))
 
-        result = await update_memory_document.coroutine(
+        result = await tool_coroutine(update_memory_document, str)(
             config=_make_config(), doc_type="user", content="# New"
         )
 
@@ -1331,7 +1377,7 @@ class TestUpdateMemoryDocument:
             return_value=_make_document(doc_type=MemoryDocType.PEOPLE_MD, version=2)
         )
 
-        await update_memory_document.coroutine(
+        await tool_coroutine(update_memory_document, str)(
             config=_make_config(), doc_type="people", content="# New"
         )
 
@@ -1347,7 +1393,7 @@ class TestUpdateMemoryDocument:
     ) -> None:
         mock_engine.update_document = AsyncMock(return_value=_make_document(content="", version=5))
 
-        result = await update_memory_document.coroutine(
+        result = await tool_coroutine(update_memory_document, str)(
             config=_make_config(), doc_type="user", content=""
         )
 
@@ -1360,7 +1406,7 @@ class TestUpdateMemoryDocument:
     ) -> None:
         mock_engine.update_document = AsyncMock()
 
-        result = await update_memory_document.coroutine(
+        result = await tool_coroutine(update_memory_document, str)(
             config=_make_config(), doc_type="scratchpad", content="# New"
         )
 
@@ -1369,7 +1415,7 @@ class TestUpdateMemoryDocument:
 
     async def test_missing_user_id_returns_error(self) -> None:
         with pytest.raises(RunUserMissingError):
-            await update_memory_document.coroutine(
+            await tool_coroutine(update_memory_document, str)(
                 config=_make_config_no_user(), doc_type="user", content="c"
             )
 
@@ -1378,6 +1424,6 @@ class TestUpdateMemoryDocument:
         mock_engine.update_document = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
-            await update_memory_document.coroutine(
+            await tool_coroutine(update_memory_document, str)(
                 config=_make_config(), doc_type="user", content="c"
             )

@@ -23,8 +23,8 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.integrations.calendar_tool import (
+    _calendar_card,
     _extract_datetime,
-    _format_calendar_for_stream,
     _get_user_timezone,
     _run_sync,
     register_calendar_custom_tools,
@@ -53,6 +53,7 @@ from app.models.calendar_models import (
 from app.models.common_models import GatherContextInput
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.user_models import UserDocument
+from app.services.calendar_service import format_event_for_frontend
 from app.services.composio.account_scope import account_scope, current_selection
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.calendar_utils import CALENDAR_API_BASE
@@ -91,6 +92,11 @@ def _tools() -> dict[str, Any]:
 @pytest.fixture
 def tools() -> dict[str, Any]:
     return _tools()
+
+
+def _display_rows(events: list[GoogleCalendarEventResource]) -> list[dict[str, object]]:
+    """Return the rows a card shows when calendar names and colours could not be loaded."""
+    return [format_event_for_frontend(event, {}, {}).model_dump() for event in events]
 
 
 def _assert_metadata_failure_logged(logged: MagicMock, error_type: str, error: str) -> None:
@@ -197,25 +203,20 @@ class TestExtractDatetime:
 
 
 # ---------------------------------------------------------------------------
-# _format_calendar_for_stream
+# _calendar_card
 # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# _format_calendar_for_stream
-# ---------------------------------------------------------------------------
-
-
-class TestFormatCalendarForStream:
+class TestCalendarCard:
     def test_google_shape(self) -> None:
-        assert _format_calendar_for_stream(
+        assert _calendar_card(
             CalendarSummary(
                 summary="Work",
                 id="work@group.calendar.google.com",
                 description="team",
                 backgroundColor="#ff0000",
             )
-        ) == {
+        ).model_dump() == {
             "name": "Work",
             "id": "work@group.calendar.google.com",
             "description": "team",
@@ -223,10 +224,10 @@ class TestFormatCalendarForStream:
         }
 
     def test_missing_fields_do_not_raise(self) -> None:
-        out = _format_calendar_for_stream(CalendarSummary())
-        assert out["name"] is None
-        assert out["id"] is None
-        assert out["backgroundColor"] is None
+        out = _calendar_card(CalendarSummary())
+        assert out.name is None
+        assert out.id is None
+        assert out.backgroundColor is None
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +443,10 @@ class TestGetDaySummary:
         metadata_mock = (
             AsyncMock(side_effect=RuntimeError("calendar list down"))
             if raises_metadata
-            else AsyncMock(return_value=metadata or ({}, {}))
+            # Only the caller's calendars are named; anyone else's lookup fails.
+            else AsyncMock(
+                side_effect=lambda user_id: {AUTH["user_id"]: metadata or ({}, {})}[user_id]
+            )
         )
         user_doc = UserDocument.model_validate(user) if user is not None else None
         with (
@@ -634,7 +638,7 @@ class TestGetDaySummary:
             out, _ = self._run(
                 tools, GetDaySummaryInput(date="2026-03-15"), events=events, raises_metadata=True
             )
-        assert out["events"] == [event.model_dump() for event in events]
+        assert out["events"] == _display_rows(events)
         _assert_metadata_failure_logged(logged, "RuntimeError", "calendar list down")
 
     def test_a_failed_user_lookup_falls_back_to_utc_and_says_so(self, tools, writer) -> None:
@@ -749,11 +753,13 @@ class TestFetchEvents:
         out, _ = self._run(tools, FetchEventsInput(), events=[])
         assert out["has_more"] is False
 
-    def test_metadata_failure_falls_back_to_raw_events(self, tools, writer) -> None:
+    def test_metadata_failure_still_streams_display_rows(self, tools, writer) -> None:
+        """A raw Google event in the card would throw in the web chat and take the view down."""
         events = [_timed_event("2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z")]
         with patch(f"{MODULE}.log") as logged:
             out, _ = self._run(tools, FetchEventsInput(), events=events, raises_metadata=True)
-        assert out["calendar_fetch_data"] == [event.model_dump() for event in events]
+        assert out["calendar_fetch_data"] == _display_rows(events)
+        writer.assert_called_once_with({"calendar_fetch_data": _display_rows(events)})
         _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
     def test_nothing_is_streamed_when_there_are_no_events(self, tools, writer) -> None:
@@ -831,7 +837,7 @@ class TestFindEvent:
                 matching_events=events,
                 raises_metadata=True,
             )
-        assert out["calendar_search_data"] == [event.model_dump() for event in events]
+        assert out["calendar_search_data"] == _display_rows(events)
         _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
 

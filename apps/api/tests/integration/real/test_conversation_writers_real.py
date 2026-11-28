@@ -38,6 +38,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_models import ConversationDocument
 from app.models.conversation_screen_models import NoticeItem, ScreenItem, WorkItem, WorkStatus
+from app.models.integration_card_models import ConnectOption
 from app.services.briefing.conversation import post_brief_message
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
@@ -133,7 +134,11 @@ async def test_a_seeded_first_conversation_is_gaias_notices_with_their_cards_and
         opening=["Hi", "I keep your day"],
         question="What first?",
         follow_ups=["Plan my day"],
-        connect_options=[{"id": "gmail", "name": "Gmail"}],
+        connect_options=[
+            ConnectOption(
+                integration_id="gmail", label="Connect Gmail", href="/integrations?connect=gmail"
+            )
+        ],
     )
 
     conversation_id = await seed_first_conversation(user_id, composed)

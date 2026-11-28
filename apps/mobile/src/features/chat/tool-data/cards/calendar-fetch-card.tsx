@@ -1,4 +1,8 @@
-import { formatDateWithRelative, formatTimeRange } from "@gaia/shared";
+import {
+  type CalendarFetchData,
+  formatDateWithRelative,
+  formatTimeRange,
+} from "@gaia/shared";
 import { useRouter } from "expo-router";
 import { Chip, PressableFeedback } from "heroui-native";
 import { useMemo } from "react";
@@ -12,13 +16,7 @@ import {
 
 // -- Types --------------------------------------------------------------------
 
-export interface CalendarFetchItem {
-  summary: string;
-  start_time: string;
-  end_time: string;
-  calendar_name: string;
-  background_color: string;
-}
+export type CalendarFetchItem = CalendarFetchData;
 
 interface CalendarFetchCardProps {
   data: CalendarFetchItem[];

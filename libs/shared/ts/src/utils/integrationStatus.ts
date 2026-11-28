@@ -51,7 +51,7 @@ export type ConnectionPromptState = IntegrationConnectionState | "add_account";
  * Messages streamed before either flag existed fall back to the list.
  */
 export function connectionPromptState(
-  prompt: Pick<IntegrationConnectionData, "expired" | "add_account">,
+  prompt: Partial<Pick<IntegrationConnectionData, "expired" | "add_account">>,
   status: IntegrationStatusValue | string | undefined,
 ): ConnectionPromptState {
   if (prompt.expired) return "expired";

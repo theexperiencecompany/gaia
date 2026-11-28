@@ -45,7 +45,7 @@ export function useEntitlement(): Entitlement {
  */
 export function useAppSessionEnabled(): boolean {
   const entitlement = useEntitlement();
-  const { userId } = useCurrentUser();
+  const userId = useCurrentUser()?.user_id;
   const pathname = usePathname();
   const planAllows = entitlement === "entitled" || entitlement === "lapsed";
   if (UNPAID_APP_ROUTES.includes(pathname)) return planAllows;

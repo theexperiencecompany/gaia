@@ -1,17 +1,17 @@
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useCallback, useMemo } from "react";
 import { normalizeCategoryName } from "@/config/toolIconConfig";
 import { useIntegrations } from "./useIntegrations";
 
-interface IntegrationLookupEntry {
-  iconUrl?: string;
-  name?: string;
-}
+type IntegrationLookupEntry = Pick<MyIntegrationItem, "iconUrl" | "name">;
 
 export interface UseIntegrationLookupReturn {
   /** Resolve an integration id (e.g. a custom MCP id) to its display name. */
   getIntegrationName: (integrationId: string) => string | undefined;
   /** Resolve an integration id to its icon URL. */
-  getIntegrationIconUrl: (integrationId: string) => string | undefined;
+  getIntegrationIconUrl: (
+    integrationId: string,
+  ) => MyIntegrationItem["iconUrl"];
 }
 
 /**

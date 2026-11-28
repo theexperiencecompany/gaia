@@ -21,7 +21,7 @@ vi.mock("@/lib/analytics", () => ({
 }));
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
-  useCurrentUser: () => ({ userId: "user_1" }),
+  useCurrentUser: () => ({ user_id: "user_1" }),
 }));
 
 vi.mock("next/navigation", () => ({

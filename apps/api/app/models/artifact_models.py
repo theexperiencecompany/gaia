@@ -1,9 +1,11 @@
 """The conversation artifact registry element, shared by the document model and
-the registry service that owns its writes."""
+the registry service that owns its writes, and the artifact_data card's payloads."""
 
-from typing import NotRequired, TypedDict
+from typing import Annotated, Literal, NotRequired, TypedDict
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.common import ResponseModel
 
 
 class ArtifactRegistryEntry(TypedDict):
@@ -23,8 +25,36 @@ class ArtifactRegistryEntry(TypedDict):
     body: NotRequired[str]
 
 
+class ArtifactFileEvent(ResponseModel):
+    """An artifact_data card's payload when a file appeared or changed."""
+
+    event: Literal["upsert"]
+    session_id: str
+    path: str
+    size_bytes: int
+    mtime: float
+    content_type: str | None
+    #: The file's heygaia.link, only when the tool that wrote it this turn attached one; absent otherwise.
+    short_url: str | None = Field(default=None, exclude_if=lambda url: url is None)
+
+
+class ArtifactRemoveEvent(ResponseModel):
+    """An artifact_data card's payload when a file was deleted; a client drops its card."""
+
+    event: Literal["remove"]
+    session_id: str
+    path: str
+
+
+#: What an artifact_data card's data is, as its producers write it.
+ArtifactEvent = Annotated[ArtifactFileEvent | ArtifactRemoveEvent, Field(discriminator="event")]
+
+
 class ArtifactCard(BaseModel):
-    """An artifact card's payload as a reader parses it, whichever event it carries."""
+    """An artifact card's payload as a reader parses it, whichever event it carries.
+
+    Lenient on purpose: stored history holds cards older producers wrote, such as upload events.
+    """
 
     model_config = ConfigDict(extra="ignore")
 

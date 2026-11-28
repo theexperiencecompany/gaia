@@ -18,12 +18,6 @@ const LOCKED_FIRST_MATCHES: SlashCommandMatch[] = [
       requires_integration: true,
       locked: true,
     },
-    enhancedTool: {
-      name: "create_note",
-      category: "notion",
-      displayName: "Notion",
-      isLocked: true,
-    },
     matchedText: "/create_note",
   },
   {

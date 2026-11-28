@@ -1,22 +1,10 @@
 import type { CreateMemoryRequest, MemoryDocType } from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
-
-interface ListMemoriesParams {
-  page?: number;
-  pageSize?: number;
-  category?: string;
-}
+import type { ApiQuery } from "@/lib/api/typed.types";
 
 export const memoryApi = {
-  listMemories: ({
-    page = 1,
-    pageSize = 20,
-    category,
-  }: ListMemoriesParams = {}) =>
-    api.get("/api/v1/memory", {
-      query: { page, page_size: pageSize, category },
-      silent: true,
-    }),
+  listMemories: (query: ApiQuery<"get", "/api/v1/memory"> = {}) =>
+    api.get("/api/v1/memory", { query, silent: true }),
 
   searchMemories: (query: string, limit = 20) =>
     api.get("/api/v1/memory/search", {

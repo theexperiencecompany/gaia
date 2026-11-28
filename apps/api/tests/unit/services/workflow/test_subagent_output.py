@@ -33,12 +33,7 @@ class TestRunsOnlyWhen:
 
         assert result.mode == "finalized"
         assert result.draft is not None
-        assert (
-            result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
-                "runs_only_when"
-            ]
-            == BILLING
-        )
+        assert result.draft.to_card(WorkflowDelivery.NOW, "draft-1").runs_only_when == BILLING
 
     @pytest.mark.parametrize("fields", [{}, {"runs_only_when": None}], ids=["omitted", "null"])
     def test_a_draft_that_wants_every_event_carries_none(self, fields: dict[str, object]) -> None:
@@ -46,12 +41,7 @@ class TestRunsOnlyWhen:
 
         assert result.mode == "finalized"
         assert result.draft is not None
-        assert (
-            result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
-                "runs_only_when"
-            ]
-            is None
-        )
+        assert result.draft.to_card(WorkflowDelivery.NOW, "draft-1").runs_only_when is None
 
     def test_a_condition_on_a_scheduled_draft_is_sent_back_for_correction(self) -> None:
         result = parse_subagent_response(
@@ -128,23 +118,55 @@ class TestReplyParsing:
         assert result.message == reply
 
 
-def test_the_stream_payload_carries_the_agents_delivery() -> None:
+def test_the_draft_card_carries_the_agents_delivery() -> None:
     result = parse_subagent_response(_reply())
 
     assert result.draft is not None
-    frame = result.draft.to_stream_payload(WorkflowDelivery.BRIEF, "draft-1")
+    card = result.draft.to_card(WorkflowDelivery.BRIEF, "draft-1").model_dump(mode="json")
 
-    assert frame["workflow_draft"]["delivery"] == "brief"
-    assert frame["workflow_draft"]["suggested_title"] == "Billing replies"
+    assert card["delivery"] == "brief"
+    assert card["suggested_title"] == "Billing replies"
 
 
-def test_the_stream_payload_carries_the_draft_id_the_create_sends_back() -> None:
+@pytest.mark.parametrize(
+    ("fields", "trigger"),
+    [
+        (
+            {},
+            {
+                "trigger_type": "integration",
+                "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+                "cron_expression": None,
+            },
+        ),
+        (
+            {"trigger_type": "scheduled", "trigger_slug": None, "cron_expression": "0 9 * * *"},
+            {"trigger_type": "schedule", "trigger_slug": None, "cron_expression": "0 9 * * *"},
+        ),
+    ],
+    ids=["integration", "scheduled"],
+)
+def test_the_draft_card_carries_the_drafts_trigger(
+    fields: dict[str, object], trigger: dict[str, object]
+) -> None:
+    result = parse_subagent_response(_reply(**fields))
+
+    assert result.draft is not None
+    assert result.draft.to_card(WorkflowDelivery.NOW, "draft-1").model_dump(mode="json") == {
+        "suggested_title": "Billing replies",
+        "suggested_description": "Drafts a reply to customer billing emails",
+        "prompt": "1. Read the email\n2. Draft a reply in Gmail",
+        **trigger,
+        "integration_ids": ["gmail"],
+        "runs_only_when": None,
+        "direct_create": False,
+        "delivery": "now",
+        "draft_id": "draft-1",
+    }
+
+
+def test_the_draft_card_carries_the_draft_id_the_create_sends_back() -> None:
     result = parse_subagent_response(_reply())
 
     assert result.draft is not None
-    assert (
-        result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
-            "draft_id"
-        ]
-        == "draft-1"
-    )
+    assert result.draft.to_card(WorkflowDelivery.NOW, "draft-1").draft_id == "draft-1"

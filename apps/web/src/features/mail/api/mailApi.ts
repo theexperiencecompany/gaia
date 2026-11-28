@@ -1,4 +1,5 @@
-import { type ApiBody, api, formDataSerializer } from "@/lib/api/typed";
+import { api, formDataSerializer } from "@/lib/api/typed";
+import type { ApiBody } from "@/lib/api/typed.types";
 
 export const mailApi = {
   // Send email

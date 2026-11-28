@@ -48,6 +48,7 @@ from app.models.agent_models import (
     current_stream_writer,
 )
 from app.models.payment_models import PlanType
+from app.models.rate_limit_card_models import RateLimitCardData
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
     BudgetCheck,
@@ -172,11 +173,13 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # The task-size ceiling is per run: nothing resets, the next request starts fresh.
         current_stream_writer()(
             build_rate_limit_card(
-                feature=wall.value,
-                plan_required="pro" if plan_type == PlanType.FREE else None,
-                reset_time=reset_at.isoformat() if reset_at is not None else None,
-                current_plan=plan_type.value,
-                message=stop_reason,
+                RateLimitCardData(
+                    feature=wall.value,
+                    plan_required="pro" if plan_type == PlanType.FREE else None,
+                    reset_time=reset_at.isoformat() if reset_at is not None else None,
+                    current_plan=plan_type.value,
+                    message=stop_reason,
+                )
             )
         )
 
