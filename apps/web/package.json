@@ -44,11 +44,15 @@
     "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "doctor": "npx react-doctor@0.9.12"
+    "doctor": "npx react-doctor@0.9.12",
+    "e2e:effect-ui": "playwright test e2e/effect-ui",
+    "visual:effect-ui": "node scripts/effect-ui/visual-parity.mjs"
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
     "@gaia/wake-word": "workspace:*",
+    "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@82a1750",
+    "@heygaia/effect-ui": "workspace:*",
     "@heroui/accordion": "2.2.27",
     "@heroui/autocomplete": "2.3.32",
     "@heroui/avatar": "2.2.25",
@@ -153,6 +157,7 @@
     "chrono-node": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
+    "effect": "4.1.6",
     "cn": "^0.2.4",
     "cronstrue": "^3.24.0",
     "d3": "^7.9.0",
@@ -221,6 +226,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.1",
     "@biomejs/biome": "^2.6.2",
     "@heroui/dom-animation": "2.1.10",
     "@next/bundle-analyzer": "^16.3.0",
