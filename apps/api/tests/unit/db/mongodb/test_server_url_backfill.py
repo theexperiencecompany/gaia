@@ -43,7 +43,7 @@ class _Integrations:
     """Keyless custom rows: one connector, one MCP server whose key another row already claims."""
 
     def __init__(self) -> None:
-        self.keyless = [
+        self.keyless: list[dict[str, Any]] = [
             {"integration_id": "conn-1", "created_by": "u1"},
             {
                 "integration_id": "mcp-2",

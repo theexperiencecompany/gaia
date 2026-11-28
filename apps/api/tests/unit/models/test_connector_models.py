@@ -3,23 +3,29 @@
 from pydantic import ValidationError
 import pytest
 
-from app.models.connector_models import ConnectorSpec, InstallPackage
+from app.models.connector_models import ConnectorSpec, InstallPackage, PackageManager
 from tests.factories import make_connector_spec
 
 
 @pytest.mark.parametrize("version", ["latest", "^1.2.0", ">=2", "1.x || 2.x"])
 def test_an_unpinned_version_is_refused(version: str) -> None:
     with pytest.raises(ValidationError):
-        InstallPackage(manager="npm", name="vercel", version=version)
+        InstallPackage(manager=PackageManager.NPM, name="vercel", version=version)
 
 
 def test_a_binary_needs_https_and_its_checksum() -> None:
     with pytest.raises(ValidationError, match="https"):
         InstallPackage(
-            manager="binary", name="gh", version="2.0.0", url="http://x/gh", sha256="a" * 64
+            manager=PackageManager.BINARY,
+            name="gh",
+            version="2.0.0",
+            url="http://x/gh",
+            sha256="a" * 64,
         )
     with pytest.raises(ValidationError, match="sha256"):
-        InstallPackage(manager="binary", name="gh", version="2.0.0", url="https://x/gh")
+        InstallPackage(
+            manager=PackageManager.BINARY, name="gh", version="2.0.0", url="https://x/gh"
+        )
 
 
 def test_a_rest_connector_takes_its_key_in_the_auth_slot_not_env() -> None:

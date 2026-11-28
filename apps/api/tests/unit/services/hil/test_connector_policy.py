@@ -12,7 +12,7 @@ from app.services.hil.describe import describe_call
 from app.services.hil.policy import gated_tool_key, resolve_policy
 from app.services.hil.when import UserClock
 from app.utils.timezone import Timezone
-from tests.factories import make_connector_spec
+from tests.factories import make_connector_doc, make_connector_spec
 
 from .conftest import USER_ID, make_request
 
@@ -22,19 +22,7 @@ POLICY_MODULE = "app.services.hil.policy"
 
 
 def _gh_doc() -> Integration:
-    return Integration(
-        integration_id=CONNECTOR_ID,
-        name="GitHub CLI",
-        description="",
-        category="developer",
-        managed_by="connector",
-        created_by=USER_ID,
-        connector_config=make_connector_spec("cli"),
-        display_priority=0,
-        is_featured=False,
-        published_at=None,
-        clone_count=0,
-    )
+    return make_connector_doc(CONNECTOR_ID, USER_ID, make_connector_spec("cli"), name="GitHub CLI")
 
 
 def _call(args: list[str]):

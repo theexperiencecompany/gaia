@@ -7,7 +7,7 @@ from app.models.integration_models import Integration
 from app.services.connectors.connect import connect_connector, extract_identity
 from app.services.connectors.runner import RunOutcome
 from app.services.connectors.service import CallFailure, ConnectorCallResult
-from tests.factories import make_connector_spec
+from tests.factories import make_connector_doc, make_connector_spec
 
 MODULE = "app.services.connectors.connect"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -16,19 +16,7 @@ SPEC = make_connector_spec("cli")
 
 
 def _doc() -> Integration:
-    return Integration(
-        integration_id=CONNECTOR_ID,
-        name="GitHub CLI",
-        description="",
-        category="developer",
-        managed_by="connector",
-        created_by=USER_ID,
-        connector_config=SPEC,
-        display_priority=0,
-        is_featured=False,
-        published_at=None,
-        clone_count=0,
-    )
+    return make_connector_doc(CONNECTOR_ID, USER_ID, SPEC, name="GitHub CLI")
 
 
 def _result(failure: CallFailure | None, stdout: str = "") -> ConnectorCallResult:

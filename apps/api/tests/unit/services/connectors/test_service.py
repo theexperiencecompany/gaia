@@ -11,6 +11,7 @@ from app.services.connectors.rest_helper import AUTH_HEADER_ENV, BASE_URL_ENV, S
 from app.services.connectors.runner import RunOutcome, RunRequest, RunResult
 from app.services.connectors.service import (
     CallFailure,
+    ConnectorCallResult,
     build_run_request,
     classify_failure,
     run_with_secret,
@@ -37,7 +38,7 @@ def _ok(stdout: str, stderr: str = "") -> RunResult:
 
 async def _run(
     spec_kind: str, args: list[str], result: RunResult
-) -> tuple[_RecordingRunner, object]:
+) -> tuple[_RecordingRunner, ConnectorCallResult]:
     runner = _RecordingRunner(result)
     with (
         patch(f"{MODULE}.get_connector_runner", AsyncMock(return_value=runner)),

@@ -6,7 +6,7 @@ from app.agents.tools.connector_tools import run_connector
 from app.models.integration_models import Integration
 from app.services.connectors.runner import RunOutcome
 from app.services.connectors.service import ConnectorCallResult
-from tests.factories import make_connector_spec
+from tests.factories import make_connector_doc, make_connector_spec
 
 MODULE = "app.agents.tools.connector_tools"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -14,19 +14,7 @@ CONNECTOR_ID = "c0ffee00-0000-4000-8000-000000000003"
 
 
 def _doc() -> Integration:
-    return Integration(
-        integration_id=CONNECTOR_ID,
-        name="Resend",
-        description="",
-        category="developer",
-        managed_by="connector",
-        created_by=USER_ID,
-        connector_config=make_connector_spec("rest"),
-        display_priority=0,
-        is_featured=False,
-        published_at=None,
-        clone_count=0,
-    )
+    return make_connector_doc(CONNECTOR_ID, USER_ID, make_connector_spec("rest"), name="Resend")
 
 
 async def test_the_call_args_reach_the_runner_through_the_tool_schema() -> None:

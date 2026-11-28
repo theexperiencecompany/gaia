@@ -17,6 +17,7 @@ from app.models.connector_models import ConnectorSpec
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import DisplayState, Entry
 from app.models.conversation_models import StoredConversation
+from app.models.integration_models import Integration
 from app.models.oauth_models import OAuthIntegration
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -311,3 +312,25 @@ _CONNECTOR_PRESETS: dict[str, dict[str, Any]] = {
 def make_connector_spec(kind: str = "cli", **overrides: Any) -> ConnectorSpec:
     """Build a valid connector spec per preset: gh (cli), Resend (rest), openai (sdk)."""
     return ConnectorSpec.model_validate({**_CONNECTOR_PRESETS[kind], **overrides})
+
+
+def make_connector_doc(
+    connector_id: str, created_by: str, spec: ConnectorSpec, name: str = "Connector"
+) -> Integration:
+    """Build a private connector's integrations document."""
+    return Integration(
+        integration_id=connector_id,
+        name=name,
+        description="",
+        category="developer",
+        managed_by="connector",
+        source="custom",
+        is_public=False,
+        created_by=created_by,
+        connector_config=spec,
+        icon_url=None,
+        display_priority=0,
+        is_featured=False,
+        published_at=None,
+        clone_count=0,
+    )
