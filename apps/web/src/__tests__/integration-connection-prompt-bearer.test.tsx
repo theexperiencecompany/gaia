@@ -210,3 +210,84 @@ describe("IntegrationConnectionPrompt — adding another account", () => {
     );
   });
 });
+
+function connectorIntegration() {
+  return {
+    ...bearerIntegration(),
+    id: "fly",
+    name: "Fly.io",
+    description: "Generic description",
+    managedBy: "connector",
+    connector: {
+      kind: "cli",
+      capability: "Deploy and manage your Fly.io apps",
+      providerDomain: "fly.io",
+      allowedHosts: ["api.fly.io", "api.machines.dev"],
+      keyLabel: "API token",
+      tokenUrl: "https://fly.io/user/personal_access_tokens",
+      verified: true,
+    },
+  };
+}
+
+describe("IntegrationConnectionPrompt — connector key entry", () => {
+  beforeEach(() => {
+    connectIntegration.mockReset();
+    integrations = [connectorIntegration()];
+  });
+
+  it("shows the capability, every host the key reaches and where to get the key", () => {
+    renderCard("fly");
+
+    expect(
+      screen.getByText("Deploy and manage your Fly.io apps"),
+    ).toBeDefined();
+    expect(screen.queryByText("Generic description")).toBeNull();
+    expect(screen.getByText("Your key goes only to:")).toBeDefined();
+    expect(screen.getByText("api.fly.io")).toBeDefined();
+    expect(screen.getByText("api.machines.dev")).toBeDefined();
+    const link = screen.getByRole("link", { name: /get your api token/i });
+    expect(link.getAttribute("href")).toBe(
+      "https://fly.io/user/personal_access_tokens",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.getByLabelText("API token")).toBeDefined();
+  });
+
+  it("says Verifying while the key is checked, then who it connected as", async () => {
+    const verification = Promise.withResolvers<unknown>();
+    connectIntegration.mockReturnValue(verification.promise);
+    renderCard("fly");
+
+    fireEvent.change(screen.getByLabelText("API token"), {
+      target: { value: "fo1_secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+
+    expect(await screen.findByText("Verifying…")).toBeDefined();
+    verification.resolve({
+      status: "connected",
+      toolsCount: null,
+      accountLabel: "ada@fly.io",
+    });
+
+    expect(await screen.findByText("Connected as ada@fly.io")).toBeDefined();
+    expect(screen.queryByLabelText("API token")).toBeNull();
+  });
+
+  it("shows the server's fix in the card and keeps the field to retry", async () => {
+    const fix =
+      "Fly.io refused this API token. Copy the whole token and check it hasn't expired";
+    connectIntegration.mockRejectedValueOnce(new Error(fix));
+    renderCard("fly");
+
+    fireEvent.change(screen.getByLabelText("API token"), {
+      target: { value: "wrong" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+
+    expect(await screen.findByText(fix)).toBeDefined();
+    expect(screen.getByLabelText("API token")).toBeDefined();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeDefined();
+  });
+});

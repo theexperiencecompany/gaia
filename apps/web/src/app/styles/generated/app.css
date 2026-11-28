@@ -594,6 +594,7 @@
 @source "../../../features/integrations/components/ConnectLinkCard.tsx";
 @source "../../../features/integrations/components/ConnectLinkExpired.tsx";
 @source "../../../features/integrations/components/ConnectLinkLogos.tsx";
+@source "../../../features/integrations/components/ConnectorKeyInfo.tsx";
 @source "../../../features/integrations/components/GlobalIntegrationModal.tsx";
 @source "../../../features/integrations/components/InstanceSetupNotice.tsx";
 @source "../../../features/integrations/components/IntegrationIcon.tsx";
@@ -1235,6 +1236,7 @@
 @source "../../[locale]/(main)/todos/upcoming/page.tsx";
 @source "../../[locale]/(main)/workflows/[id]/page.tsx";
 @source "../../../components/layout/sidebar/right-variants/integration-sidebar/ConnectedActions.tsx";
+@source "../../../components/layout/sidebar/right-variants/integration-sidebar/ConnectorDetails.tsx";
 @source "../../../components/layout/sidebar/right-variants/integration-sidebar/IntegrationAccountRenameModal.tsx";
 @source "../../../components/layout/sidebar/right-variants/integration-sidebar/IntegrationAccountRow.tsx";
 @source "../../../components/layout/sidebar/right-variants/integration-sidebar/IntegrationAccounts.tsx";

@@ -9,9 +9,11 @@ import {
   TextField,
 } from "@heroui/react";
 import { KeyIcon } from "@icons";
+import type { ConnectorCardInfo } from "@shared/api/generated";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { ConnectorKeyInfo } from "@/features/integrations/components/ConnectorKeyInfo";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
 interface BearerTokenModalProps {
@@ -19,6 +21,8 @@ interface BearerTokenModalProps {
   onClose: () => void;
   integrationId: string;
   integrationName: string;
+  /** Set for a connector: names its key and lists the hosts the key can reach. */
+  connector?: ConnectorCardInfo | null;
   onSubmit: (integrationId: string, bearerToken: string) => Promise<void>;
 }
 
@@ -27,6 +31,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
   onClose,
   integrationId,
   integrationName,
+  connector,
   onSubmit,
 }) => {
   const { isMac, modifierKeyName } = usePlatform();
@@ -103,11 +108,13 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
                 Connect {integrationName}
               </Modal.Heading>
               <p className="text-sm font-normal text-zinc-400">
-                Enter your API key / Bearer Token to connect
+                {connector
+                  ? connector.capability
+                  : "Enter your API key / Bearer Token to connect"}
               </p>
             </Modal.Header>
 
-            <Modal.Body>
+            <Modal.Body className="flex flex-col gap-4">
               <TextField
                 className={fieldVariants({ labelPlacement: "inside" })}
                 name="bearerToken"
@@ -117,18 +124,23 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
                 isRequired
                 isInvalid={!!error}
               >
-                <Label>API Key / Bearer Token</Label>
+                <Label>{connector?.keyLabel ?? "API Key / Bearer Token"}</Label>
                 <InputGroup>
                   <InputGroup.Prefix>
                     <KeyIcon width={16} height={16} />
                   </InputGroup.Prefix>
                   <InputGroup.Input
-                    placeholder="sk-... or your token"
+                    placeholder={
+                      connector
+                        ? `Paste your ${connector.keyLabel}`
+                        : "sk-... or your token"
+                    }
                     autoFocus
                   />
                 </InputGroup>
                 {error && <FieldError>{error}</FieldError>}
               </TextField>
+              {connector && <ConnectorKeyInfo connector={connector} />}
             </Modal.Body>
 
             <Modal.Footer>
@@ -145,7 +157,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
                 isDisabled={!bearerToken.trim() || isLoading}
                 variant="primary"
               >
-                Connect
+                {isLoading && connector ? "Verifying…" : "Connect"}
                 {!isLoading && (
                   <Kbd>
                     <Kbd.Abbr keyValue={modifierKeyName} />

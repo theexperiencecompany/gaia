@@ -1,6 +1,9 @@
 import { Chip, Input, Spinner } from "@heroui/react";
 import { AlertCircleIcon } from "@icons";
-import type { MyIntegrationItem } from "@shared/api/generated";
+import type {
+  ConnectorCardInfo,
+  MyIntegrationItem,
+} from "@shared/api/generated";
 import {
   type ConnectionPromptState,
   connectionPromptState,
@@ -9,6 +12,7 @@ import {
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { ConnectorKeyInfo } from "@/features/integrations/components/ConnectorKeyInfo";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useInlineIntegrationConnect } from "@/features/integrations/hooks/useInlineIntegrationConnect";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -56,12 +60,25 @@ function StatusChip({
   );
 }
 
+/** The line under the name: who it connected as, its tools once connected, else what it does. */
+function cardSubtitle(
+  integration: MyIntegrationItem,
+  isConnected: boolean,
+  toolsCount: number | null,
+  accountLabel: string | null,
+): string {
+  if (isConnected && accountLabel) return `Connected as ${accountLabel}`;
+  if (isConnected && toolsCount != null) return `${toolsCount} tools available`;
+  return integration.connector?.capability ?? integration.description;
+}
+
 interface InlineConnectActionProps {
   message: string;
   error: string | undefined;
   failed: boolean;
   state: ConnectionPromptState;
   needsBearerToken: boolean;
+  connector: ConnectorCardInfo | null;
   token: string;
   setToken: (value: string) => void;
   connecting: boolean;
@@ -74,12 +91,15 @@ function InlineConnectAction({
   failed,
   state,
   needsBearerToken,
+  connector,
   token,
   setToken,
   connecting,
   connect,
 }: InlineConnectActionProps) {
   const isDanger = failed || state === "expired";
+  // A connector's key is checked against the service before it is saved.
+  const verifying = connecting && connector !== null;
   return (
     <div className="flex w-full flex-col gap-2">
       <div className="flex w-fit items-center gap-2 rounded-xl bg-warning-100/10 p-3">
@@ -92,12 +112,17 @@ function InlineConnectAction({
         </p>
       </div>
 
+      {connector && <ConnectorKeyInfo connector={connector} />}
+
       <div className="flex items-center gap-2">
         {needsBearerToken && (
           <Input
             type="password"
+            aria-label={connector?.keyLabel ?? "API token"}
             className={inputVariants({ size: "sm", className: "max-w-xs" })}
-            placeholder="Paste API token"
+            placeholder={
+              connector ? `Paste your ${connector.keyLabel}` : "Paste API token"
+            }
             autoComplete="off"
             value={token}
             onChange={(e) => setToken(e.target.value)}
@@ -110,7 +135,11 @@ function InlineConnectAction({
           isDisabled={needsBearerToken && !token.trim()}
           onPress={() => connect(needsBearerToken ? token : undefined)}
         >
-          {failed ? "Retry" : PROMPT_ACTION_LABEL[state]}
+          {verifying
+            ? "Verifying…"
+            : failed
+              ? "Retry"
+              : PROMPT_ACTION_LABEL[state]}
         </GaiaButton>
       </div>
     </div>
@@ -127,7 +156,7 @@ function IntegrationConnectCard({
   connectedAccounts,
   reconnectAccountId,
 }: IntegrationConnectCardProps) {
-  const { phase, token, setToken, toolsCount, error, connect } =
+  const { phase, token, setToken, toolsCount, accountLabel, error, connect } =
     useInlineIntegrationConnect(integration.id, reconnectAccountId);
 
   const state = connectionPromptState(
@@ -143,6 +172,7 @@ function IntegrationConnectCard({
   );
   const connecting = phase === "connecting";
   const failed = phase === "failed";
+  const connector = integration.connector ?? null;
 
   return (
     <div className="w-fit max-w-2xl rounded-3xl bg-zinc-800/50 p-4 text-white">
@@ -166,9 +196,7 @@ function IntegrationConnectCard({
               />
             </div>
             <p className="text-xs font-light text-zinc-400">
-              {isConnected && toolsCount != null
-                ? `${toolsCount} tools available`
-                : integration.description}
+              {cardSubtitle(integration, isConnected, toolsCount, accountLabel)}
             </p>
           </div>
         </div>
@@ -193,6 +221,7 @@ function IntegrationConnectCard({
             failed={failed}
             state={state}
             needsBearerToken={needsBearerToken}
+            connector={connector}
             token={token}
             setToken={setToken}
             connecting={connecting}
