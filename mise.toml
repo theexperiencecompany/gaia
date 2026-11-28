@@ -468,6 +468,10 @@ run = "cd apps/api && LOG_LEVEL=ERROR uv run --group backend python -m scripts.l
 description = "Hold every catalog connector (or the ones named: `mise connectors:conformance resend github-cli`) to real installs and calls on the E2B and docker runners: install, a bad key refused as auth, then with a real key verify, one read and, where the provider has a safe sandbox, a write that is cleaned up and checked gone. No key means skipped, naming the env var; Stripe and AWS fall back to stripe-mock and LocalStack on docker, reported as fakes. `--runner e2b|docker` for one. Team members run it as `mise infisical connectors:conformance`. Not a CI lane"
 run = "cd apps/api && LOG_LEVEL=ERROR uv run --group backend python -m scripts.connectors.conformance"
 
+[tasks."connectors:benchmark"]
+description = "Ask the real executor on the real model to connect thirty tools GAIA does not ship (or the ones named) and score each drafted connector with real calls on both runners: spec valid, install (and CLI help), a bad key refused as auth, and verify where the team holds a key. Prints a table and the pass rate per stage. Needs a stack booted with `mise infisical -- dev --agent`; run it as `mise infisical connectors:benchmark`. Not a CI lane"
+run = "cd apps/api && LOG_LEVEL=ERROR uv run --group backend python -m scripts.connectors.drafting_benchmark"
+
 [tasks."analytics:types"]
 description = "Export the Pydantic event catalog to analytics-catalog.json and regenerate the TypeScript event types in libs/shared/ts/src/analytics/generated (CI fails when either drifts)"
 run = "node scripts/ci/checks.mjs analytics-catalog --write"

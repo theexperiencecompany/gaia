@@ -14,6 +14,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import partial
 import time
 
 from app.config.connector_catalog import CONNECTOR_CATALOG
@@ -183,10 +184,7 @@ async def _main(only: list[str], runners: list[RunnerName]) -> int:
     async with running_fakes(use_fakes) as fakes_up:
         lanes = [
             _lane(
-                [
-                    (lambda cid=cid, spec=spec, r=runner: check(cid, spec, r, fakes_up))
-                    for cid, spec in chosen.items()
-                ],
+                [partial(check, cid, spec, runner, fakes_up) for cid, spec in chosen.items()],
                 _E2B_PARALLEL if runner is RunnerName.E2B else 1,
             )
             for runner in runners

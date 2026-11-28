@@ -27,6 +27,7 @@ _DETAIL_CHARS = 160
 
 
 class Stage(StrEnum):
+    SPEC = "spec valid"
     INSTALL = "install"
     BAD_KEY = "bad key refused"
     VERIFY = "verify"
