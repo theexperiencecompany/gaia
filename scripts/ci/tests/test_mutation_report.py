@@ -167,7 +167,7 @@ def test_report_groups_mutants_under_one_source_line(tmp_path: Path) -> None:
     # Each mutant still names its own edit, in words rather than in mutant ids.
     assert '"1" → None' in report
     assert "nx=True → nx=None" in report
-    assert "mutation.py replay" in report
+    assert "mise mutation:replay" in report
 
 
 def test_report_splits_distinct_lines(tmp_path: Path) -> None:
@@ -209,7 +209,7 @@ def test_survivors_prints_the_change_and_the_full_diff(tmp_path: Path) -> None:
     # The whole diff, not just the summary: that is the edit to make.
     assert '-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True' in result.stdout
     assert '+            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", None, nx=True' in result.stdout
-    assert "replay: python3 scripts/ci/mutation.py replay" in result.stdout
+    assert "replay: mise mutation:replay" in result.stdout
     assert "tests/unit/api/test_bot_endpoint.py" in result.stdout
 
 
@@ -411,7 +411,7 @@ def test_the_shard_advice_points_at_the_replay_artifact(
 
     advice = [str(item) for item in sequence(emitted[f"mutation/{BOT_MODULE}"]["advice"])]
     assert any(f"apps/api/{BOT_MODULE}:{BOT_ARGS_LINE}" in item for item in advice)
-    replay = next(item for item in advice if "mutation.py replay" in item)
+    replay = next(item for item in advice if "mise mutation:replay" in item)
     assert "shard.verdict.json" in replay
     assert "verify-logs/verdicts" not in replay
 

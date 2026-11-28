@@ -19,7 +19,7 @@ from app.constants.mcp import (
     GAIA_OAUTH_PRIVACY_PATH,
     GAIA_OAUTH_TOS_PATH,
 )
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.mcp_config import DCRClientRegistration, MCPConfig, OAuthDiscovery
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp import mcp_oauth
 from app.services.mcp.mcp_errors import DCRNotSupportedError
@@ -101,7 +101,7 @@ def http_client() -> Iterator[None]:
 class TestObtainAuthClientId:
     async def test_stored_dcr_client_is_looked_up_by_integration(self) -> None:
         store = _token_store()
-        store.get_dcr_client.return_value = {"client_id": "stored-id"}
+        store.get_dcr_client.return_value = DCRClientRegistration(client_id="stored-id")
 
         client_id = await _obtain_auth_client_id(
             store, INTEGRATION_ID, _config(), _discovery(), REDIRECT_URI

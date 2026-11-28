@@ -1,21 +1,20 @@
 """
 OAuth Token Management for MCP integrations.
 
-Handles token refresh, revocation, and client credential resolution.
+Handles token refresh and revocation.
 """
 
-import os
 from urllib.parse import urlparse
 
 from app.constants.log_tags import LogTag
 from app.models.mcp_config import (
-    DCRClientRegistration,
     MCPConfig,
     OAuthDiscovery,
     OAuthErrorResponse,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.services.mcp.oauth_client import resolve_oauth_client
 from app.utils.mcp_oauth_utils import (
     basic_auth_header,
     mcp_http_client,
@@ -32,35 +31,6 @@ def _endpoint_host(url: str | None) -> str | None:
         return None
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else None
-
-
-def resolve_client_credentials(
-    mcp_config: MCPConfig,
-) -> tuple[str | None, str | None]:
-    """Resolve OAuth client credentials from config or environment."""
-    client_id = mcp_config.client_id
-    client_secret = mcp_config.client_secret
-
-    if not client_id and mcp_config.client_id_env:
-        client_id = os.getenv(mcp_config.client_id_env)
-
-    if not client_secret and mcp_config.client_secret_env:
-        client_secret = os.getenv(mcp_config.client_secret_env)
-
-    return client_id, client_secret
-
-
-async def _client_credentials(
-    token_store: MCPTokenStore, integration_id: str, mcp_config: MCPConfig
-) -> tuple[str | None, str | None]:
-    """Resolve the OAuth client from config or env, else from the stored DCR registration."""
-    client_id, client_secret = resolve_client_credentials(mcp_config)
-    if not client_id:
-        dcr_data: DCRClientRegistration | None = await token_store.get_dcr_client(integration_id)
-        if dcr_data:
-            client_id = dcr_data.get("client_id")
-            client_secret = dcr_data.get("client_secret")
-    return client_id, client_secret
 
 
 async def try_refresh_token(
@@ -90,16 +60,17 @@ async def try_refresh_token(
     try:
         token_endpoint = str(oauth_config.as_metadata.token_endpoint)
 
-        client_id, client_secret = await _client_credentials(
-            token_store, integration_id, mcp_config
-        )
-        if not client_id:
-            log.warning(
-                f"{LogTag.MCP} try_refresh_token: no client_id resolved (no pre-configured creds, no DCR registration); user must re-authorize",
+        client = await resolve_oauth_client(token_store, integration_id, mcp_config, oauth_config)
+        if client is None:
+            # A config gap (an unset client_id_env, a localhost HOST) can cause this, so
+            # the grant is kept for when it is fixed; the operator has to see it.
+            log.error(
+                f"{LogTag.MCP} try_refresh_token: no OAuth client resolves for this integration",
                 integration_id=integration_id,
                 user_id=token_store.user_id,
             )
             return False
+        client_id, client_secret = client.client_id, client.client_secret
 
         resource = oauth_config.resource
 
@@ -134,9 +105,9 @@ async def try_refresh_token(
                 )
                 if error_info["error"] == "invalid_grant":
                     # The grant itself is dead (revoked/rotated server-side):
-                    # no later retry can succeed, so drop the token now rather
+                    # no later retry can succeed, so drop it now rather
                     # than letting liveness checks keep reporting recoverable.
-                    await token_store.clear_refresh_token(integration_id)
+                    await token_store.clear_oauth_grant(integration_id)
                 return False
 
             token = OAuthToken.model_validate(response.json())
@@ -191,7 +162,7 @@ async def revoke_tokens(
         return
     revocation_endpoint = str(oauth_config.as_metadata.revocation_endpoint)
 
-    client_id, client_secret = await _client_credentials(token_store, integration_id, mcp_config)
+    client = await resolve_oauth_client(token_store, integration_id, mcp_config, oauth_config)
 
     tokens_to_revoke: list[tuple[str, str]] = []
 
@@ -207,12 +178,13 @@ async def revoke_tokens(
         async with mcp_http_client() as http_client:
             for token_type, token in tokens_to_revoke:
                 data = {"token": token, "token_type_hint": token_type}
-                if client_id:
-                    data["client_id"] = client_id
-
                 headers = {"Content-Type": "application/x-www-form-urlencoded"}
-                if client_secret:
-                    headers["Authorization"] = basic_auth_header(client_id, client_secret)
+                if client:
+                    data["client_id"] = client.client_id
+                    if client.client_secret:
+                        headers["Authorization"] = basic_auth_header(
+                            client.client_id, client.client_secret
+                        )
 
                 await http_client.post(revocation_endpoint, data=data, headers=headers, timeout=10)
     except Exception as e:

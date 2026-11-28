@@ -65,7 +65,7 @@ def owner_key_delete():
 
 
 @pytest.mark.integration
-@pytest.mark.usefixtures("owner_key_delete")
+@pytest.mark.usefixtures("owner_key_delete", "fake_redis")
 class TestMCPTokenManagement:
     """Test token store encrypt/decrypt and credential lifecycle."""
 
