@@ -20,7 +20,7 @@ import pytest
 
 from app.constants.integrations import ToolsSetup
 from app.models.integration_models import StoredIntegrationTool
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.mcp_config import DCRClientRegistration, MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_oauth import build_oauth_auth_url, handle_oauth_callback
@@ -30,9 +30,9 @@ from app.services.mcp.mcp_tools_service import (
     get_integration_tools,
     store_mcp_tools,
 )
+from app.services.mcp.oauth_client import resolve_client_credentials
 from app.services.mcp.oauth_discovery import discover_oauth_config
 from app.services.mcp.token_management import (
-    resolve_client_credentials,
     revoke_tokens,
     try_refresh_token,
 )
@@ -488,7 +488,9 @@ class TestTokenExchange:
         client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "test-code-verifier"))
         client.token_store.store_oauth_tokens = AsyncMock()
         client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value=None)
-        client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "dcr-cid"})
+        client.token_store.get_dcr_client = AsyncMock(
+            return_value=DCRClientRegistration(client_id="dcr-cid")
+        )
         client.token_store.delete_credentials = AsyncMock()
         client.token_store.delete_dcr_client = AsyncMock()
 
@@ -584,7 +586,9 @@ class TestTokenExchange:
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
         client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
-        client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "cid"})
+        client.token_store.get_dcr_client = AsyncMock(
+            return_value=DCRClientRegistration(client_id="cid")
+        )
         client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value=None)
 
         resolved = MagicMock()
@@ -630,7 +634,9 @@ class TestTokenExchange:
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
         client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
-        client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "cid"})
+        client.token_store.get_dcr_client = AsyncMock(
+            return_value=DCRClientRegistration(client_id="cid")
+        )
         client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value=None)
 
         resolved = MagicMock()
@@ -688,7 +694,7 @@ class TestTokenRefresh:
         token_store = _make_token_store()
         token_store.get_refresh_token = AsyncMock(return_value="old-refresh-token")
         token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr-cid", "client_secret": None}
+            return_value=DCRClientRegistration(client_id="dcr-cid", client_secret=None)
         )
         token_store.store_oauth_tokens = AsyncMock()
 
@@ -737,7 +743,7 @@ class TestTokenRefresh:
         """When token endpoint returns non-200, refresh returns False."""
         token_store = _make_token_store()
         token_store.get_refresh_token = AsyncMock(return_value="valid-refresh")
-        token_store.get_dcr_client = AsyncMock(return_value={"client_id": "cid"})
+        token_store.get_dcr_client = AsyncMock(return_value=DCRClientRegistration(client_id="cid"))
 
         mcp_config = _make_mcp_config()
         oauth_config = _make_oauth_discovery()
@@ -759,10 +765,11 @@ class TestTokenRefresh:
         assert result is False
 
     async def test_refresh_fails_without_client_id(self):
-        """When no client_id can be resolved, refresh returns False."""
+        """When no client_id can be resolved, refresh fails and keeps the grant: a config gap is fixable."""
         token_store = _make_token_store()
         token_store.get_refresh_token = AsyncMock(return_value="valid-refresh")
         token_store.get_dcr_client = AsyncMock(return_value=None)
+        token_store.clear_oauth_grant = AsyncMock()
 
         # No client_id anywhere
         mcp_config = _make_mcp_config(client_id=None)
@@ -771,6 +778,7 @@ class TestTokenRefresh:
         result = await try_refresh_token(token_store, "no-cid-int", mcp_config, oauth_config)
 
         assert result is False
+        token_store.clear_oauth_grant.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -787,7 +795,7 @@ class TestTokenRevocation:
         token_store = _make_token_store()
         token_store.get_refresh_token = AsyncMock(return_value="refresh-to-revoke")
         token_store.get_oauth_token = AsyncMock(return_value="access-to-revoke")
-        token_store.get_dcr_client = AsyncMock(return_value={"client_id": "cid"})
+        token_store.get_dcr_client = AsyncMock(return_value=DCRClientRegistration(client_id="cid"))
 
         mcp_config = _make_mcp_config()
         oauth_config = _make_oauth_discovery()
@@ -1082,7 +1090,6 @@ class TestErrorHandling:
         client.token_store = MagicMock()
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
         client.token_store.get_oauth_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_refresh_token = AsyncMock(return_value=None)
 
         resolved = MagicMock()
@@ -1132,7 +1139,6 @@ class TestConcurrentConnectionIsolation:
         client.token_store = MagicMock()
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
         client.token_store.get_oauth_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.store_unauthenticated = AsyncMock()
         client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
 
