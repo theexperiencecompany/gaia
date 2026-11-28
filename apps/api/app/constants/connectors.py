@@ -35,6 +35,7 @@ CONNECTOR_REDACTION: Final = "[REDACTED]"
 # Hosts the install phase may reach, per package manager. The call phase reaches
 # only the spec's allowed_hosts.
 NPM_REGISTRY_HOSTS: Final = ("registry.npmjs.org",)
+NODE_DIST_HOSTS: Final = ("nodejs.org",)
 PIP_REGISTRY_HOSTS: Final = ("pypi.org", "files.pythonhosted.org")
 APT_REGISTRY_HOSTS: Final = (
     "deb.debian.org",
@@ -57,6 +58,16 @@ BINARY_REDIRECT_HOSTS: Final[dict[str, tuple[str, ...]]] = {
 }
 # Where a binary package's executable is installed, on the runner's PATH.
 CONNECTOR_BINARY_DIR: Final = "/usr/local/bin"
+
+# The Node every npm package runs on, on both runners: an LTS from nodejs.org, unpacked into
+# /usr/local over whatever the base image ships (E2B's base has 20.9). The sha256 per
+# nodejs.org arch name is from the release's signed SHASUMS256.txt.
+CONNECTOR_NODE_VERSION: Final = "24.22.3"
+CONNECTOR_NODE_SHA256: Final[dict[str, str]] = {
+    "x64": "061ec3e3062115705b56b51fa9cc330ab50d34b6969387d4e4b1a50c6809acc2",
+    "arm64": "261af2af250dfd7e9f25cf151d1b2713a0adf8f10a9ad116c4947f68627affe8",
+}
+CONNECTOR_NODE_PREFIX: Final = "/usr/local"
 
 # E2B's plain base image (Debian, python3, node, npm, curl), not the user workspace template.
 CONNECTOR_E2B_TEMPLATE: Final = "base"

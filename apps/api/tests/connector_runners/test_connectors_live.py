@@ -144,6 +144,39 @@ async def test_the_resend_sdk_installs_pinned_and_calls_with_the_key() -> None:
     assert key not in result.stdout + result.stderr
 
 
+_RESEND_NODE_LIST_DOMAINS = (
+    "const { Resend } = require('resend');"
+    "new Resend(process.env.RESEND_API_KEY).domains.list().then(({ data, error }) => {"
+    " if (error) { console.error(error.message); process.exit(1); }"
+    " console.log(data.data.length); });"
+)
+
+
+def _resend_node_sdk_spec() -> ConnectorSpec:
+    return make_connector_spec(
+        "sdk",
+        provider_domain="resend.com",
+        capability="Send email with the Resend Node SDK",
+        sdk_runtime="node",
+        install=[{"manager": "npm", "name": "resend", "version": "6.41.0"}],
+        credential={"env": ["RESEND_API_KEY"]},
+        allowed_hosts=["api.resend.com"],
+        verify={"args": ["-e", _RESEND_NODE_LIST_DOMAINS]},
+    )
+
+
+@pytest.mark.usefixtures("runner")
+async def test_the_resend_node_sdk_reads_through_the_runners_egress() -> None:
+    key = _env_key("RESEND_API_KEY")
+    spec = _resend_node_sdk_spec()
+
+    result = await run_with_secret(spec, spec.verify.args, key)
+
+    assert result.failure is None, result.stderr[-2000:]
+    assert int(result.stdout.strip()) >= 0
+    assert key not in result.stdout + result.stderr
+
+
 @pytest.mark.usefixtures("runner")
 async def test_the_openai_sdk_reports_a_refused_key_as_an_auth_failure() -> None:
     spec = make_connector_spec("sdk")

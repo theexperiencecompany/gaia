@@ -8,7 +8,8 @@ import subprocess
 import pytest
 
 from app.constants.connectors import (
-    APT_REGISTRY_HOSTS,
+    CONNECTOR_NODE_VERSION,
+    NODE_DIST_HOSTS,
     NPM_REGISTRY_HOSTS,
     PIP_REGISTRY_HOSTS,
 )
@@ -52,10 +53,22 @@ def test_install_hosts_cover_each_manager_once_and_sorted() -> None:
     assert hosts == tuple(sorted({*PIP_REGISTRY_HOSTS, "dl.example.org"}))
 
 
-def test_npm_reaches_apt_too_since_the_docker_image_installs_node_through_it() -> None:
+def test_npm_reaches_nodejs_org_for_the_pinned_node_and_never_apt() -> None:
     hosts = set(install_hosts([_pkg(PackageManager.NPM, "@scope/cli")]))
 
-    assert hosts == {*NPM_REGISTRY_HOSTS, *APT_REGISTRY_HOSTS}
+    assert hosts == {*NPM_REGISTRY_HOSTS, *NODE_DIST_HOSTS}
+
+
+def test_npm_packages_install_after_the_pinned_node_for_each_cpu() -> None:
+    lines = install_script([_pkg(PackageManager.NPM, "wrangler")]).splitlines()
+
+    node_check = next(i for i, line in enumerate(lines) if '--version)" = v' in line)
+    assert f"v{CONNECTOR_NODE_VERSION}" in lines[node_check]
+    assert node_check < lines.index("npm install -g --no-fund --no-audit wrangler@1.2.3")
+    for dist_arch in ("x64", "arm64"):
+        tarball = f"node-v{CONNECTOR_NODE_VERSION}-linux-{dist_arch}.tar.gz"
+        assert any(tarball in line and line.startswith("curl ") for line in lines)
+    assert sum("sha256sum -c -" in line for line in lines) == 2
 
 
 def test_a_github_release_binary_reaches_the_asset_hosts_it_redirects_to() -> None:
