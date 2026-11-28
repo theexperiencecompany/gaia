@@ -296,6 +296,19 @@ _CONNECTOR_PRESETS: dict[str, dict[str, Any]] = {
         "allowed_hosts": ["api.resend.com"],
         "verify": {"args": ["GET", "/domains"]},
     },
+    "rest_account": {
+        "kind": "rest",
+        "provider_domain": "algolia.net",
+        "capability": "Search and manage your Algolia indices",
+        "rest": {
+            "base_url": "https://{secret_user}-dsn.algolia.net/1",
+            "auth_header": "X-Algolia-API-Key",
+            "auth_template": "{secret_password}",
+            "account_header": "X-Algolia-Application-Id",
+        },
+        "allowed_hosts": ["*.algolia.net"],
+        "verify": {"args": ["GET", "/indexes"]},
+    },
     "sdk": {
         "kind": "sdk",
         "provider_domain": "openai.com",
@@ -310,7 +323,7 @@ _CONNECTOR_PRESETS: dict[str, dict[str, Any]] = {
 
 
 def make_connector_spec(kind: str = "cli", **overrides: Any) -> ConnectorSpec:
-    """Build a valid connector spec per preset: gh (cli), Resend (rest), openai (sdk)."""
+    """Build a valid connector spec per preset: gh (cli), Resend (rest), Algolia (rest_account), openai (sdk)."""
     return ConnectorSpec.model_validate({**_CONNECTOR_PRESETS[kind], **overrides})
 
 

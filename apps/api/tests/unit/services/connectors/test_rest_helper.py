@@ -20,6 +20,7 @@ from cryptography.x509.oid import NameOID
 import pytest
 
 from app.services.connectors.rest_helper import (
+    ACCOUNT_HEADER_ENV,
     AUTH_HEADER_ENV,
     AUTH_QUERY_ENV,
     AUTH_TEMPLATE_ENV,
@@ -124,11 +125,15 @@ def _helper(tmp_path: Path) -> Path:
 
 
 def _run(
-    tmp_path: Path, server: _Server, *args: str, auth: dict[str, str] | None = None
+    tmp_path: Path,
+    server: _Server,
+    *args: str,
+    auth: dict[str, str] | None = None,
+    secret: str = _SECRET,
 ) -> subprocess.CompletedProcess[str]:
     env = {
         BASE_URL_ENV: server.base_url,
-        SECRET_ENV: _SECRET,
+        SECRET_ENV: secret,
         AUTH_TEMPLATE_ENV: "Bearer {secret}",
         "SSL_CERT_FILE": str(server.cert_file),
         **(auth if auth is not None else {AUTH_HEADER_ENV: "Authorization"}),
@@ -164,6 +169,40 @@ def test_a_basic_auth_template_sends_the_pasted_user_and_password_base64_encoded
     assert ran.returncode == 0, ran.stderr
     expected = base64.b64encode(_SECRET.encode()).decode()
     assert [s.headers["Authorization"] for s in server.seen] == [f"Basic {expected}"]
+
+
+_ACCOUNT_AUTH = {
+    AUTH_HEADER_ENV: "X-Algolia-API-Key",
+    AUTH_TEMPLATE_ENV: "{secret_password}",
+    ACCOUNT_HEADER_ENV: "X-Algolia-Application-Id",
+}
+
+
+def test_a_two_part_key_sends_its_account_half_and_key_half_in_their_own_headers(
+    tmp_path: Path, server: _Server
+) -> None:
+    ran = _run(tmp_path, server, "GET", "/user", auth=_ACCOUNT_AUTH, secret=f"LATENCY:{_SECRET}")
+
+    assert ran.returncode == 0, ran.stderr
+    (seen,) = server.seen
+    assert seen.headers["X-Algolia-API-Key"] == _SECRET
+    assert seen.headers["X-Algolia-Application-Id"] == "LATENCY"
+
+
+def test_the_account_header_cannot_be_set_by_the_call(tmp_path: Path, server: _Server) -> None:
+    ran = _run(
+        tmp_path,
+        server,
+        "GET",
+        "/user",
+        "--header",
+        "X-Algolia-Application-Id:OTHER",
+        auth=_ACCOUNT_AUTH,
+        secret=f"LATENCY:{_SECRET}",
+    )
+
+    assert ran.returncode == 2
+    assert server.seen == []
 
 
 def test_query_auth_puts_the_key_in_its_parameter_not_a_header(

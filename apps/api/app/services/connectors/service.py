@@ -18,12 +18,13 @@ from app.constants.connectors import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
-from app.models.connector_models import ConnectorKind, ConnectorSpec
+from app.models.connector_models import ConnectorKind, ConnectorSpec, InvalidConnectorKeyError
 from app.models.integration_models import Integration
 from app.models.oauth_models import OAuthIntegration
 from app.services.connectors.commands import CallPlan, plan_call
 from app.services.connectors.install import install_hosts
 from app.services.connectors.rest_helper import (
+    ACCOUNT_HEADER_ENV,
     AUTH_HEADER_ENV,
     AUTH_QUERY_ENV,
     AUTH_TEMPLATE_ENV,
@@ -52,7 +53,7 @@ _AUTH_FAILURE_RE = re.compile(
     r"|(token|key) (is |has )?(invalid|expired|been revoked|revoked)"
     r"|authentication (failed|required)|not logged in|unauthenticated|incorrect api key"
     r"|InvalidClientTokenId|security token included in the request is invalid"
-    r"|invalid format for authorization header",
+    r"|invalid format for authorization header|invalid application-id or api key",
     re.IGNORECASE,
 )
 
@@ -157,6 +158,14 @@ def _secret_halves(secret: str) -> dict[str, str]:
     }
 
 
+def _account_half(secret: str) -> str:
+    if ":" not in secret:
+        raise InvalidConnectorKeyError(
+            "paste the key as ID:SECRET, the account id before the colon"
+        )
+    return _secret_halves(secret)[CONNECTOR_SECRET_USER_PLACEHOLDER]
+
+
 def _render_template(template: str, secret: str) -> str:
     for placeholder, half in _secret_halves(secret).items():
         template = template.replace(placeholder, half)
@@ -164,8 +173,9 @@ def _render_template(template: str, secret: str) -> str:
 
 
 def bound_secrets(spec: ConnectorSpec, secret: str) -> list[str]:
-    """Return every value of the secret a call holds: the whole key, plus each half a file takes."""
-    templates = " ".join(f.template for f in spec.credential.files)
+    """Return every value of the secret a call holds: the whole key, plus each half a template takes."""
+    rest_templates = [spec.rest.auth_template] if spec.rest is not None else []
+    templates = " ".join([f.template for f in spec.credential.files] + rest_templates)
     return [secret] + [
         half for placeholder, half in _secret_halves(secret).items() if placeholder in templates
     ]
@@ -175,8 +185,13 @@ def _secret_bindings(
     spec: ConnectorSpec, secret: str
 ) -> tuple[dict[str, str], tuple[RunnerFile, ...]]:
     if spec.kind is ConnectorKind.REST and spec.rest is not None:
+        base_url = (
+            spec.rest_base_url(_account_half(secret))
+            if spec.rest.uses_account
+            else spec.rest.base_url
+        )
         env = {
-            BASE_URL_ENV: spec.rest.base_url,
+            BASE_URL_ENV: base_url,
             SECRET_ENV: secret,
             AUTH_TEMPLATE_ENV: spec.rest.auth_template,
         }
@@ -184,6 +199,8 @@ def _secret_bindings(
             env[AUTH_HEADER_ENV] = spec.rest.auth_header
         if spec.rest.auth_query_param is not None:
             env[AUTH_QUERY_ENV] = spec.rest.auth_query_param
+        if spec.rest.account_header is not None:
+            env[ACCOUNT_HEADER_ENV] = spec.rest.account_header
         return env, ()
     env = dict.fromkeys(spec.credential.env, secret)
     files = tuple(

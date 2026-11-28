@@ -17,6 +17,7 @@ from app.constants.connectors import (
     CONNECTOR_GUIDANCE_MAX_CHARS,
     CONNECTOR_SECRET_PLACEHOLDER,
     CONNECTOR_SECRET_PLACEHOLDERS,
+    CONNECTOR_SECRET_USER_PLACEHOLDER,
     CREDENTIAL_DENIED_DIRS,
     CREDENTIAL_HOME_FILES,
     MAX_CONNECTOR_HOSTS,
@@ -28,6 +29,9 @@ _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
 _PINNED_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
 _COMMAND_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_DNS_LABEL_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", re.IGNORECASE)
+# Stands in for the account when a host template is checked against allowed_hosts at define time.
+_SAMPLE_ACCOUNT = "account"
 _WILDCARD = "*."
 # Fields only the connect card or the model reads; changing them moves no key and runs nothing new.
 _COSMETIC_FIELDS: dict[str, bool | set[str]] = {
@@ -45,6 +49,10 @@ def host_allowed(host: str, allowed_hosts: list[str]) -> bool:
         else host == pattern
         for pattern in allowed_hosts
     )
+
+
+class InvalidConnectorKeyError(ValueError):
+    """Raised when a pasted key cannot fill the spec's slots, e.g. its account half is not a DNS label."""
 
 
 class ConnectorKind(StrEnum):
@@ -242,19 +250,51 @@ class RestConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    base_url: str = Field(min_length=9, max_length=200)
+    base_url: str = Field(
+        min_length=9,
+        max_length=200,
+        description=(
+            f"May start its host with {CONNECTOR_SECRET_USER_PLACEHOLDER}, the account half of a key "
+            f"pasted as ID:SECRET, e.g. https://{CONNECTOR_SECRET_USER_PLACEHOLDER}-dsn.algolia.net"
+        ),
+    )
     auth_header: str | None = Field(
         default="Authorization", max_length=60, pattern=r"^[A-Za-z0-9-]+$"
     )
     auth_template: str = Field(default=f"Bearer {CONNECTOR_SECRET_PLACEHOLDER}", max_length=200)
     auth_query_param: str | None = Field(default=None, max_length=60, pattern=r"^[A-Za-z0-9_.-]+$")
+    account_header: str | None = Field(
+        default=None,
+        max_length=60,
+        pattern=r"^[A-Za-z0-9-]+$",
+        description="A header that carries the account half of an ID:SECRET key",
+    )
 
     @field_validator("base_url")
     @classmethod
     def _https_base(cls, value: str) -> str:
         if not value.startswith("https://"):
             raise ValueError("base_url must be https")
+        first_label, _, rest = value.removeprefix("https://").partition(".")
+        if "{" in rest or "{" in first_label.replace(CONNECTOR_SECRET_USER_PLACEHOLDER, "", 1):
+            raise ValueError(
+                f"base_url takes only {CONNECTOR_SECRET_USER_PLACEHOLDER}, once, in its host's first label"
+            )
         return value.rstrip("/")
+
+    @property
+    def uses_account(self) -> bool:
+        """Say whether a call needs the account half of an ID:SECRET key."""
+        return CONNECTOR_SECRET_USER_PLACEHOLDER in self.base_url or self.account_header is not None
+
+    def base_url_for(self, account: str) -> str:
+        """Fill the host template with an account, refused unless it is one DNS label."""
+        if not _DNS_LABEL_RE.fullmatch(account):
+            raise InvalidConnectorKeyError(
+                "the account part of the key (before the colon) must be one DNS label: "
+                "letters, digits and inner hyphens"
+            )
+        return self.base_url.replace(CONNECTOR_SECRET_USER_PLACEHOLDER, account.lower())
 
     @model_validator(mode="after")
     def _one_auth_slot(self) -> Self:
@@ -315,7 +355,7 @@ class ConnectorSpec(BaseModel):
                     raise ValueError("a rest connector takes rest and nothing else")
                 if self.credential.env or self.credential.files:
                     raise ValueError("a rest connector's key goes in rest.auth_*, not env/files")
-                base_host = urlsplit(self.rest.base_url).hostname or ""
+                base_host = urlsplit(self.rest.base_url_for(_SAMPLE_ACCOUNT)).hostname or ""
                 if not host_allowed(base_host, self.allowed_hosts):
                     raise ValueError(f"rest.base_url's host {base_host!r} must be in allowed_hosts")
             case ConnectorKind.SDK:
@@ -326,6 +366,18 @@ class ConnectorSpec(BaseModel):
         ):
             raise ValueError("bind the secret to at least one env var or file")
         return self
+
+    def rest_base_url(self, account: str) -> str:
+        """Return the base URL a call goes to for this account, refused when it leaves allowed_hosts."""
+        if self.rest is None:
+            raise ValueError("only a rest connector has a base URL")
+        url = self.rest.base_url_for(account)
+        host = urlsplit(url).hostname or ""
+        if not host_allowed(host, self.allowed_hosts):
+            raise InvalidConnectorKeyError(
+                f"the key's account makes a host, {host!r}, outside allowed_hosts"
+            )
+        return url
 
     def missing_builds(self) -> dict[str, list[str]]:
         """Name each binary with no build for some runner CPU: cloud runs amd64, self-host may be arm64.

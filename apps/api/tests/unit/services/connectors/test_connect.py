@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.connector_models import IdentityExtractor
+from app.models.connector_models import IdentityExtractor, InvalidConnectorKeyError
 from app.models.integration_models import Integration
 from app.services.connectors.connect import (
     connect_connector,
@@ -100,6 +100,19 @@ async def test_a_refused_key_is_never_stored_and_the_card_says_how_to_fix_it() -
     assert "https://github.com/settings/tokens" in (response.error or "")
     patched.store.store_bearer_token.assert_not_awaited()
     patched.publish_connected.assert_not_awaited()
+
+
+async def test_a_key_that_cannot_fill_the_spec_is_never_stored_and_the_card_says_why() -> None:
+    with _Patched(_result(None)) as patched:
+        with patch(
+            f"{MODULE}.run_with_secret",
+            AsyncMock(side_effect=InvalidConnectorKeyError("paste the key as ID:SECRET")),
+        ):
+            response = await connect_connector(USER_ID, CONNECTOR_ID, "no-account-half")
+
+    assert response.status == "error"
+    assert "ID:SECRET" in (response.error or "")
+    patched.store.store_bearer_token.assert_not_awaited()
 
 
 async def test_disconnect_forgets_the_key_and_account_but_keeps_the_connector_to_reconnect() -> (

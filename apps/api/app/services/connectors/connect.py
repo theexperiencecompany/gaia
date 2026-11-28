@@ -7,7 +7,7 @@ import re
 from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
-from app.models.connector_models import ConnectorSpec, IdentityExtractor
+from app.models.connector_models import ConnectorSpec, IdentityExtractor, InvalidConnectorKeyError
 from app.models.integration_models import (
     Integration,
     IntegrationAccount,
@@ -100,6 +100,8 @@ async def connect_connector(
     except ConnectorRunnerUnavailableError as e:
         log.warning(f"{LogTag.INTEGRATION} No sandbox to verify a connector key", user_id=user_id)
         return _error(connector_id, doc.name, str(e))
+    except InvalidConnectorKeyError as e:
+        return _error(connector_id, doc.name, f"That key does not fit {doc.name}: {e}")
 
 
 async def _verify_and_store(

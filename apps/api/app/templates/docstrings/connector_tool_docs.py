@@ -19,7 +19,11 @@ Choose the preset:
   reads its token from (GH_TOKEN, FLY_API_TOKEN).
 - rest: plain HTTPS API. rest.base_url is the API root; the key goes in
   rest.auth_header with rest.auth_template ("Bearer {secret}") or in
-  rest.auth_query_param. No install needed.
+  rest.auth_query_param. No install needed. When the API host carries the
+  account id (Algolia's {secret_user}-dsn.algolia.net), the user pastes
+  ID:SECRET: base_url's host starts with {secret_user}, auth_template takes
+  {secret_password}, rest.account_header names the header that carries the id
+  if the API wants one, and allowed_hosts lists the wildcard (*.algolia.net).
 - sdk: the provider's official python or node package; credential.env names the
   variable the SDK reads (OPENAI_API_KEY).
 

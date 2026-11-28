@@ -25,9 +25,20 @@ SECRET_ENV = "GAIA_CONNECTOR_SECRET"
 AUTH_HEADER_ENV = "GAIA_CONNECTOR_AUTH_HEADER"
 AUTH_QUERY_ENV = "GAIA_CONNECTOR_AUTH_QUERY"
 AUTH_TEMPLATE_ENV = "GAIA_CONNECTOR_AUTH_TEMPLATE"
+# A header that carries the account half of a key pasted as ID:SECRET.
+ACCOUNT_HEADER_ENV = "GAIA_CONNECTOR_ACCOUNT_HEADER"
 SECRET_PLACEHOLDER = "{secret}"
 # HTTP Basic: the user pastes "user:password" and the header carries its base64.
 SECRET_BASE64_PLACEHOLDER = "{secret_base64}"
+SECRET_USER_PLACEHOLDER = "{secret_user}"
+SECRET_PASSWORD_PLACEHOLDER = "{secret_password}"
+_TEMPLATE_PLACEHOLDERS = (
+    SECRET_PLACEHOLDER,
+    SECRET_BASE64_PLACEHOLDER,
+    SECRET_USER_PLACEHOLDER,
+    SECRET_PASSWORD_PLACEHOLDER,
+)
+_KEY_SEPARATOR = ":"
 
 EXIT_OK = 0
 EXIT_NO_RESPONSE = 1
@@ -66,6 +77,8 @@ class _AuthConfig:
     secret_value: str
     header: str | None
     query: str | None
+    account_header: str | None
+    account: str
 
 
 class _Parser(argparse.ArgumentParser):
@@ -99,13 +112,16 @@ def build_request(argv: Sequence[str], env: Mapping[str, str]) -> PreparedReques
     for item in args.header:
         name, value = _split_pair(item, ":", "--header")
         lowered = name.lower()
-        if lowered in RESERVED_HEADERS or (auth.header and lowered == auth.header.lower()):
+        auth_headers = {h.lower() for h in (auth.header, auth.account_header) if h}
+        if lowered in RESERVED_HEADERS or lowered in auth_headers:
             raise UsageError(f"--header may not set {name}")
         if not _is_printable_ascii(name + value):
             raise UsageError("--header names and values must be printable ASCII")
         headers[name] = value.strip()
     if auth.header is not None:
         headers[auth.header] = auth.secret_value
+    if auth.account_header is not None:
+        headers[auth.account_header] = auth.account
 
     body = None
     if args.json_body is not None:
@@ -126,6 +142,7 @@ def _auth_config(env: Mapping[str, str]) -> _AuthConfig:
     header = env.get(AUTH_HEADER_ENV) or None
     query = env.get(AUTH_QUERY_ENV) or None
     template = env.get(AUTH_TEMPLATE_ENV, "")
+    account_header = env.get(ACCOUNT_HEADER_ENV) or None
     if base.scheme != "https" or not base.hostname or base.username or base.password:
         raise UsageError(f"{BASE_URL_ENV} must be an https URL with a host")
     if base.query or base.fragment:
@@ -134,20 +151,32 @@ def _auth_config(env: Mapping[str, str]) -> _AuthConfig:
         raise UsageError(f"{SECRET_ENV} is not set")
     if (header is None) == (query is None):
         raise UsageError(f"set exactly one of {AUTH_HEADER_ENV} or {AUTH_QUERY_ENV}")
-    if SECRET_PLACEHOLDER not in template and SECRET_BASE64_PLACEHOLDER not in template:
+    if not any(placeholder in template for placeholder in _TEMPLATE_PLACEHOLDERS):
         raise UsageError(
-            f"{AUTH_TEMPLATE_ENV} must contain {SECRET_PLACEHOLDER} or {SECRET_BASE64_PLACEHOLDER}"
+            f"{AUTH_TEMPLATE_ENV} must contain one of {', '.join(_TEMPLATE_PLACEHOLDERS)}"
         )
-    encoded = base64.b64encode(secret.encode()).decode()
+    account, separator, password = secret.partition(_KEY_SEPARATOR)
+    two_part = account_header or SECRET_USER_PLACEHOLDER in template
+    if (two_part or SECRET_PASSWORD_PLACEHOLDER in template) and not separator:
+        raise UsageError(f"{SECRET_ENV} must be ID:SECRET for this connector")
+    replacements = {
+        SECRET_BASE64_PLACEHOLDER: base64.b64encode(secret.encode()).decode(),
+        SECRET_USER_PLACEHOLDER: account,
+        SECRET_PASSWORD_PLACEHOLDER: password,
+        SECRET_PLACEHOLDER: secret,
+    }
+    secret_value = template
+    for placeholder, value in replacements.items():
+        secret_value = secret_value.replace(placeholder, value)
     return _AuthConfig(
         host=base.hostname,
         port=base.port,
         base_path=base.path.rstrip("/"),
-        secret_value=template.replace(SECRET_BASE64_PLACEHOLDER, encoded).replace(
-            SECRET_PLACEHOLDER, secret
-        ),
+        secret_value=secret_value,
         header=header,
         query=query,
+        account_header=account_header,
+        account=account,
     )
 
 

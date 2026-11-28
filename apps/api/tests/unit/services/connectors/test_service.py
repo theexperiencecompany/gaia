@@ -6,9 +6,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.connectors import CONNECTOR_REDACTION, CONNECTOR_STDOUT_HEAD_BYTES
-from app.models.connector_models import ConnectorSpec
+from app.models.connector_models import ConnectorSpec, InvalidConnectorKeyError
 from app.services.connectors.commands import plan_call
-from app.services.connectors.rest_helper import AUTH_HEADER_ENV, BASE_URL_ENV, SECRET_ENV
+from app.services.connectors.rest_helper import (
+    ACCOUNT_HEADER_ENV,
+    AUTH_HEADER_ENV,
+    BASE_URL_ENV,
+    SECRET_ENV,
+)
 from app.services.connectors.runner import RunOutcome, RunRequest, RunResult
 from app.services.connectors.service import (
     CallFailure,
@@ -120,6 +125,43 @@ async def test_each_half_of_a_two_part_key_is_scrubbed_on_its_own() -> None:
     assert out.stdout.count(CONNECTOR_REDACTION) == 2
 
 
+_ALGOLIA_APP = "LATENCY"
+_ALGOLIA_KEY = "6be0576ff61c053d5f9a3225e2a90f76"
+
+
+def test_a_templated_rest_host_reaches_the_helper_resolved_to_the_account() -> None:
+    spec = make_connector_spec("rest_account")
+
+    request = build_run_request(
+        spec, plan_call(spec, ["GET", "/indexes"]), f"{_ALGOLIA_APP}:{_ALGOLIA_KEY}"
+    )
+
+    assert request.env[BASE_URL_ENV] == "https://latency-dsn.algolia.net/1"
+    assert request.env[ACCOUNT_HEADER_ENV] == "X-Algolia-Application-Id"
+    assert request.call_hosts == ("*.algolia.net",)
+
+
+def test_a_key_with_no_account_half_never_becomes_a_host() -> None:
+    spec = make_connector_spec("rest_account")
+
+    with pytest.raises(InvalidConnectorKeyError):
+        build_run_request(spec, plan_call(spec, ["GET", "/indexes"]), _ALGOLIA_KEY)
+
+
+async def test_the_key_half_is_scrubbed_and_the_account_host_is_left_readable() -> None:
+    host = "https://latency-dsn.algolia.net/1/indexes"
+    runner = _RecordingRunner(_ok(f"{host} key={_ALGOLIA_KEY}"))
+
+    out = await run_with_secret(
+        make_connector_spec("rest_account"),
+        ["GET", "/indexes"],
+        f"{_ALGOLIA_APP}:{_ALGOLIA_KEY}",
+        runner=runner,
+    )
+
+    assert out.stdout == f"{host} key={CONNECTOR_REDACTION}"
+
+
 def test_a_whole_key_template_binds_no_halves() -> None:
     assert bound_secrets(make_connector_spec("cli"), "user:pass") == ["user:pass"]
 
@@ -198,6 +240,8 @@ async def test_huge_output_is_scrubbed_before_it_is_truncated() -> None:
                 "Authentication error, API token missing/invalid",
                 "Error: token in TURSO_API_TOKEN env var is invalid. Update the env var",
                 "The token in the HF_TOKEN environment variable is invalid.",
+                # Algolia on a key it never issued, seen live (HTTP 403).
+                '{"message":"Invalid Application-ID or API key","status":403}',
             )
         ),
         # Cloudflare on a key that is not even token-shaped, seen live.

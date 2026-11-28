@@ -3,7 +3,12 @@
 from pydantic import ValidationError
 import pytest
 
-from app.models.connector_models import ConnectorSpec, InstallPackage, PackageManager
+from app.models.connector_models import (
+    ConnectorSpec,
+    InstallPackage,
+    InvalidConnectorKeyError,
+    PackageManager,
+)
 from tests.factories import make_connector_spec
 
 
@@ -192,3 +197,47 @@ def test_a_binary_built_for_both_cpus_is_accepted() -> None:
 
     assert {p.arch for p in spec.install} == {"amd64", "arm64"}
     assert spec.missing_builds() == {}
+
+
+def _account_spec(base_url: str, allowed_hosts: list[str] | None = None) -> ConnectorSpec:
+    rest = make_connector_spec("rest_account").model_dump()["rest"]
+    hosts = {"allowed_hosts": allowed_hosts} if allowed_hosts is not None else {}
+    return make_connector_spec("rest_account", rest={**rest, "base_url": base_url}, **hosts)
+
+
+def test_a_templated_rest_host_resolves_to_the_accounts_own_host() -> None:
+    spec = make_connector_spec("rest_account")
+
+    assert spec.rest_base_url("LATENCY") == "https://latency-dsn.algolia.net/1"
+
+
+@pytest.mark.parametrize(
+    "account", ["evil.com/x", "a.b", "x@y", "x:443", "a%2eb", "", "-a", "a-", "a" * 64, "a b"]
+)
+def test_an_account_that_is_not_one_dns_label_never_reaches_the_host(account: str) -> None:
+    with pytest.raises(InvalidConnectorKeyError):
+        make_connector_spec("rest_account").rest_base_url(account)
+
+
+@pytest.mark.parametrize(
+    ("base_url", "allowed_hosts"),
+    [
+        ("https://{secret_user}.evil.com", ["*.algolia.net"]),
+        ("https://{secret_user}-dsn.algolia.net", ["latency-dsn.algolia.net"]),
+        ("https://api.{secret_user}.algolia.net", ["*.algolia.net"]),
+        ("https://x.algolia.net/{secret_user}", ["*.algolia.net"]),
+        ("https://{secret_user}{secret_user}.algolia.net", ["*.algolia.net"]),
+        ("https://{secret_password}.algolia.net", ["*.algolia.net"]),
+    ],
+)
+def test_a_host_template_the_allowed_hosts_do_not_cover_is_refused_at_define_time(
+    base_url: str, allowed_hosts: list[str]
+) -> None:
+    with pytest.raises(ValidationError):
+        _account_spec(base_url, allowed_hosts)
+
+
+def test_the_trust_fingerprint_covers_the_host_template() -> None:
+    moved = _account_spec("https://{secret_user}.algolia.net/1")
+
+    assert moved.trust_fingerprint() != make_connector_spec("rest_account").trust_fingerprint()

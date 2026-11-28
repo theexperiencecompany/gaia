@@ -6,6 +6,7 @@ from app.constants.connectors import CONNECTOR_REST_HELPER
 from app.services.connectors.runner import runner_path
 from app.services.connectors.scripts import gaia_rest
 from app.services.connectors.scripts.gaia_rest import (
+    ACCOUNT_HEADER_ENV,
     AUTH_HEADER_ENV,
     AUTH_QUERY_ENV,
     AUTH_TEMPLATE_ENV,
@@ -14,6 +15,7 @@ from app.services.connectors.scripts.gaia_rest import (
 )
 
 __all__ = [
+    "ACCOUNT_HEADER_ENV",
     "AUTH_HEADER_ENV",
     "AUTH_QUERY_ENV",
     "AUTH_TEMPLATE_ENV",
