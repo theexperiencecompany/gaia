@@ -159,9 +159,19 @@ const adapterFiles = walk(path.join(EFFECT_COMPONENTS_DIR, "pages"))
   .filter((file) => path.extname(file) === ".tsx")
   .sort(byPath);
 
-const adapterImports = pageFiles
+const branchImports = walk(EFFECT_COMPONENTS_DIR)
+  .filter(
+    (file) =>
+      path.basename(file).startsWith("Effect") &&
+      path.basename(file).endsWith("Branch.tsx"),
+  )
   .map((file) => readFileSync(file, "utf8"))
   .join("\n");
+
+const adapterImports = [
+  ...pageFiles.map((file) => readFileSync(file, "utf8")),
+  branchImports,
+].join("\n");
 
 const adapters = adapterFiles.map((file) => {
   const name = path.basename(file, ".tsx");
