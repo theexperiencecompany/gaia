@@ -242,6 +242,7 @@ def test_the_quality_gate_requires_the_job_that_runs_them(workflow: dict[str, An
 OUTSIDE_THE_SLICES = {
     "tests/composio/": "live Composio accounts; `nx run api:test:composio`",
     "tests/model_onboarding/": "live model providers; deselected by -m in every slice",
+    "tests/connector_runners/": "live E2B and local docker; deselected by -m in every slice",
 }
 
 

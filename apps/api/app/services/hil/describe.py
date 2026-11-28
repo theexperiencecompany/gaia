@@ -11,6 +11,7 @@ from string import Formatter
 
 from pydantic import BaseModel, ConfigDict
 
+from app.constants.connectors import RUN_CONNECTOR_TOOL
 from app.constants.hil_descriptions import (
     HIL_CHANGE_JOIN,
     HIL_CHANGE_LEAD,
@@ -38,6 +39,8 @@ _Scalar = str | int | float
 _EACH = "[]."
 _BROWSER_ACTION = "Start a browser task"
 _BROWSER_LEAD_CHARS = 140
+# How much of a connector call's command line the approval card's headline shows.
+_CONNECTOR_COMMAND_CHARS = 140
 
 
 class _BrowserTaskArgs(BaseModel):
@@ -80,6 +83,8 @@ def describe_call(
     """
     if tool_name == "browser_task":
         return _describe_browser_task(args)
+    if tool_name == RUN_CONNECTOR_TOOL:
+        return _describe_connector_call(args, integration_name)
     spec = _spec(tool_name, args, integration_name)
     facts = _facts(spec, args, clock)
     phrase = _phrase(spec, facts)
@@ -207,6 +212,32 @@ def _describe_browser_task(args: Mapping[str, object]) -> ApprovalDescription:
         question=question,
         confirm="start it",
         details=[ApprovalDetail(label="Task", value=_preview(task))],
+    )
+
+
+class _ConnectorCallArgs(BaseModel):
+    """The run_connector arguments the description reads."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    argv: list[str] = []
+
+
+def _describe_connector_call(
+    args: Mapping[str, object], connector: str | None
+) -> ApprovalDescription:
+    """Describe a connector call by the command it runs, on the connector the user named."""
+    command = clip_text(
+        " ".join(_ConnectorCallArgs.model_validate(args).argv), _CONNECTOR_COMMAND_CHARS
+    )
+    place = f" on {connector}" if connector else ""
+    phrase = f"run {command}{place}" if command else f"run a command{place}"
+    return ApprovalDescription(
+        action=_capitalise(f"run a command{place}"),
+        headline=_capitalise(phrase),
+        question=f"{HIL_DEFAULT_ASK} {phrase}?",
+        confirm=HIL_DEFAULT_CONFIRM,
+        details=[],
     )
 
 

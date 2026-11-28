@@ -14,6 +14,7 @@ from app.models.integration_models import IntegrationAccount, UserIntegrationDoc
 from app.services.analytics_service import capture
 from app.services.integrations import integration_connection_service
 from app.services.integrations.integration_account_lifecycle import (
+    composio_integration,
     list_accounts,
     remove_account,
     update_account,
@@ -55,6 +56,8 @@ class DisconnectIntegrationArgs(BaseModel):
 
 
 async def _connected_accounts(user_id: str, integration_id: str) -> UserIntegrationDocument:
+    # Managing accounts (rename, primary, remove one) is a multi-account integration's feature.
+    composio_integration(integration_id)
     record = await list_accounts(user_id, integration_id)
     if record is None or not record.accounts:
         raise AppError(

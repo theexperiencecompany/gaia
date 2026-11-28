@@ -59,7 +59,7 @@ class IntegrationContent(BaseModel):
     faqs: list[IntegrationFAQ] = []
 
 
-ManagedBy = Literal["composio", "mcp", "internal"]
+ManagedBy = Literal["composio", "mcp", "internal", "connector"]
 
 
 class OAuthIntegration(BaseModel):

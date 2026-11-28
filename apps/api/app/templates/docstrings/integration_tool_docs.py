@@ -105,6 +105,8 @@ PARAMETERS:
 
 The user signs in through a card (or a single-use link on text-only platforms); this
 tool never connects anything by itself. To remove an account, use disconnect_integration.
+A service with no integration here (Fly.io, Resend, any CLI or API) is connected with
+define_connector instead.
 """
 
 CHECK_INTEGRATIONS_STATUS = """

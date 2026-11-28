@@ -13,9 +13,11 @@ from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
 from app.constants.chat import ConversationSource
+from app.models.connector_models import ConnectorSpec
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import DisplayState, Entry
 from app.models.conversation_models import StoredConversation
+from app.models.integration_models import Integration
 from app.models.oauth_models import OAuthIntegration
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -269,4 +271,66 @@ def make_reply_item(text: str, *, reply_id: str = "r1", seq: int = 1) -> ReplyIt
         narrates=(),
         retry_target=None,
         files=(),
+    )
+
+
+_CONNECTOR_PRESETS: dict[str, dict[str, Any]] = {
+    "cli": {
+        "kind": "cli",
+        "provider_domain": "github.com",
+        "capability": "Read your GitHub repositories and issues",
+        "command": "gh",
+        "credential": {"env": ["GH_TOKEN"], "token_url": "https://github.com/settings/tokens"},
+        "risk": {
+            "read_commands": ["api", "repo list", "issue list"],
+            "write_flags": ["-X", "--method", "-f"],
+        },
+        "allowed_hosts": ["api.github.com", "github.com"],
+        "verify": {"args": ["api", "user"], "identity": {"json_path": "login"}},
+    },
+    "rest": {
+        "kind": "rest",
+        "provider_domain": "resend.com",
+        "capability": "Send email and manage domains with Resend",
+        "rest": {"base_url": "https://api.resend.com"},
+        "allowed_hosts": ["api.resend.com"],
+        "verify": {"args": ["GET", "/domains"]},
+    },
+    "sdk": {
+        "kind": "sdk",
+        "provider_domain": "openai.com",
+        "capability": "Call OpenAI models",
+        "sdk_runtime": "python",
+        "install": [{"manager": "pip", "name": "openai", "version": "1.109.1"}],
+        "credential": {"env": ["OPENAI_API_KEY"]},
+        "allowed_hosts": ["api.openai.com"],
+        "verify": {"args": ["-c", "import openai; print(len(openai.OpenAI().models.list().data))"]},
+    },
+}
+
+
+def make_connector_spec(kind: str = "cli", **overrides: Any) -> ConnectorSpec:
+    """Build a valid connector spec per preset: gh (cli), Resend (rest), openai (sdk)."""
+    return ConnectorSpec.model_validate({**_CONNECTOR_PRESETS[kind], **overrides})
+
+
+def make_connector_doc(
+    connector_id: str, created_by: str, spec: ConnectorSpec, name: str = "Connector"
+) -> Integration:
+    """Build a private connector's integrations document."""
+    return Integration(
+        integration_id=connector_id,
+        name=name,
+        description="",
+        category="developer",
+        managed_by="connector",
+        source="custom",
+        is_public=False,
+        created_by=created_by,
+        connector_config=spec,
+        icon_url=None,
+        display_priority=0,
+        is_featured=False,
+        published_at=None,
+        clone_count=0,
     )

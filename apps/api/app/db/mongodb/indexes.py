@@ -1519,49 +1519,40 @@ async def _backfill_custom_server_url_keys() -> None:
     integrations_collection = get_async_collection("integrations")
     try:
         total_backfilled = 0
-        while True:
-            cursor = (
-                integrations_collection.find(
-                    {
-                        "source": "custom",
-                        "mcp_config.server_url_normalized": {"$exists": False},
-                    },
-                    {
-                        "integration_id": 1,
-                        "created_by": 1,
-                        "mcp_config.server_url": 1,
-                    },
-                )
-                .sort("created_at", 1)
-                .limit(500)
+        # One pass, oldest first: a row that stays keyless (no usable URL, a
+        # connector, a contested key's loser) is seen once, never re-queried.
+        cursor = integrations_collection.find(
+            {
+                "source": "custom",
+                "mcp_config.server_url_normalized": {"$exists": False},
+            },
+            {
+                "integration_id": 1,
+                "created_by": 1,
+                "mcp_config.server_url": 1,
+            },
+        ).sort("created_at", 1)
+        async for raw_doc in cursor:
+            doc = cast(_ServerUrlBackfillDoc, raw_doc)
+            mcp_config: _McpConfigProjection = doc.get("mcp_config") or {}
+            key = dedup_server_url_key(mcp_config.get("server_url") or "")
+            if not key:
+                continue
+            claimed = await integrations_collection.find_one(
+                {
+                    "source": "custom",
+                    "created_by": doc.get("created_by"),
+                    "mcp_config.server_url_normalized": key,
+                },
+                {"_id": 1},
             )
-            docs: list[_ServerUrlBackfillDoc] = cast(
-                list[_ServerUrlBackfillDoc], await cursor.to_list(length=500)
+            if claimed is not None:
+                continue
+            await integrations_collection.update_one(
+                {"integration_id": doc["integration_id"]},
+                {"$set": {"mcp_config.server_url_normalized": key}},
             )
-            if not docs:
-                break
-
-            for doc in docs:
-                mcp_config: _McpConfigProjection = doc.get("mcp_config") or {}
-                raw = mcp_config.get("server_url") or ""
-                key = dedup_server_url_key(raw)
-                if not key:
-                    continue
-                claimed = await integrations_collection.find_one(
-                    {
-                        "source": "custom",
-                        "created_by": doc.get("created_by"),
-                        "mcp_config.server_url_normalized": key,
-                    },
-                    {"_id": 1},
-                )
-                if claimed is not None:
-                    continue
-                await integrations_collection.update_one(
-                    {"integration_id": doc["integration_id"]},
-                    {"$set": {"mcp_config.server_url_normalized": key}},
-                )
-                total_backfilled += 1
+            total_backfilled += 1
 
         if total_backfilled:
             log.info(

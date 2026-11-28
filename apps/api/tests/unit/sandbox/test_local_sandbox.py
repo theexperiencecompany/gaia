@@ -152,7 +152,7 @@ class SpawnRecorder:
 def recorder(monkeypatch: pytest.MonkeyPatch) -> SpawnRecorder:
     """Default recorder: every spawn succeeds silently unless told otherwise."""
     rec = SpawnRecorder(FakeProcess())
-    monkeypatch.setattr(local_sandbox, "_spawn_process", rec)
+    monkeypatch.setattr(local_sandbox, "spawn_process", rec)
     return rec
 
 

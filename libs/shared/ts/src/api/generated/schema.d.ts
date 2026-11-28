@@ -9334,6 +9334,8 @@ export interface components {
          * @description The outcome of starting an integration's connect flow.
          */
         ConnectIntegrationResponse: {
+            /** Accountlabel */
+            accountLabel: string | null;
             /** Error */
             error: string | null;
             /** Integrationid */
@@ -9427,6 +9429,33 @@ export interface components {
             /** Options */
             options: components["schemas"]["ConnectOption"][];
         };
+        /**
+         * ConnectorCardInfo
+         * @description What a connector's connect card shows before the user hands over a key.
+         */
+        ConnectorCardInfo: {
+            /** Allowedhosts */
+            allowedHosts: string[];
+            /** Capability */
+            capability: string;
+            /** Keylabel */
+            keyLabel: string;
+            kind: components["schemas"]["ConnectorKind"];
+            /** Providerdomain */
+            providerDomain: string;
+            /** Tokenurl */
+            tokenUrl?: string | null;
+            /**
+             * Verified
+             * @default false
+             */
+            verified?: boolean;
+        };
+        /**
+         * ConnectorKind
+         * @enum {string}
+         */
+        ConnectorKind: "cli" | "rest" | "sdk";
         /**
          * ContactCard
          * @description A person flattened to their primary name, email and phone; People may send any as null.
@@ -10724,7 +10753,7 @@ export interface components {
          * DispatchErrorKind
          * @enum {string}
          */
-        DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "timeout";
+        DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "approval_required" | "timeout";
         /**
          * DisplayState
          * @description The one status a client shows for a conversation.
@@ -12370,7 +12399,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal" | "connector";
             /** Name */
             name: string;
             /**
@@ -12635,6 +12664,7 @@ export interface components {
              * @default 0
              */
             cloneCount?: number;
+            connector?: components["schemas"]["ConnectorCardInfo"] | null;
             /** Createdby */
             createdBy?: string | null;
             /** Creator */
@@ -12657,7 +12687,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal" | "connector";
             /** Name */
             name: string;
             /** Publishedat */
@@ -14304,6 +14334,7 @@ export interface components {
              * @default 0
              */
             cloneCount?: number;
+            connector?: components["schemas"]["ConnectorCardInfo"] | null;
             /** Createdby */
             createdBy?: string | null;
             creator?: components["schemas"]["CommunityIntegrationCreator"] | null;
@@ -14336,7 +14367,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal" | "connector";
             /** Name */
             name: string;
             /**
@@ -22261,6 +22292,8 @@ export type ConnectLinkPreviewResponse = components['schemas']['ConnectLinkPrevi
 export type ConnectOption = components['schemas']['ConnectOption'];
 export type ConnectOptionsCard = components['schemas']['ConnectOptionsCard'];
 export type ConnectOptionsData = components['schemas']['ConnectOptionsData'];
+export type ConnectorCardInfo = components['schemas']['ConnectorCardInfo'];
+export type ConnectorKind = components['schemas']['ConnectorKind'];
 export type ContactCard = components['schemas']['ContactCard'];
 export type ContactsDataCard = components['schemas']['ContactsDataCard'];
 export type ContentTokenResponse = components['schemas']['ContentTokenResponse'];

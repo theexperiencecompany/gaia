@@ -45,17 +45,21 @@ from app.agents.skills.discovery import get_available_skills_text
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import render_preload_block, split_startup_tools
 from app.agents.workspace.system_docs import integration_skills_block
+from app.constants.connectors import MANAGED_BY_CONNECTOR, RUN_CONNECTOR_TOOL
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.integrations import ConnectMode
 from app.constants.log_tags import LogTag
 from app.constants.mcp import CUSTOM_MCP_AGENT_NAME_PREFIX, MCP_PRELOAD_ALL_MAX
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.subagent_models import Subagent
+from app.services.connectors.usage import render_connector_usage
 from app.services.integrations.integration_accounts import get_account_record
 from app.services.integrations.user_integrations import check_user_has_integration
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_errors import MCP_SIGNED_OUT_ERRORS
+from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.user_instructions_service import get_instructions
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
@@ -236,9 +240,11 @@ async def _has_several_accounts(integration_id: str, user_id: str | None) -> boo
 
 
 async def _overview_section(target: Subagent | CustomMcpSubagent) -> str:
-    """Return a custom MCP's own description, or a platform integration's reframed operating notes."""
+    """Return a custom integration's own notes, or a platform integration's reframed operating notes."""
     if isinstance(target, CustomMcpSubagent):
         doc = await integration_repository.get(target.id)
+        if doc is not None and doc.connector_config is not None:
+            return render_connector_usage(doc, doc.connector_config)
         if not (doc and doc.description):
             return ""
         return f"## {_display_name(target)}: what it is\n{doc.description}"
@@ -378,10 +384,28 @@ def _registry_backed(target: Subagent | CustomMcpSubagent) -> Subagent | None:
     return target
 
 
+async def _activate_connector(
+    target: CustomMcpSubagent, user_id: str | None
+) -> ActivatedTools | str:
+    """Gate a connector on the user's stored key, then preload run_connector's schema."""
+    if not user_id or not await check_user_has_integration(user_id, target.id):
+        return f"Unknown integration '{target.id}'."
+    connected = await user_integration_repository.is_connected(
+        user_id, target.id
+    ) and await MCPTokenStore(user_id).is_connected(target.id)
+    if not connected:
+        return await request_integration_connection(target.id, _display_name(target), user_id)
+    preload = [RUN_CONNECTOR_TOOL]
+    docs = await _render_preload(target.id, user_id, preload)
+    return ActivatedTools(total=len(preload), bind=[], preload=preload, docs=docs)
+
+
 async def _connect_and_activate(
     target: Subagent | CustomMcpSubagent, user_id: str | None
 ) -> ActivatedTools | str:
     """Activate target's tools, or return the reply text when it cannot be activated."""
+    if isinstance(target, CustomMcpSubagent) and target.managed_by == MANAGED_BY_CONNECTOR:
+        return await _activate_connector(target, user_id)
     registry_target = _registry_backed(target)
     if registry_target is None:
         # The server issues these tools per user: they never enter the global

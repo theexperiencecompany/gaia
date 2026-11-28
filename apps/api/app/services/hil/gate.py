@@ -48,6 +48,7 @@ from app.services.conversation.work_log import (
 from app.services.hil.bridge import (
     announce_approval,
 )
+from app.services.hil.connector_risk import connector_name
 from app.services.hil.describe import describe_call
 from app.services.hil.errors import ApprovalRequestNotFoundError
 from app.services.hil.fingerprint import approval_fingerprint
@@ -254,7 +255,7 @@ async def _decide_ledger(
                 integration_name=integration_name,
                 args_preview=to_jsonable_python(call.args),
                 auto_reason=AUTO_ASK_NOTE if auto.asked else None,
-                always_asks=await asks_every_time(call.name, call.args),
+                always_asks=await asks_every_time(context.user_id, call.name, call.args),
             ),
         )
         registered = await approval_ledger_repository.register(proposal, ap_id)
@@ -589,7 +590,11 @@ def _user_clock(request: ToolCallRequest) -> UserClock:
 async def _integration_name_for(
     request: ToolCallRequest, user_id: str, tool_name: str
 ) -> str | None:
-    """Name the approval card's integration: the registry category, else the MCP server."""
+    """Name the approval card's integration: the connector, the registry category, else the MCP server."""
+    if (
+        connector := await connector_name(user_id, tool_name, unpack_tool_call(request).args)
+    ) is not None:
+        return connector
     registry = await get_tool_registry()
     category = registry.get_category(registry.get_category_of_tool(tool_name))
     if category is not None:

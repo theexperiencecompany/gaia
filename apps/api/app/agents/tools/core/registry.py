@@ -7,6 +7,7 @@ from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import all_integrations
 from app.config.settings import settings
+from app.constants.connectors import DEFINE_CONNECTOR_TOOL, MANAGED_BY_CONNECTOR
 from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -358,6 +359,7 @@ class ToolRegistry:
             account_tools,
             artifact_tool,
             browser_tool,
+            connector_tools,
             context_tool,
             desktop_tools,
             download_tool,
@@ -495,15 +497,30 @@ class ToolRegistry:
         self._add_category(
             "memory", tools=memory_tools.tools, risk=CategoryRisk(destructive_tools=set())
         )
+        # run_connector is execute-routed and gated per call by hil/policy (reads never ask).
+        self._add_category(
+            "connectors",
+            tools=[connector_tools.run_connector],
+            options=CategoryOptions(
+                require_integration=True, integration_name=MANAGED_BY_CONNECTOR
+            ),
+            risk=CategoryRisk(destructive_tools=set()),
+        )
         self._add_category(
             "integrations",
-            tools=[*integration_tool.tools, *integration_account_tools.tools],
+            tools=[
+                *integration_tool.tools,
+                *integration_account_tools.tools,
+                connector_tools.define_connector,
+            ],
             risk=CategoryRisk(
                 destructive_tools={CONNECT_INTEGRATION_TOOL},
-                # Ask in every HIL mode (hil/policy): an untrusted MCP server, a device linked to
+                # Ask in every HIL mode (hil/policy): an untrusted MCP server, a connector spec (what
+                # runs with a key, where it goes, notes riding every later run), a device linked to
                 # the account, and a revoked account only a new sign-in restores.
                 always_gate_tools={
                     "add_custom_mcp_server",
+                    DEFINE_CONNECTOR_TOOL,
                     "approve_device_pairing",
                     DISCONNECT_INTEGRATION_TOOL,
                 },

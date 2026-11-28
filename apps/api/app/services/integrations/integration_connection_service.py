@@ -11,6 +11,7 @@ from app.config.oauth_config import (
     all_integrations,
     get_integration_by_id,
 )
+from app.constants.connectors import MANAGED_BY_CONNECTOR
 from app.constants.integrations import (
     MAX_ACCOUNTS_PER_INTEGRATION,
     NOT_SET_UP_ON_INSTANCE,
@@ -32,6 +33,7 @@ from app.schemas.integrations.responses import (
 from app.services.composio.auth_config_resolver import auth_config_id_for
 from app.services.composio.composio_service import get_composio_service
 from app.services.composio.error_detail import AuthConfigNotFoundError, composio_error_fields
+from app.services.connectors.connect import connect_connector, disconnect_connector
 from app.services.integrations.custom_crud import delete_custom_integration
 from app.services.integrations.hook_registry import emit_disconnected
 from app.services.integrations.integration_accounts import at_account_limit, get_account_record
@@ -504,6 +506,8 @@ async def initiate_integration_connection(
                 redirect_path=redirect_path,
                 reconnect_account_id=reconnect_account_id,
             )
+        if resolved.managed_by == MANAGED_BY_CONNECTOR:
+            return await connect_connector(user_id, integration_id, bearer_token)
         return _error(f"Unsupported integration type: {resolved.managed_by}")
     except AuthConfigNotFoundError as e:
         log.error(
@@ -532,7 +536,10 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
     if not resolved:
         raise ValueError(f"Integration {integration_id} not found")
 
-    if resolved.source == "custom":
+    if resolved.managed_by == MANAGED_BY_CONNECTOR:
+        await disconnect_connector(user_id, integration_id)
+
+    elif resolved.source == "custom":
         mcp_client = await get_mcp_client(user_id=user_id)
         await mcp_client.disconnect(integration_id)
         await remove_user_integration(user_id, integration_id)

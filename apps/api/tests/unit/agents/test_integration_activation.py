@@ -158,7 +158,7 @@ class TestActivationContext:
         self, sources: dict[str, MagicMock], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A custom MCP has no static config: its name, description and skills come from the user's own integration."""
-        doc = MagicMock(description="Searches papers.")
+        doc = MagicMock(description="Searches papers.", connector_config=None)
         lookup = AsyncMock(return_value=doc)
         monkeypatch.setattr(integration_repository, "get", lookup)
         custom = CustomMcpSubagent(id="abc123", name="Scholar", managed_by="mcp")

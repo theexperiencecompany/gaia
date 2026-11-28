@@ -300,7 +300,7 @@ async def _rename_account(
 
 
 async def list_accounts(user_id: str, integration_id: str) -> UserIntegrationDocument | None:
-    composio_integration(integration_id)
+    """Read the accounts on any integration: Composio's many, or the one a connector's key named."""
     return await get_account_record(user_id, integration_id)
 
 
