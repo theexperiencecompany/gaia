@@ -14,6 +14,7 @@
  * either one paints the translucent surface over the textarea again.
  */
 
+import type { MyIntegrationItem } from "@shared/api/generated";
 import shuffle from "lodash/shuffle";
 import type React from "react";
 import { useMemo } from "react";
@@ -21,10 +22,9 @@ import { useMemo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { useFittingIconCount } from "@/features/chat/hooks/useFittingIconCount";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
-import type { Integration } from "@/features/integrations/types";
 
 interface IntegrationsBannerProps {
-  integrations: Integration[];
+  integrations: MyIntegrationItem[];
   isLoading: boolean;
   hasMessages: boolean;
   onToggleSlashCommand: () => void;

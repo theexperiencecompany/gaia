@@ -11,6 +11,8 @@ from app.agents.templates.fetch_template import FETCH_TEMPLATE
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer
+from app.models.search_card_models import SearchResultCount, SearchResultsData
+from app.models.tool_card_registry import tool_card
 from app.services.hil.utils import untrusted_fence
 from app.templates.docstrings.search_tool_docs import (
     WEB_SEARCH_TOOL,
@@ -101,8 +103,7 @@ async def web_search_tool(
         # Perform the search with 10 results
         search_result = await perform_search(query=query_text, count=10)
 
-        web_results = [item.model_dump() for item in search_result.web]
-        # news_results = search_results.get("news", [])
+        web_results = search_result.web
         image_results = search_result.images
         video_results: list[str] = []
         answer = search_result.answer
@@ -119,27 +120,26 @@ async def web_search_tool(
         )
         writer({"progress": formatted_text})
 
-        # Send search data to frontend via writer
         writer(
-            {
-                "search_results": {
-                    "web": web_results,
-                    "news": [],
-                    "images": image_results,
-                    "videos": video_results,
-                    "query": query_text,
-                    "elapsed_time": elapsed_time,
-                    "answer": answer,
-                    "response_time": 0,
-                    "request_id": "",
-                    "result_count": {
-                        "web": len(web_results),
-                        # "news": len(news_results),
-                        "images": len(image_results),
-                        "videos": len(video_results),
-                    },
-                }
-            }
+            tool_card(
+                "search_results",
+                SearchResultsData(
+                    web=web_results,
+                    news=[],
+                    images=image_results,
+                    videos=video_results,
+                    query=query_text,
+                    elapsed_time=elapsed_time,
+                    answer=answer,
+                    response_time=0,
+                    request_id="",
+                    result_count=SearchResultCount(
+                        web=len(web_results),
+                        images=len(image_results),
+                        videos=len(video_results),
+                    ),
+                ),
+            )
         )
 
         # Return the raw search results for the LLM to use

@@ -1,8 +1,6 @@
 export type {
   SemanticSearchOptions,
   TodoApiClient,
-  WorkflowGenerateResult,
-  WorkflowStatusResult,
 } from "./apiClient";
 export type { HttpAdapter, RequestOptions } from "./createTodoApi";
 export { createTodoApi } from "./createTodoApi";

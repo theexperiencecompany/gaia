@@ -7,12 +7,12 @@ class BatchFollowInput(BaseModel):
     """Input for batch follow operation on Twitter."""
 
     usernames: list[str] | None = Field(
-        None,
+        default=None,
         description="List of Twitter usernames to follow (without @). Either usernames or user_ids must be provided.",
         max_length=100,
     )
     user_ids: list[str] | None = Field(
-        None,
+        default=None,
         description="List of Twitter user IDs to follow. Either usernames or user_ids must be provided.",
         max_length=100,
     )
@@ -22,12 +22,12 @@ class BatchUnfollowInput(BaseModel):
     """Input for batch unfollow operation on Twitter. DESTRUCTIVE - requires consent."""
 
     usernames: list[str] | None = Field(
-        None,
+        default=None,
         description="List of Twitter usernames to unfollow (without @). Either usernames or user_ids must be provided.",
         max_length=100,
     )
     user_ids: list[str] | None = Field(
-        None,
+        default=None,
         description="List of Twitter user IDs to unfollow. Either usernames or user_ids must be provided.",
         max_length=100,
     )
@@ -43,7 +43,7 @@ class CreateThreadInput(BaseModel):
         max_length=25,
     )
     media_ids: list[list[str] | None] | None = Field(
-        None,
+        default=None,
         description="Optional list of media ID arrays, one per tweet. Use TWITTER_UPLOAD_MEDIA first to get media IDs.",
     )
 
@@ -58,7 +58,7 @@ class SearchUsersInput(BaseModel):
         max_length=500,
     )
     max_results: int = Field(
-        10,
+        default=10,
         description="Maximum number of users to return",
         ge=1,
         le=50,
@@ -78,11 +78,11 @@ class ScheduleTweetInput(BaseModel):
         description="ISO 8601 datetime string for when to post (e.g., '2024-12-25T10:00:00Z')",
     )
     media_urls: list[str] | None = Field(
-        None,
+        default=None,
         description="Optional list of media URLs to attach",
         max_length=4,
     )
     reply_to_tweet_id: str | None = Field(
-        None,
+        default=None,
         description="Optional tweet ID to reply to",
     )

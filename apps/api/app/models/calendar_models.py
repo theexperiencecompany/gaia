@@ -273,6 +273,15 @@ class CalendarEventDisplay(BaseModel):
     background_color: str
 
 
+class CalendarListCard(ResponseModel):
+    """One calendar in the calendar_list_fetch_data card."""
+
+    name: str | None
+    id: str | None
+    description: str | None
+    backgroundColor: str | None
+
+
 class CalendarSearchResult(BaseModel):
     """Result of a native Google Calendar search across the user's calendars."""
 

@@ -18,7 +18,7 @@ static prompt (TODO_SYSTEM_PROMPT).
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from langchain.tools import InjectedToolCallId
@@ -33,6 +33,11 @@ from app.agents.prompts.todo_prompts import (
     UPDATE_TASKS_DESCRIPTION,
 )
 from app.models.agent_models import current_stream_writer
+from app.models.todo_progress_card_models import (
+    TodoProgressItem,
+    TodoProgressSnapshot,
+    TodoProgressStatus,
+)
 
 TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
 
@@ -42,7 +47,7 @@ class Todo(TypedDict):
 
     id: str
     content: str
-    status: Literal["pending", "in_progress", "completed", "cancelled"]
+    status: TodoProgressStatus
     created_at: str
 
 
@@ -71,13 +76,15 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
     `source_label` is its human-readable name, included so the frontend can
     show the integration's name instead of reverse-mapping the id.
     """
-    snapshot: dict[str, Any] = {
-        "todos": [{"id": t["id"], "content": t["content"], "status": t["status"]} for t in todos],
-        "source": source,
-    }
-    if source_label:
-        snapshot["integration_name"] = source_label
-    current_stream_writer()({"todo_progress": snapshot})
+    snapshot = TodoProgressSnapshot(
+        todos=[
+            TodoProgressItem(id=todo["id"], content=todo["content"], status=todo["status"])
+            for todo in todos
+        ],
+        source=source,
+        integration_name=source_label or None,
+    )
+    current_stream_writer()({"todo_progress": snapshot.model_dump(mode="json")})
 
 
 def _format_todos(todos: list[Todo]) -> str:

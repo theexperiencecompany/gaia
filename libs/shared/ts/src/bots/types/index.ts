@@ -9,29 +9,15 @@
  * - ChatRequest / ChatResponse: chat API payloads
  * - CommandContext: user identity passed to all shared command handlers
  * - BotConfig: environment config loaded by config/index.ts
- * - BotConversation: the conversation list row bots display
  *
  * Workflow and todo payloads are the generated API models
  * (`@gaia/shared/api/generated`), never a hand-written copy.
  */
 
-/**
- * Metadata for a file previously uploaded via {@link GaiaClient.uploadFile}.
- *
- * Mirrors the backend `FileData` schema in
- * `apps/api/app/models/message_models.py`. Sent alongside chat requests so
- * the agent can ground its response in the file's stored metadata (URL,
- * filename, type) without re-fetching from the database.
- */
-export interface BotFileData {
-  fileId: string;
-  url: string;
-  filename: string;
-  /** MIME type or coarse classification (e.g. `"image"`, `"file"`). */
-  type?: string;
-  /** Optional human-readable status. Defaults to the upload service's value. */
-  message?: string;
-}
+import type { BotAuthStatusResponse, FileData } from "../../api/generated";
+
+/** A file previously uploaded via {@link GaiaClient.uploadFile}, sent alongside chat requests. */
+export type BotFileData = FileData;
 
 /**
  * Represents a chat request sent to the GAIA bot API.
@@ -102,63 +88,8 @@ export interface BotConfig {
   rabbitmqUrl?: string;
 }
 
-/**
- * Represents the authentication status of a user on a platform.
- */
-export interface AuthStatus {
-  /** Whether the user is authenticated/linked. */
-  authenticated: boolean;
-  platform: string;
-  /**
-   * The user ID on the platform.
-   *
-   * snake_case because these fields are the API's wire shape verbatim —
-   * `BotAuthStatusResponse` declares no alias generator and `checkAuthStatus`
-   * returns the parsed body untouched. This field was previously typed
-   * `platformUserId`, which is `undefined` at runtime; nothing read it, so the
-   * lie went unnoticed.
-   */
-  platform_user_id: string;
-  /**
-   * Stable GAIA user id when linked, absent otherwise. Bots use it as their
-   * PostHog distinct_id so bot events land on the same profile as the user's
-   * web and API events.
-   */
-  user_id?: string;
-}
-
-/**
- * What `POST /bot/redeem-link-code` answers (`RedeemLinkCodeResponse` in
- * `apps/api/app/models/bot_models.py`, which must change with this).
- */
-export interface RedeemedLinkCode {
-  /** Whether the platform account is now linked. */
-  linked: boolean;
-  /**
-   * Whether GAIA's first contact is on its way on the outbound queue. When
-   * false the bot owes the user `firstContact` — nothing retries that publish.
-   */
-  delivered: boolean;
-  /** Ordered bubbles to send when `delivered` is false; empty otherwise. */
-  firstContact: string[];
-}
-
-export interface BotConversation {
-  conversation_id: string;
-  /** The conversation's web app page, built by the server. */
-  url: string;
-  title?: string;
-  description?: string;
-  created_at: string;
-  updated_at: string;
-  message_count?: number;
-}
-
-export interface BotConversationListResponse {
-  conversations: BotConversation[];
-  total: number;
-  page: number;
-}
+/** Whether a platform user is linked to a GAIA account. */
+export type AuthStatus = BotAuthStatusResponse;
 
 export interface BotUserContext {
   platform: PlatformName;
@@ -171,40 +102,6 @@ export type CommandContext = BotUserContext & {
   /** Optional platform profile info, populated by the bot adapter when available. */
   profile?: { username?: string; displayName?: string };
 };
-
-/**
- * Integration information for settings.
- */
-export interface BotIntegrationInfo {
-  name: string;
-  logoUrl: string | null;
-  status: "created" | "connected";
-}
-
-/**
- * User settings response when not authenticated.
- */
-export interface UnauthenticatedSettingsResponse {
-  authenticated: false;
-}
-
-/**
- * User settings response when authenticated.
- */
-export interface AuthenticatedSettingsResponse {
-  authenticated: true;
-  userName: string | null;
-  accountCreatedAt: string | null;
-  profileImageUrl: string | null;
-  connectedIntegrations: BotIntegrationInfo[];
-}
-
-/**
- * User settings response (discriminated union).
- */
-export type SettingsResponse =
-  | UnauthenticatedSettingsResponse
-  | AuthenticatedSettingsResponse;
 
 // ---------------------------------------------------------------------------
 // Adapter pattern types - used by BaseBotAdapter and unified commands

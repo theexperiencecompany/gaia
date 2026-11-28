@@ -50,8 +50,8 @@ export function Platforms({ state, dispatch, onConfirmed }: PlatformsProps) {
     useState<PlatformPreviewPlatform | null>(null);
 
   const profession = state.responses[FIELD_NAMES.PROFESSION];
-  const { name, email } = useCurrentUser();
-  const userFirstName = firstNameOf(name, email);
+  const user = useCurrentUser();
+  const userFirstName = firstNameOf(user);
 
   const {
     connect,

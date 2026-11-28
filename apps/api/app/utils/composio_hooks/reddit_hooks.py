@@ -22,6 +22,19 @@ from app.models.integrations.reddit_hooks import (
     RedditPostDetail,
     RedditSearchData,
 )
+from app.models.reddit_card_models import (
+    RedditCardComment,
+    RedditCardCommentCreated,
+    RedditCardPost,
+    RedditCardPostCreated,
+    RedditCardSearchPost,
+    RedditCommentCreatedCard,
+    RedditCommentsCard,
+    RedditPostCard,
+    RedditPostCreatedCard,
+    RedditSearchCard,
+)
+from app.models.tool_card_registry import tool_card
 from shared.py.wide_events import log
 
 from .registry import AfterHookResponse, register_after_hook, register_before_hook
@@ -171,16 +184,16 @@ def _comment_listing(raw: object) -> RedditCommentListing:
     return RedditCommentsData.model_validate(raw).comments
 
 
-def _ui_comment(comment: RedditComment) -> dict[str, object]:
-    return {
-        "id": comment.id,
-        "author": comment.author,
-        "body": comment.body,
-        "score": comment.score,
-        "created_utc": comment.created_utc,
-        "permalink": comment.permalink,
-        "is_submitter": comment.is_submitter,
-    }
+def _ui_comment(comment: RedditComment) -> RedditCardComment:
+    return RedditCardComment(
+        id=comment.id,
+        author=comment.author,
+        body=comment.body,
+        score=comment.score,
+        created_utc=comment.created_utc,
+        permalink=comment.permalink,
+        is_submitter=comment.is_submitter,
+    )
 
 
 # ====================== BEFORE EXECUTE HOOKS ======================
@@ -291,30 +304,24 @@ def reddit_search_after_hook(
         ]
 
         if posts:
-            # Send search results to frontend
-            reddit_search_data = [
-                {
-                    "id": post.id,
-                    "title": post.title,
-                    "author": post.author,
-                    "subreddit": post.subreddit_name_prefixed,
-                    "score": post.score,
-                    "num_comments": post.num_comments,
-                    "created_utc": post.created_utc,
-                    "permalink": post.permalink,
-                    "url": post.url,
-                    "selftext": _ui_selftext(post),
-                }
-                for post in posts
-            ]
-
-            payload = {
-                "reddit_data": {
-                    "type": "search",
-                    "posts": reddit_search_data,
-                }
-            }
-            writer(payload)
+            card = RedditSearchCard(
+                posts=[
+                    RedditCardSearchPost(
+                        id=post.id,
+                        title=post.title,
+                        author=post.author,
+                        subreddit=post.subreddit_name_prefixed,
+                        score=post.score,
+                        num_comments=post.num_comments,
+                        created_utc=post.created_utc,
+                        permalink=post.permalink,
+                        url=post.url,
+                        selftext=_ui_selftext(post),
+                    )
+                    for post in posts
+                ]
+            )
+            writer(tool_card("reddit_data", card))
 
         # Return processed response for LLM (minimal data)
         return processed_response
@@ -343,30 +350,24 @@ def reddit_post_detail_after_hook(
         # The post is nested under 'data', as a Reddit thing
         post = RedditPostDetail.model_validate(raw).data
 
-        # Send post data to frontend
-        reddit_post_data = {
-            "id": post.id,
-            "title": post.title,
-            "author": post.author,
-            "subreddit": post.subreddit_name_prefixed,
-            "score": post.score,
-            "upvote_ratio": post.upvote_ratio,
-            "num_comments": post.num_comments,
-            "created_utc": post.created_utc,
-            "selftext": post.selftext,
-            "url": post.url,
-            "permalink": post.permalink,
-            "is_self": post.is_self,
-            "link_flair_text": post.link_flair_text,
-        }
-
-        payload = {
-            "reddit_data": {
-                "type": "post",
-                "post": reddit_post_data,
-            }
-        }
-        writer(payload)
+        card = RedditPostCard(
+            post=RedditCardPost(
+                id=post.id,
+                title=post.title,
+                author=post.author,
+                subreddit=post.subreddit_name_prefixed,
+                score=post.score,
+                upvote_ratio=post.upvote_ratio,
+                num_comments=post.num_comments,
+                created_utc=post.created_utc,
+                selftext=post.selftext,
+                url=post.url,
+                permalink=post.permalink,
+                is_self=post.is_self,
+                link_flair_text=post.link_flair_text,
+            )
+        )
+        writer(tool_card("reddit_data", card))
 
         # Return processed response for LLM
         return process_reddit_post(post)
@@ -403,18 +404,10 @@ def reddit_comments_after_hook(
         processed_comments = [process_reddit_comment(child.data) for child in comment_things]
 
         if processed_comments:
-            # Transform to frontend format, limited for the UI
-            reddit_comment_data = [
-                _ui_comment(child.data) for child in comment_things[:_UI_COMMENT_LIMIT]
-            ]
-
-            payload = {
-                "reddit_data": {
-                    "type": "comments",
-                    "comments": reddit_comment_data,
-                }
-            }
-            writer(payload)
+            card = RedditCommentsCard(
+                comments=[_ui_comment(child.data) for child in comment_things[:_UI_COMMENT_LIMIT]]
+            )
+            writer(tool_card("reddit_data", card))
 
         # Return minimal data for LLM
         summary: RedditCommentsSummary = {
@@ -447,31 +440,25 @@ def reddit_content_created_after_hook(
         created = RedditCreatedContent.model_validate(raw)
 
         if tool == "REDDIT_CREATE_REDDIT_POST":
-            payload = {
-                "reddit_data": {
-                    "type": "post_created",
-                    "data": {
-                        "id": created.id,
-                        "url": created.url,
-                        "message": "Post created successfully!",
-                        "permalink": created.permalink,
-                    },
-                }
-            }
-            writer(payload)
+            post_created = RedditPostCreatedCard(
+                data=RedditCardPostCreated(
+                    id=created.id,
+                    url=created.url,
+                    message="Post created successfully!",
+                    permalink=created.permalink,
+                )
+            )
+            writer(tool_card("reddit_data", post_created))
 
         elif tool == "REDDIT_POST_REDDIT_COMMENT":
-            payload = {
-                "reddit_data": {
-                    "type": "comment_created",
-                    "data": {
-                        "id": created.id,
-                        "message": "Comment posted successfully!",
-                        "permalink": created.permalink,
-                    },
-                }
-            }
-            writer(payload)
+            comment_created = RedditCommentCreatedCard(
+                data=RedditCardCommentCreated(
+                    id=created.id,
+                    message="Comment posted successfully!",
+                    permalink=created.permalink,
+                )
+            )
+            writer(tool_card("reddit_data", comment_created))
 
         # Return minimal response for LLM
         summary: RedditContentCreatedSummary = {

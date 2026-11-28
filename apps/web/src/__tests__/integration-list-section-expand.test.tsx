@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Integration } from "@/features/integrations/types";
-
-let integrations: Integration[] = [];
+let integrations: MyIntegrationItem[] = [];
 
 vi.mock("@/features/integrations/hooks/useIntegrations", () => ({
   useIntegrations: () => ({
@@ -28,13 +27,15 @@ vi.mock("@/lib/toast", () => ({
 
 import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
 
-function available(id: string): Integration {
+function available(id: string): MyIntegrationItem {
   return {
     id,
     name: id,
     description: `${id} integration`,
     category: "productivity",
     status: "not_connected",
+    managedBy: "composio",
+    source: "platform",
     slug: id.toLowerCase(),
   };
 }

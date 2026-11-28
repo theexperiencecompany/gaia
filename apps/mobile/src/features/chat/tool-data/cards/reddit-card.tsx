@@ -47,7 +47,10 @@ function formatNumber(num: number): string {
   return num.toString();
 }
 
-function openRedditLink(permalink?: string, url?: string) {
+function openRedditLink(
+  permalink: string | null | undefined,
+  url?: string | null,
+) {
   const link = permalink ? `https://reddit.com${permalink}` : url;
   if (link) Linking.openURL(link);
 }
@@ -293,7 +296,7 @@ function PostView({ post }: { post: RedditPostData }) {
       )}
 
       {/* External link */}
-      {!post.is_self && post.url && (
+      {!post.is_self && !!post.url && (
         <Pressable
           onPress={() => post.url && Linking.openURL(post.url)}
           className="flex-row items-center gap-1 mt-2 active:opacity-70"
@@ -404,7 +407,7 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
             </Text>
 
             {/* View on Reddit link */}
-            {comment.permalink && (
+            {!!comment.permalink && (
               <>
                 <InnerDivider />
                 <Pressable
@@ -460,7 +463,7 @@ function CreatedView({
 }) {
   const isPost = type === "post_created";
   const permalink = itemData.permalink;
-  const url = isPost ? (itemData as RedditPostCreatedData).url : undefined;
+  const url = isPost && "url" in itemData ? itemData.url : undefined;
 
   return (
     <ToolCardInner>
@@ -479,7 +482,7 @@ function CreatedView({
       </View>
 
       {/* Message body */}
-      {itemData.message && (
+      {!!itemData.message && (
         <Text className="text-sm text-zinc-400 mb-2">{itemData.message}</Text>
       )}
 

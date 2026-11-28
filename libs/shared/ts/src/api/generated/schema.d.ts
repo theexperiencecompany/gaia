@@ -2061,6 +2061,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/connect-link/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Link Preview Endpoint
+         * @description Show what a connect link connects, and for which account, without spending the code.
+         *
+         *     Same credential and rate limit as /connect-link; answers only the integration
+         *     and a masked email, so a guessed code learns nothing it could not use anyway.
+         */
+        post: operations["integrations_connect_link_preview_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/connect/{integration_id}": {
         parameters: {
             query?: never;
@@ -6461,7 +6484,10 @@ export interface components {
              */
             integration_id: string;
         };
-        /** AddUserIntegrationResponse */
+        /**
+         * AddUserIntegrationResponse
+         * @description An integration added to the user's workspace, and its connection state.
+         */
         AddUserIntegrationResponse: {
             connectionStatus: components["schemas"]["IntegrationStatus"];
             /** Integrationid */
@@ -6605,6 +6631,33 @@ export interface components {
          */
         ApprovalOutcome: "approved" | "denied" | "expired" | "cancelled" | "withdrawn";
         /**
+         * ApprovalRequestCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ApprovalRequestCard: {
+            data: components["schemas"]["ApprovalRequestEntryData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "approval_request";
+        };
+        /**
          * ApprovalRequested
          * @description Live work paused on the user's approval: everything its card shows.
          */
@@ -6701,6 +6754,33 @@ export interface components {
             tool_call_id: string;
         };
         /**
+         * ApprovalRequestGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ApprovalRequestGroupCard: {
+            data: components["schemas"]["ApprovalRequestEntryData"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "approval_request";
+        };
+        /**
          * ApprovalStatus
          * @description Where an approval stands, as the conversation log has it: the one status every surface renders.
          * @enum {string}
@@ -6713,6 +6793,142 @@ export interface components {
         ApprovePairingRequest: {
             /** User Code */
             user_code: string;
+        };
+        /**
+         * ArtifactCard
+         * @description Where a create_artifact run stands: the artifact_done tool_data entry's data.
+         */
+        ArtifactCard: {
+            /**
+             * Artifact Id
+             * @default null
+             */
+            artifact_id?: string | null;
+            kind: components["schemas"]["ArtifactKind"];
+            /**
+             * Program
+             * @default null
+             */
+            program?: string | null;
+            /** @default null */
+            reason?: components["schemas"]["ArtifactFailureReason"] | null;
+            status: components["schemas"]["ArtifactStatus"];
+            /** Stream Id */
+            stream_id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ArtifactDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ArtifactDataCard: {
+            data: components["schemas"]["ArtifactFileEvent"] | components["schemas"]["ArtifactRemoveEvent"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "artifact_data";
+        };
+        /**
+         * ArtifactDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ArtifactDataGroupCard: {
+            data: (components["schemas"]["ArtifactFileEvent"] | components["schemas"]["ArtifactRemoveEvent"])[];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "artifact_data";
+        };
+        /**
+         * ArtifactDoneCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ArtifactDoneCard: {
+            data: components["schemas"]["ArtifactCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "artifact_done";
+        };
+        /**
+         * ArtifactFailureReason
+         * @enum {string}
+         */
+        ArtifactFailureReason: "validation" | "refused" | "timeout" | "truncated";
+        /**
+         * ArtifactFileEvent
+         * @description An artifact_data card's payload when a file appeared or changed.
+         */
+        ArtifactFileEvent: {
+            /** Content Type */
+            content_type: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "upsert";
+            /** Mtime */
+            mtime: number;
+            /** Path */
+            path: string;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Short Url
+             * @default null
+             */
+            short_url?: string | null;
+            /** Size Bytes */
+            size_bytes: number;
         };
         /** ArtifactInfo */
         ArtifactInfo: {
@@ -6761,6 +6977,27 @@ export interface components {
             updated_at: string;
         };
         /**
+         * ArtifactRemoveEvent
+         * @description An artifact_data card's payload when a file was deleted; a client drops its card.
+         */
+        ArtifactRemoveEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "remove";
+            /** Path */
+            path: string;
+            /** Session Id */
+            session_id: string;
+        };
+        /**
+         * ArtifactStatus
+         * @description Where a create_artifact run stands, as the chat card shows it.
+         * @enum {string}
+         */
+        ArtifactStatus: "streaming" | "ready" | "failed" | "stopped";
+        /**
          * AsanaTaskTriggerConfig
          * @description Config for asana_task_trigger (Composio ASANA_TASK_CREATED).
          */
@@ -6782,6 +7019,16 @@ export interface components {
              * @default
              */
             workspace_id?: string;
+        };
+        /**
+         * AttachmentDisplay
+         * @description One attached file as a card shows it; never its storage key.
+         */
+        AttachmentDisplay: {
+            /** Mimetype */
+            mimetype: string;
+            /** Name */
+            name: string;
         };
         /**
          * AuthenticatedUserResponse
@@ -7231,7 +7478,7 @@ export interface components {
              * User Id
              * @description Stable GAIA user id when linked, else null. Bots key PostHog on this so their events land on the same profile as web and API events.
              */
-            user_id?: string | null;
+            user_id: string | null;
         };
         /**
          * BotChatRequest
@@ -7360,7 +7607,7 @@ export interface components {
              * Account Created At
              * @description Account creation date ISO string (null if not available)
              */
-            account_created_at?: string | null;
+            account_created_at: string | null;
             /**
              * Authenticated
              * @description Whether user is linked
@@ -7370,17 +7617,17 @@ export interface components {
              * Connected Integrations
              * @description List of connected integrations (empty if none)
              */
-            connected_integrations?: components["schemas"]["IntegrationInfo"][];
+            connected_integrations: components["schemas"]["IntegrationInfo"][];
             /**
              * Profile Image Url
              * @description User's profile image URL (null if not set)
              */
-            profile_image_url?: string | null;
+            profile_image_url: string | null;
             /**
              * User Name
              * @description User's display name (null if not set)
              */
-            user_name?: string | null;
+            user_name: string | null;
         };
         /**
          * BriefAction
@@ -7493,6 +7740,33 @@ export interface components {
          * @enum {string}
          */
         BriefForm: "edition" | "quiet_note";
+        /**
+         * BriefingDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        BriefingDataCard: {
+            data: components["schemas"]["BriefCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "briefing_data";
+        };
         /**
          * BriefingEdition
          * @description One daily edition family, and where the user put it.
@@ -7863,6 +8137,60 @@ export interface components {
             url: string | null;
         };
         /**
+         * BrowserAction
+         * @description One action the browser agent invoked in a step — its name and arguments.
+         *
+         *     The agent's own tool call. Kept structured (not flattened to a string) so the
+         *     chat thread can render it like any other tool call, and so captions can use
+         *     the real target ("Opening github.com") instead of just the verb.
+         */
+        BrowserAction: {
+            /** Inputs */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /**
+             * Target
+             * @default null
+             */
+            target?: string | null;
+        };
+        /**
+         * BrowserHandoffSnapshot
+         * @description The agent paused at a sensitive step and needs the human to take over.
+         */
+        BrowserHandoffSnapshot: {
+            /** @default none */
+            category?: components["schemas"]["SensitiveCategory"];
+            /** Handoff Id */
+            handoff_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "handoff";
+            /**
+             * Live View Url
+             * @default null
+             */
+            live_view_url?: string | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Saves Login
+             * @default false
+             */
+            saves_login?: boolean;
+            /**
+             * Session Id
+             * @default null
+             */
+            session_id?: string | null;
+            status: components["schemas"]["HandoffStatus"];
+        };
+        /**
          * BrowserImportRequest
          * @description A profile upload from the local CLI: the mint code plus a Playwright
          *     storage_state (cookies + localStorage), split per host on the server.
@@ -7908,17 +8236,167 @@ export interface components {
             updated_at: string | null;
         };
         /**
+         * BrowserResultSnapshot
+         * @description Immutable snapshot of the final result for the task record.
+         */
+        BrowserResultSnapshot: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "result";
+            /** Redirects */
+            redirects?: string[];
+            /**
+             * Replay Url
+             * @default null
+             */
+            replay_url?: string | null;
+            status: components["schemas"]["BrowserSessionStatus"];
+            /**
+             * Steps
+             * @default 0
+             */
+            steps?: number;
+            /** Success */
+            success: boolean;
+            /** Summary */
+            summary: string;
+            /** User Notes */
+            user_notes?: string[];
+        };
+        /**
+         * BrowserSessionSnapshot
+         * @description Immutable snapshot of one browser session's state for the task record.
+         */
+        BrowserSessionSnapshot: {
+            /**
+             * Detail
+             * @default null
+             */
+            detail?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "session";
+            /**
+             * Session Id
+             * @default null
+             */
+            session_id?: string | null;
+            status: components["schemas"]["BrowserSessionStatus"];
+            /** Task */
+            task: string;
+        };
+        /**
          * BrowserSessionStatus
          * @description Lifecycle state of a browser session: working, then how it ended.
          * @enum {string}
          */
         BrowserSessionStatus: "running" | "completed" | "failed" | "cancelled";
         /**
+         * BrowserStepSnapshot
+         * @description Immutable snapshot of one agent step for the task record.
+         */
+        BrowserStepSnapshot: {
+            /** Actions */
+            actions?: components["schemas"]["BrowserAction"][];
+            /**
+             * Elapsed Ms
+             * @default null
+             */
+            elapsed_ms?: number | null;
+            /**
+             * Frame Digest
+             * @default null
+             */
+            frame_digest?: string | null;
+            /** Goal */
+            goal: string;
+            /** Index */
+            index: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "step";
+            /**
+             * Screenshot
+             * @default null
+             */
+            screenshot?: string | null;
+            /**
+             * Title
+             * @default null
+             */
+            title?: string | null;
+            /**
+             * Url
+             * @default null
+             */
+            url?: string | null;
+        };
+        /**
          * BrowserStopOutcome
          * @description What a stop came to, as the job's ending of record says.
          * @enum {string}
          */
         BrowserStopOutcome: "stopped" | "already_ended";
+        /**
+         * BrowserTaskDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        BrowserTaskDataCard: {
+            data: components["schemas"]["BrowserSessionSnapshot"] | components["schemas"]["BrowserStepSnapshot"] | components["schemas"]["BrowserHandoffSnapshot"] | components["schemas"]["BrowserResultSnapshot"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "browser_task_data";
+        };
+        /**
+         * BrowserTaskDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        BrowserTaskDataGroupCard: {
+            data: (components["schemas"]["BrowserSessionSnapshot"] | components["schemas"]["BrowserStepSnapshot"] | components["schemas"]["BrowserHandoffSnapshot"] | components["schemas"]["BrowserResultSnapshot"])[];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "browser_task_data";
+        };
         /**
          * BrowserTaskFrame
          * @description One recap frame: a step screenshot plus what the agent was doing.
@@ -8136,6 +8614,22 @@ export interface components {
             trigger_name: "calendar_event_created";
         };
         /**
+         * CalendarEventDisplay
+         * @description Flattened event shape streamed to the web client as ``calendar_fetch_data``.
+         */
+        CalendarEventDisplay: {
+            /** Background Color */
+            background_color: string;
+            /** Calendar Name */
+            calendar_name: string;
+            /** End Time */
+            end_time: string;
+            /** Start Time */
+            start_time: string;
+            /** Summary */
+            summary: string;
+        };
+        /**
          * CalendarEventPageResponse
          * @description Response for ``GET /calendar/{calendar_id}/events``.
          */
@@ -8224,6 +8718,74 @@ export interface components {
              * @enum {string}
              */
             trigger_name: "calendar_event_starting_soon";
+        };
+        /**
+         * CalendarFetchDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        CalendarFetchDataCard: {
+            data: components["schemas"]["CalendarEventDisplay"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "calendar_fetch_data";
+        };
+        /**
+         * CalendarListCard
+         * @description One calendar in the calendar_list_fetch_data card.
+         */
+        CalendarListCard: {
+            /** Backgroundcolor */
+            backgroundColor: string | null;
+            /** Description */
+            description: string | null;
+            /** Id */
+            id: string | null;
+            /** Name */
+            name: string | null;
+        };
+        /**
+         * CalendarListFetchDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        CalendarListFetchDataCard: {
+            data: components["schemas"]["CalendarListCard"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "calendar_list_fetch_data";
         };
         /**
          * CalendarListResponse
@@ -8452,6 +9014,18 @@ export interface components {
          * @enum {string}
          */
         CheckoutSource: "paywall_modal" | "pricing_card" | "payment_retry" | "checkout_resume" | "onboarding";
+        /**
+         * CliInstallCommands
+         * @description The GAIA CLI's install command per package manager.
+         */
+        CliInstallCommands: {
+            /** Bun */
+            bun: string;
+            /** Npm */
+            npm: string;
+            /** Pnpm */
+            pnpm: string;
+        };
         /**
          * CommunityIntegrationCreator
          * @description Creator info for community integration display.
@@ -8755,7 +9329,10 @@ export interface components {
              */
             redirect_path?: string;
         };
-        /** ConnectIntegrationResponse */
+        /**
+         * ConnectIntegrationResponse
+         * @description The outcome of starting an integration's connect flow.
+         */
         ConnectIntegrationResponse: {
             /** Error */
             error: string | null;
@@ -8774,6 +9351,122 @@ export interface components {
             status: "connected" | "redirect" | "error";
             /** Toolscount */
             toolsCount: number | null;
+        };
+        /**
+         * ConnectLinkPreviewRequest
+         * @description A connect link's code, to preview without spending it.
+         */
+        ConnectLinkPreviewRequest: {
+            /** Code */
+            code: string;
+        };
+        /**
+         * ConnectLinkPreviewResponse
+         * @description What a connect link will connect, shown before the user spends it.
+         */
+        ConnectLinkPreviewResponse: {
+            /**
+             * Account Email
+             * @description The GAIA account's email, masked
+             */
+            account_email: string | null;
+            /** Icon Url */
+            icon_url: string | null;
+            /** Integration Id */
+            integration_id: string;
+            /** Integration Name */
+            integration_name: string;
+        };
+        /**
+         * ConnectOption
+         * @description One connect button; integration_id is None for the button opening every integration.
+         */
+        ConnectOption: {
+            /** Href */
+            href: string;
+            /**
+             * Integration Id
+             * @default null
+             */
+            integration_id: string | null;
+            /** Label */
+            label: string;
+        };
+        /**
+         * ConnectOptionsCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ConnectOptionsCard: {
+            data: components["schemas"]["ConnectOptionsData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "connect_options";
+        };
+        /**
+         * ConnectOptionsData
+         * @description The connect_options card: the buttons under the first conversation's routines bubble.
+         */
+        ConnectOptionsData: {
+            /** Options */
+            options: components["schemas"]["ConnectOption"][];
+        };
+        /**
+         * ContactCard
+         * @description A person flattened to their primary name, email and phone; People may send any as null.
+         */
+        ContactCard: {
+            /** Email */
+            email: string | null;
+            /** Name */
+            name: string | null;
+            /** Phone */
+            phone: string | null;
+            /** Resource Name */
+            resource_name: string | null;
+        };
+        /**
+         * ContactsDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ContactsDataCard: {
+            data: components["schemas"]["ContactCard"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "contacts_data";
         };
         /**
          * ContentTokenResponse
@@ -9079,7 +9772,10 @@ export interface components {
              */
             server_url: string;
         };
-        /** CreateCustomIntegrationResponse */
+        /**
+         * CreateCustomIntegrationResponse
+         * @description A created custom integration and its first connection attempt.
+         */
         CreateCustomIntegrationResponse: {
             connection: components["schemas"]["CustomIntegrationConnectionResult"];
             /** Integrationid */
@@ -9384,7 +10080,10 @@ export interface components {
              */
             valid: boolean;
         };
-        /** CustomIntegrationConnectionResult */
+        /**
+         * CustomIntegrationConnectionResult
+         * @description How connecting a newly created custom integration went.
+         */
         CustomIntegrationConnectionResult: {
             /** Error */
             error?: string | null;
@@ -9397,6 +10096,23 @@ export interface components {
             status: "created" | "connected" | "requires_oauth" | "failed";
             /** Toolscount */
             toolsCount?: number | null;
+        };
+        /**
+         * DailyForecast
+         * @description One day of the forecast, summarised from its 3-hour slots.
+         */
+        DailyForecast: {
+            /** Date */
+            date: string;
+            /** Humidity */
+            humidity: number;
+            /** Temp Max */
+            temp_max: number;
+            /** Temp Min */
+            temp_min: number;
+            /** Timestamp */
+            timestamp: number;
+            weather: components["schemas"]["OpenWeatherCondition"];
         };
         /**
          * DataSeries
@@ -9707,12 +10423,120 @@ export interface components {
             success: boolean;
         };
         /**
+         * DeviceApprovalCard
+         * @description The device_approval_required card: the approve page for a pairing code.
+         */
+        DeviceApprovalCard: {
+            /** Approve Url */
+            approve_url: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * DeviceApprovalRequiredCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        DeviceApprovalRequiredCard: {
+            data: components["schemas"]["DeviceApprovalCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "device_approval_required";
+        };
+        /**
+         * DeviceApprovalRequiredGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        DeviceApprovalRequiredGroupCard: {
+            data: components["schemas"]["DeviceApprovalCard"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "device_approval_required";
+        };
+        /**
          * DeviceListResponse
          * @description The user's paired devices.
          */
         DeviceListResponse: {
             /** Devices */
             devices: components["schemas"]["DeviceResponse"][];
+        };
+        /**
+         * DeviceOnboardingCard
+         * @description The device_onboarding_required card: install the CLI, then pair the computer.
+         */
+        DeviceOnboardingCard: {
+            /** Docs Url */
+            docs_url: string;
+            install_commands: components["schemas"]["CliInstallCommands"];
+            /** Message */
+            message: string;
+            /** Pair Command */
+            pair_command: string;
+            /** Up Command */
+            up_command: string;
+        };
+        /**
+         * DeviceOnboardingRequiredCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        DeviceOnboardingRequiredCard: {
+            data: components["schemas"]["DeviceOnboardingCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "device_onboarding_required";
         };
         /**
          * DevicePairApproveResponse
@@ -9999,6 +10823,157 @@ export interface components {
          */
         EditionVariant: "png" | "jpg";
         /**
+         * EmailComposeCard
+         * @description One Gmail compose call as its card renders it; draft_id only on a draft that must be sent as stored.
+         */
+        EmailComposeCard: {
+            /** Attachments */
+            attachments: components["schemas"]["AttachmentDisplay"][];
+            /** Bcc */
+            bcc: string[];
+            /** Body */
+            body: string | null;
+            /** Cc */
+            cc: string[];
+            /**
+             * Draft Id
+             * @default null
+             */
+            draft_id: string | null;
+            /** Is Html */
+            is_html: boolean | null;
+            /** Subject */
+            subject: string | null;
+            /** Thread Id */
+            thread_id: string | null;
+            /** To */
+            to: string[];
+        };
+        /**
+         * EmailComposeDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        EmailComposeDataCard: {
+            data: components["schemas"]["EmailComposeCard"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "email_compose_data";
+        };
+        /**
+         * EmailComposeDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        EmailComposeDataGroupCard: {
+            data: components["schemas"]["EmailComposeCard"][][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "email_compose_data";
+        };
+        /**
+         * EmailFetchDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        EmailFetchDataCard: {
+            data: components["schemas"]["EmailListItem"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "email_fetch_data";
+        };
+        /**
+         * EmailFetchDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        EmailFetchDataGroupCard: {
+            data: components["schemas"]["EmailListItem"][][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "email_fetch_data";
+        };
+        /**
+         * EmailListItem
+         * @description One fetched message in the email list card.
+         */
+        EmailListItem: {
+            /** From */
+            from: string;
+            /** Id */
+            id: string;
+            /** Subject */
+            subject: string;
+            /** Thread Id */
+            thread_id: string;
+            /** Time */
+            time: string;
+        };
+        /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
          */
@@ -10008,6 +10983,135 @@ export interface components {
             /** Emails */
             emails: string[];
             search_data: components["schemas"]["WebSearchResult"];
+        };
+        /**
+         * EmailSentDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        EmailSentDataCard: {
+            data: (components["schemas"]["EmailComposeCard"] | components["schemas"]["EmailSentDraftCard"])[];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "email_sent_data";
+        };
+        /**
+         * EmailSentDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        EmailSentDataGroupCard: {
+            data: (components["schemas"]["EmailComposeCard"] | components["schemas"]["EmailSentDraftCard"])[][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "email_sent_data";
+        };
+        /**
+         * EmailSentDraftCard
+         * @description A stored draft Gmail sent.
+         */
+        EmailSentDraftCard: {
+            /** Message */
+            message: string;
+            /** Message Id */
+            message_id: string | null;
+            /** Recipients */
+            recipients: string[];
+            /** Subject */
+            subject: string | null;
+            /** Timestamp */
+            timestamp: string | null;
+        };
+        /**
+         * EmailThreadCard
+         * @description A Gmail thread with its messages.
+         */
+        EmailThreadCard: {
+            /** Messages */
+            messages: components["schemas"]["EmailThreadItem"][];
+            /** Messages Count */
+            messages_count: number | null;
+            /** Thread Id */
+            thread_id: string | null;
+        };
+        /**
+         * EmailThreadDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        EmailThreadDataCard: {
+            data: components["schemas"]["EmailThreadCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "email_thread_data";
+        };
+        /**
+         * EmailThreadItem
+         * @description One message of the thread card; content is "" when Gmail sent no parts.
+         */
+        EmailThreadItem: {
+            /** Body */
+            body: string | null;
+            /** Content */
+            content: components["schemas"]["GmailMessageContent"] | string;
+            /** From */
+            from: string | null;
+            /** Id */
+            id: string | null;
+            /** Snippet */
+            snippet: string | null;
+            /** Subject */
+            subject: string | null;
+            /** Time */
+            time: string | null;
         };
         /**
          * EnableComposioToolkitRequest
@@ -10573,6 +11677,16 @@ export interface components {
              * @enum {string}
              */
             trigger_name: "gmail_email_sent";
+        };
+        /**
+         * GmailMessageContent
+         * @description A message body in both renderings, as extracted from its MIME parts.
+         */
+        GmailMessageContent: {
+            /** Html */
+            html: string;
+            /** Text */
+            text: string;
         };
         /**
          * GmailMessagesResponse
@@ -11227,7 +12341,10 @@ export interface components {
             /** Maxaccounts */
             maxAccounts: number;
         };
-        /** IntegrationConfigItem */
+        /**
+         * IntegrationConfigItem
+         * @description One integration in the platform's integration catalog.
+         */
         IntegrationConfigItem: {
             /** Authtype */
             authType?: ("none" | "oauth" | "bearer") | null;
@@ -11277,6 +12394,79 @@ export interface components {
              * @constant
              */
             source?: "platform";
+        };
+        /**
+         * IntegrationConnectionData
+         * @description The integration_connection_required card: an integration the run needs the user to connect.
+         */
+        IntegrationConnectionData: {
+            /** Add Account */
+            add_account: boolean;
+            /** Connected Accounts */
+            connected_accounts: string[];
+            /** Expired */
+            expired: boolean;
+            /** Integration Id */
+            integration_id: string;
+            /** Integration Name */
+            integration_name: string;
+            /** Message */
+            message: string;
+            reconnect_account: components["schemas"]["ReconnectAccount"] | null;
+        };
+        /**
+         * IntegrationConnectionRequiredCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        IntegrationConnectionRequiredCard: {
+            data: components["schemas"]["IntegrationConnectionData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "integration_connection_required";
+        };
+        /**
+         * IntegrationConnectionRequiredGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        IntegrationConnectionRequiredGroupCard: {
+            data: components["schemas"]["IntegrationConnectionData"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "integration_connection_required";
         };
         /**
          * IntegrationContent
@@ -11348,7 +12538,7 @@ export interface components {
              * Logo Url
              * @description Integration logo URL
              */
-            logo_url?: string | null;
+            logo_url: string | null;
             /**
              * Name
              * @description Integration name
@@ -11356,6 +12546,70 @@ export interface components {
             name: string;
             /** @description Integration connection status */
             status: components["schemas"]["IntegrationStatus"];
+        };
+        /**
+         * IntegrationListCard
+         * @description The integration_list_data card: the marketplace integrations a list search suggested.
+         */
+        IntegrationListCard: {
+            /** Hassuggestions */
+            hasSuggestions: boolean;
+            /** Suggested */
+            suggested: components["schemas"]["SuggestedIntegrationCard"][];
+        };
+        /**
+         * IntegrationListDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        IntegrationListDataCard: {
+            data: components["schemas"]["IntegrationListCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "integration_list_data";
+        };
+        /**
+         * IntegrationListDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        IntegrationListDataGroupCard: {
+            data: components["schemas"]["IntegrationListCard"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "integration_list_data";
         };
         /**
          * IntegrationRef
@@ -11423,7 +12677,10 @@ export interface components {
             /** Tools */
             tools?: components["schemas"]["StoredIntegrationTool"][];
         };
-        /** IntegrationsConfigResponse */
+        /**
+         * IntegrationsConfigResponse
+         * @description The platform's integration catalog.
+         */
         IntegrationsConfigResponse: {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
@@ -11434,7 +12691,10 @@ export interface components {
          * @enum {string}
          */
         IntegrationStatus: "created" | "connected" | "expired";
-        /** IntegrationSuccessResponse */
+        /**
+         * IntegrationSuccessResponse
+         * @description A successful action on one integration.
+         */
         IntegrationSuccessResponse: {
             /** Integrationid */
             integrationId: string;
@@ -11447,7 +12707,10 @@ export interface components {
              */
             status?: "success";
         };
-        /** IntegrationTool */
+        /**
+         * IntegrationTool
+         * @description One tool an integration exposes.
+         */
         IntegrationTool: {
             /** Description */
             description?: string | null;
@@ -11459,7 +12722,10 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** IntegrationToolApproval */
+        /**
+         * IntegrationToolApproval
+         * @description A tool with the key its per-tool approval override is stored under.
+         */
         IntegrationToolApproval: {
             /**
              * Approval Key
@@ -11967,6 +13233,59 @@ export interface components {
             provider: components["schemas"]["CredentialProviderName"];
         };
         /**
+         * McpAppCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        McpAppCard: {
+            data: components["schemas"]["McpAppData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "mcp_app";
+        };
+        /**
+         * McpAppData
+         * @description The mcp_app card's payload: an MCP App's HTML with the call it renders.
+         *
+         *     csp, permissions and tool_result are the MCP server's own JSON, forwarded verbatim; tool_result
+         *     is the call's raw result, or its result text once the tool's output arrives.
+         */
+        McpAppData: {
+            csp: components["schemas"]["JsonValue"];
+            /** Html Content */
+            html_content: string;
+            permissions: components["schemas"]["JsonValue"];
+            /** Resource Uri */
+            resource_uri: string;
+            /** Server Url */
+            server_url: string;
+            /** Tool Arguments */
+            tool_arguments: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Tool Call Id */
+            tool_call_id: string;
+            /** Tool Name */
+            tool_name: string;
+            tool_result: components["schemas"]["JsonValue"];
+        };
+        /**
          * MCPConfigDetail
          * @description MCP config for public display.
          */
@@ -12147,6 +13466,97 @@ export interface components {
             registration_policy: components["schemas"]["RegistrationPolicy"];
         };
         /**
+         * MemoryAddCard
+         * @description A fact the user asked GAIA to remember.
+         */
+        MemoryAddCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "add";
+            /** Folder */
+            folder: string;
+            /** Memories */
+            memories: components["schemas"]["MemoryEntry"][];
+            /** Message */
+            message: string;
+            outcome: components["schemas"]["MemoryAddOutcome"];
+        };
+        /**
+         * MemoryAddOutcome
+         * @description How an explicit add was reconciled with what the user's memory already held.
+         * @enum {string}
+         */
+        MemoryAddOutcome: "new" | "updated" | "extended" | "duplicate";
+        /**
+         * MemoryCardDocument
+         * @description A core memory document as the card shows it; content is capped.
+         */
+        MemoryCardDocument: {
+            /** Content */
+            content: string;
+            doc_type: components["schemas"]["MemoryDocType"];
+            /** Updated At */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * MemoryDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        MemoryDataCard: {
+            data: components["schemas"]["MemoryAddCard"] | components["schemas"]["MemorySearchCard"] | components["schemas"]["MemoryUpdateCard"] | components["schemas"]["MemoryForgetCard"] | components["schemas"]["MemoryJournalCard"] | components["schemas"]["MemoryDocumentCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "memory_data";
+        };
+        /**
+         * MemoryDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        MemoryDataGroupCard: {
+            data: (components["schemas"]["MemoryAddCard"] | components["schemas"]["MemorySearchCard"] | components["schemas"]["MemoryUpdateCard"] | components["schemas"]["MemoryForgetCard"] | components["schemas"]["MemoryJournalCard"] | components["schemas"]["MemoryDocumentCard"])[];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "memory_data";
+        };
+        /**
          * MemoryDocType
          * @description Core markdown documents maintained per user.
          * @enum {string}
@@ -12175,6 +13585,22 @@ export interface components {
              * @description Current version number
              */
             version: number;
+        };
+        /**
+         * MemoryDocumentCard
+         * @description A core memory document read or rewritten.
+         */
+        MemoryDocumentCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "document";
+            document: components["schemas"]["MemoryCardDocument"];
+            /** Message */
+            message: string;
+            /** Updated */
+            updated: boolean;
         };
         /**
          * MemoryDocumentPreview
@@ -12407,6 +13833,23 @@ export interface components {
             episodes: components["schemas"]["MemoryEpisode"][];
         };
         /**
+         * MemoryForgetCard
+         * @description A memory forgotten, and why.
+         */
+        MemoryForgetCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "forget";
+            /** Memory Id */
+            memory_id: string;
+            /** Message */
+            message: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * MemoryGraphEdge
          * @description A labeled entity-to-entity relationship in the memory graph.
          */
@@ -12480,6 +13923,47 @@ export interface components {
              * @description Entity nodes
              */
             nodes: components["schemas"]["MemoryGraphNode"][];
+        };
+        /**
+         * MemoryJournalCard
+         * @description Journal days read or searched; query is set only for a search.
+         */
+        MemoryJournalCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "journal";
+            /** Episodes */
+            episodes: components["schemas"]["MemoryJournalDay"][];
+            /** Message */
+            message: string;
+            /** Query */
+            query: string | null;
+        };
+        /**
+         * MemoryJournalDay
+         * @description One journal day; date is YYYY-MM-DD.
+         */
+        MemoryJournalDay: {
+            /** Date */
+            date: string;
+            /** Entries */
+            entries: components["schemas"]["MemoryJournalLine"][];
+            /** Summary */
+            summary: string | null;
+        };
+        /**
+         * MemoryJournalLine
+         * @description One line of a journal day.
+         */
+        MemoryJournalLine: {
+            /** Source */
+            source: string | null;
+            /** Text */
+            text: string;
+            /** Time */
+            time: string | null;
         };
         /**
          * MemoryKind
@@ -12562,6 +14046,25 @@ export interface components {
          */
         MemoryRelationType: "updates" | "extends" | "derives";
         /**
+         * MemorySearchCard
+         * @description The memories a search matched; folder is the search's scope, when it had one.
+         */
+        MemorySearchCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "search";
+            /** Folder */
+            folder: string | null;
+            /** Memories */
+            memories: components["schemas"]["MemoryEntry"][];
+            /** Message */
+            message: string;
+            /** Query */
+            query: string;
+        };
+        /**
          * MemorySearchResult
          * @description Results from a memory search.
          */
@@ -12642,6 +14145,21 @@ export interface components {
              * @description Top-level folders
              */
             tree: components["schemas"]["MemoryTreeNode"][];
+        };
+        /**
+         * MemoryUpdateCard
+         * @description A memory corrected to its new version.
+         */
+        MemoryUpdateCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "update";
+            /** Memories */
+            memories: components["schemas"]["MemoryEntry"][];
+            /** Message */
+            message: string;
         };
         /**
          * MessageAccepted
@@ -13075,6 +14593,41 @@ export interface components {
             body: string;
             /** Title */
             title: string;
+        };
+        /**
+         * NotificationDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        NotificationDataCard: {
+            data: components["schemas"]["NotificationListCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "notification_data";
+        };
+        /**
+         * NotificationListCard
+         * @description The notification_data card: the notifications a list or search matched.
+         */
+        NotificationListCard: {
+            /** Notifications */
+            notifications: components["schemas"]["NotificationView"][];
         };
         /**
          * NotificationRecord
@@ -13545,6 +15098,150 @@ export interface components {
             title: string;
         };
         /**
+         * OpenWeatherClouds
+         * @description The cloud cover of a current-weather response, in percent.
+         */
+        OpenWeatherClouds: {
+            /** All */
+            all: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * OpenWeatherCondition
+         * @description One entry of an OpenWeatherMap weather list; also the daily summary's condition.
+         */
+        OpenWeatherCondition: {
+            /** Description */
+            description: string;
+            /** Icon */
+            icon: string;
+            /** Main */
+            main: string;
+        };
+        /**
+         * OpenWeatherCoord
+         * @description Where a current-weather response is for.
+         */
+        OpenWeatherCoord: {
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * OpenWeatherCurrentCondition
+         * @description One entry of a current-weather response's weather list; the card picks its theme by id.
+         */
+        OpenWeatherCurrentCondition: {
+            /** Description */
+            description: string;
+            /** Icon */
+            icon: string;
+            /** Id */
+            id: number;
+            /** Main */
+            main: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * OpenWeatherMain
+         * @description The main block of a current-weather response.
+         */
+        OpenWeatherMain: {
+            /**
+             * Feels Like
+             * @default null
+             */
+            feels_like?: number | null;
+            /**
+             * Grnd Level
+             * @default null
+             */
+            grnd_level?: number | null;
+            /**
+             * Humidity
+             * @default null
+             */
+            humidity?: number | null;
+            /**
+             * Pressure
+             * @default null
+             */
+            pressure?: number | null;
+            /**
+             * Sea Level
+             * @default null
+             */
+            sea_level?: number | null;
+            /**
+             * Temp
+             * @default null
+             */
+            temp?: number | null;
+            /**
+             * Temp Max
+             * @default null
+             */
+            temp_max?: number | null;
+            /**
+             * Temp Min
+             * @default null
+             */
+            temp_min?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * OpenWeatherSys
+         * @description The sys block of a current-weather response.
+         *
+         *     extra="allow": the whole current-weather response is forwarded verbatim
+         *     to the frontend weather card, so undeclared keys must survive.
+         */
+        OpenWeatherSys: {
+            /**
+             * Country
+             * @default null
+             */
+            country?: string | null;
+            /**
+             * Sunrise
+             * @default null
+             */
+            sunrise?: number | null;
+            /**
+             * Sunset
+             * @default null
+             */
+            sunset?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * OpenWeatherWind
+         * @description The wind block of a current-weather response.
+         */
+        OpenWeatherWind: {
+            /**
+             * Deg
+             * @default null
+             */
+            deg?: number | null;
+            /**
+             * Gust
+             * @default null
+             */
+            gust?: number | null;
+            /** Speed */
+            speed: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
          */
@@ -13632,6 +15329,33 @@ export interface components {
              * @description Conversation holding the card
              */
             conversation_id: string;
+        };
+        /**
+         * PeopleSearchDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        PeopleSearchDataCard: {
+            data: components["schemas"]["ContactCard"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "people_search_data";
         };
         /**
          * PersistedTriageSummary
@@ -14031,6 +15755,18 @@ export interface components {
              * @enum {string}
              */
             kind: "progress";
+        };
+        /**
+         * ProjectCounts
+         * @description One project's task tallies in the summary.
+         */
+        ProjectCounts: {
+            /** Completed */
+            completed: number;
+            /** Pending */
+            pending: number;
+            /** Total */
+            total: number;
         };
         /**
          * ProjectCreate
@@ -14602,7 +16338,10 @@ export interface components {
             /** Text */
             text: string | null;
         };
-        /** PublishIntegrationResponse */
+        /**
+         * PublishIntegrationResponse
+         * @description A custom integration published to the marketplace.
+         */
         PublishIntegrationResponse: {
             /** Integrationid */
             integrationId: string;
@@ -14717,6 +16456,79 @@ export interface components {
             url: string | null;
         };
         /**
+         * RateLimitCardData
+         * @description A rate, budget or cap limit; message, when set, replaces the card's generic copy.
+         */
+        RateLimitCardData: {
+            /** Current Plan */
+            current_plan: string;
+            /** Feature */
+            feature: string;
+            /**
+             * Message
+             * @default null
+             */
+            message: string | null;
+            /** Plan Required */
+            plan_required: string | null;
+            /** Reset Time */
+            reset_time: string | null;
+        };
+        /**
+         * RateLimitDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        RateLimitDataCard: {
+            data: components["schemas"]["RateLimitCardData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "rate_limit_data";
+        };
+        /**
+         * RateLimitDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        RateLimitDataGroupCard: {
+            data: components["schemas"]["RateLimitCardData"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "rate_limit_data";
+        };
+        /**
          * Reaction
          * @description An emoji on a user message; a field updated in place, never a state change.
          */
@@ -14743,6 +16555,26 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "not_ready";
+        };
+        /**
+         * RecentlyCompletedBucket
+         * @description The todos completed today; the summary card never offers to expand it.
+         */
+        RecentlyCompletedBucket: {
+            /** Count */
+            count: number;
+            /** Todos */
+            todos: components["schemas"]["TodoResponse"][];
+        };
+        /**
+         * ReconnectAccount
+         * @description The expired account a connect card signs back in.
+         */
+        ReconnectAccount: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * RecordedCall
@@ -14841,6 +16673,226 @@ export interface components {
             until?: string | null;
         };
         /**
+         * RedditCardComment
+         * @description One comment on a post.
+         */
+        RedditCardComment: {
+            /** Author */
+            author: string;
+            /** Body */
+            body: string;
+            /** Created Utc */
+            created_utc: number;
+            /** Id */
+            id: string;
+            /** Is Submitter */
+            is_submitter: boolean;
+            /** Permalink */
+            permalink: string;
+            /** Score */
+            score: number;
+        };
+        /**
+         * RedditCardCommentCreated
+         * @description The comment the user just posted.
+         */
+        RedditCardCommentCreated: {
+            /** Id */
+            id: string | null;
+            /** Message */
+            message: string;
+            /** Permalink */
+            permalink: string | null;
+        };
+        /**
+         * RedditCardPost
+         * @description One post in full; subreddit is prefixed (r/...).
+         */
+        RedditCardPost: {
+            /** Author */
+            author: string;
+            /** Created Utc */
+            created_utc: number;
+            /** Id */
+            id: string;
+            /** Is Self */
+            is_self: boolean;
+            /** Link Flair Text */
+            link_flair_text: string | null;
+            /** Num Comments */
+            num_comments: number;
+            /** Permalink */
+            permalink: string;
+            /** Score */
+            score: number;
+            /** Selftext */
+            selftext: string;
+            /** Subreddit */
+            subreddit: string;
+            /** Title */
+            title: string;
+            /** Upvote Ratio */
+            upvote_ratio: number;
+            /** Url */
+            url: string;
+        };
+        /**
+         * RedditCardPostCreated
+         * @description The post the user just created.
+         */
+        RedditCardPostCreated: {
+            /** Id */
+            id: string | null;
+            /** Message */
+            message: string;
+            /** Permalink */
+            permalink: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * RedditCardSearchPost
+         * @description A post a search matched; subreddit is prefixed (r/...) and selftext trimmed.
+         */
+        RedditCardSearchPost: {
+            /** Author */
+            author: string;
+            /** Created Utc */
+            created_utc: number;
+            /** Id */
+            id: string;
+            /** Num Comments */
+            num_comments: number;
+            /** Permalink */
+            permalink: string;
+            /** Score */
+            score: number;
+            /** Selftext */
+            selftext: string;
+            /** Subreddit */
+            subreddit: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * RedditCommentCreatedCard
+         * @description A comment the user posted.
+         */
+        RedditCommentCreatedCard: {
+            data: components["schemas"]["RedditCardCommentCreated"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "comment_created";
+        };
+        /**
+         * RedditCommentsCard
+         * @description A post's comments, capped for the card.
+         */
+        RedditCommentsCard: {
+            /** Comments */
+            comments: components["schemas"]["RedditCardComment"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "comments";
+        };
+        /**
+         * RedditDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        RedditDataCard: {
+            data: components["schemas"]["RedditSearchCard"] | components["schemas"]["RedditPostCard"] | components["schemas"]["RedditCommentsCard"] | components["schemas"]["RedditPostCreatedCard"] | components["schemas"]["RedditCommentCreatedCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "reddit_data";
+        };
+        /**
+         * RedditDataGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        RedditDataGroupCard: {
+            data: (components["schemas"]["RedditSearchCard"] | components["schemas"]["RedditPostCard"] | components["schemas"]["RedditCommentsCard"] | components["schemas"]["RedditPostCreatedCard"] | components["schemas"]["RedditCommentCreatedCard"])[];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "reddit_data";
+        };
+        /**
+         * RedditPostCard
+         * @description A post read in full.
+         */
+        RedditPostCard: {
+            post: components["schemas"]["RedditCardPost"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "post";
+        };
+        /**
+         * RedditPostCreatedCard
+         * @description A post the user created.
+         */
+        RedditPostCreatedCard: {
+            data: components["schemas"]["RedditCardPostCreated"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "post_created";
+        };
+        /**
+         * RedditSearchCard
+         * @description A search's matching posts.
+         */
+        RedditSearchCard: {
+            /** Posts */
+            posts: components["schemas"]["RedditCardSearchPost"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "search";
+        };
+        /**
          * RedeemLinkCodeRequest
          * @description Request model for redeeming a web-minted one-tap link code.
          */
@@ -14890,7 +16942,7 @@ export interface components {
              * First Contact
              * @description Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true, because sending them then would say everything twice.
              */
-            first_contact?: string[];
+            first_contact: string[];
             /**
              * Linked
              * @description Whether the platform account is now linked
@@ -15377,6 +17429,45 @@ export interface components {
             kind: "screen_patch";
         };
         /**
+         * ScreenshotCard
+         * @description A captured screen's thumbnail as a data URL, with the screen's size when the desktop app reported it.
+         */
+        ScreenshotCard: {
+            /** Height */
+            height: number | null;
+            /** Thumbnail */
+            thumbnail: string;
+            /** Width */
+            width: number | null;
+        };
+        /**
+         * ScreenshotDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ScreenshotDataCard: {
+            data: components["schemas"]["ScreenshotCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "screenshot_data";
+        };
+        /**
          * ScreenUpdateFrame
          * @description An item already shown changed in place; it keeps its position.
          */
@@ -15440,6 +17531,18 @@ export interface components {
          */
         SearchMode: "text" | "semantic" | "hybrid";
         /**
+         * SearchResultCount
+         * @description How many results of each kind the search card holds.
+         */
+        SearchResultCount: {
+            /** Images */
+            images: number;
+            /** Videos */
+            videos: number;
+            /** Web */
+            web: number;
+        };
+        /**
          * SearchResultItem
          * @description A single web result in the shape the agent and frontend consume.
          */
@@ -15471,6 +17574,85 @@ export interface components {
             title?: string;
             /** Url */
             url: string;
+        };
+        /**
+         * SearchResultsCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        SearchResultsCard: {
+            data: components["schemas"]["SearchResultsData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "search_results";
+        };
+        /**
+         * SearchResultsData
+         * @description One web search's results; news and videos are always empty.
+         */
+        SearchResultsData: {
+            /** Answer */
+            answer: string;
+            /** Elapsed Time */
+            elapsed_time: number;
+            /** Images */
+            images: string[];
+            /** News */
+            news: components["schemas"]["SearchResultItem"][];
+            /** Query */
+            query: string;
+            /** Request Id */
+            request_id: string;
+            /** Response Time */
+            response_time: number;
+            result_count: components["schemas"]["SearchResultCount"];
+            /** Videos */
+            videos: string[];
+            /** Web */
+            web: components["schemas"]["SearchResultItem"][];
+        };
+        /**
+         * SearchResultsGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        SearchResultsGroupCard: {
+            data: components["schemas"]["SearchResultsData"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "search_results";
         };
         /**
          * SearchResultsResponse
@@ -15671,6 +17853,60 @@ export interface components {
              * @default false
              */
             voice?: boolean;
+        };
+        /**
+         * SendNotificationDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        SendNotificationDataCard: {
+            data: components["schemas"]["SentNotificationCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "send_notification_data";
+        };
+        /**
+         * SensitiveCategory
+         * @description Why a planned browser step is sensitive.
+         * @enum {string}
+         */
+        SensitiveCategory: "none" | "payment" | "credentials" | "irreversible";
+        /**
+         * SentNotificationCard
+         * @description The send_notification_data card, and what send_notification tells the model it sent.
+         */
+        SentNotificationCard: {
+            /** Delivered Channels */
+            delivered_channels: string[];
+            /** Message */
+            message: string;
+            /** Notification Id */
+            notification_id: string;
+            notification_type: components["schemas"]["NotificationType"];
+            status: components["schemas"]["NotificationStatus"];
+            /**
+             * Success
+             * @constant
+             */
+            success: true;
+            /** Title */
+            title: string;
         };
         /**
          * SeriesPoint
@@ -16226,6 +18462,75 @@ export interface components {
             name: string;
         };
         /**
+         * SubagentGroupCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        SubagentGroupCard: {
+            data: components["schemas"]["SubagentGroupCardData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "subagent_group";
+        };
+        /**
+         * SubagentGroupCardData
+         * @description A subagent_group card's data as its start opens it; its end fills duration, tokens and completion.
+         */
+        SubagentGroupCardData: {
+            /**
+             * Agent Type
+             * @enum {string}
+             */
+            agent_type: "handoff" | "spawned";
+            /**
+             * Completed At
+             * @default null
+             */
+            completed_at: string | null;
+            /**
+             * Duration Ms
+             * @default null
+             */
+            duration_ms: number | null;
+            /** Icon Url */
+            icon_url: string | null;
+            /** Nested Subagents */
+            nested_subagents: components["schemas"]["SubagentGroupCardData"][];
+            /** Started At */
+            started_at: string;
+            /** Subagent */
+            subagent: string | null;
+            /** Subagent Id */
+            subagent_id: string;
+            /** Subagent Name */
+            subagent_name: string;
+            /**
+             * Token Count
+             * @default null
+             */
+            token_count: number | null;
+            /** Tool Calls */
+            tool_calls: (components["schemas"]["ToolCallsDataEntryData"] | components["schemas"]["ToolCallReasoningStep"])[];
+            /** Tool Category */
+            tool_category: string | null;
+        };
+        /**
          * SubscriptionAction
          * @description What firing a subscription does to its todo.
          * @enum {string}
@@ -16374,6 +18679,28 @@ export interface components {
             title?: string | null;
         };
         /**
+         * SuggestedIntegrationCard
+         * @description A marketplace integration the user can add, in the card's camelCase.
+         */
+        SuggestedIntegrationCard: {
+            /** Authtype */
+            authType: string | null;
+            /** Category */
+            category: string;
+            /** Description */
+            description: string;
+            /** Iconurl */
+            iconUrl: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Relevancescore */
+            relevanceScore: number;
+            /** Slug */
+            slug: string;
+        };
+        /**
          * SuggestedTrigger
          * @description AI-suggested trigger configuration returned alongside generated instructions.
          */
@@ -16393,6 +18720,24 @@ export interface components {
              * @description Trigger type: manual, schedule, or integration
              */
             type: string;
+        };
+        /**
+         * SummaryStats
+         * @description The summary's productivity counters.
+         */
+        SummaryStats: {
+            /** Completed */
+            completed: number;
+            /** Completed Today */
+            completed_today: number;
+            /** Completion Rate */
+            completion_rate: number;
+            /** Overdue */
+            overdue: number;
+            /** Pending */
+            pending: number;
+            /** Total */
+            total: number;
         };
         /**
          * SupportAttachment
@@ -16649,6 +18994,48 @@ export interface components {
          */
         SupportRequestType: "support" | "feature";
         /**
+         * SupportTicketDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        SupportTicketDataCard: {
+            data: components["schemas"]["SupportTicketDraft"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "support_ticket_data";
+        };
+        /**
+         * SupportTicketDraft
+         * @description The support_ticket_data card's payload: a ticket the user reviews before submitting it.
+         */
+        SupportTicketDraft: {
+            /** Description */
+            description: string;
+            /** Title */
+            title: string;
+            type: components["schemas"]["SupportRequestType"];
+            /** User Email */
+            user_email: string;
+            /** User Name */
+            user_name: string;
+        };
+        /**
          * SystemGatePreset
          * @description A gate whose decision and wording live in code, not on the job.
          * @enum {string}
@@ -16706,7 +19093,7 @@ export interface components {
          * @description A card rendered on its own below the thread; a grouped tool's calls arrive as one card.
          */
         TimelineCard: {
-            card: components["schemas"]["ToolDataEntry"];
+            card: components["schemas"]["TimelineToolCard"];
             /** Key */
             key: string;
         };
@@ -16743,6 +19130,20 @@ export interface components {
          * @enum {string}
          */
         TimelineStepKind: "tool" | "subagent";
+        /** @description A card shown below the thread; a grouped tool's card holds every call's data. */
+        TimelineToolCard: components["schemas"]["ArtifactDataGroupCard"] | components["schemas"]["ArtifactDoneCard"] | components["schemas"]["ScreenshotDataCard"] | components["schemas"]["BrowserTaskDataGroupCard"] | components["schemas"]["McpAppCard"] | components["schemas"]["ToolCallsDataCard"] | components["schemas"]["ApprovalRequestGroupCard"] | components["schemas"]["SubagentGroupCard"] | components["schemas"]["TodoProgressCard"] | components["schemas"]["BriefingDataCard"] | components["schemas"]["EmailComposeDataGroupCard"] | components["schemas"]["EmailFetchDataGroupCard"] | components["schemas"]["EmailThreadDataCard"] | components["schemas"]["EmailSentDataGroupCard"] | components["schemas"]["ContactsDataCard"] | components["schemas"]["CalendarFetchDataCard"] | components["schemas"]["CalendarListFetchDataCard"] | components["schemas"]["PeopleSearchDataCard"] | components["schemas"]["TodoDataCard"] | components["schemas"]["SearchResultsGroupCard"] | components["schemas"]["WeatherDataCard"] | components["schemas"]["SupportTicketDataCard"] | components["schemas"]["NotificationDataCard"] | components["schemas"]["SendNotificationDataCard"] | components["schemas"]["MemoryDataGroupCard"] | components["schemas"]["RateLimitDataGroupCard"] | components["schemas"]["IntegrationConnectionRequiredGroupCard"] | components["schemas"]["IntegrationListDataGroupCard"] | components["schemas"]["ConnectOptionsCard"] | components["schemas"]["DeviceOnboardingRequiredCard"] | components["schemas"]["DeviceApprovalRequiredGroupCard"] | components["schemas"]["RedditDataGroupCard"] | components["schemas"]["TwitterUserDataCard"] | components["schemas"]["TwitterSearchDataCard"] | components["schemas"]["WorkflowDraftCard"] | components["schemas"]["WorkflowCreatedCard"];
+        /**
+         * TodoBucket
+         * @description One bucket of the summary: its count over every todo, and a capped preview.
+         */
+        TodoBucket: {
+            /** Count */
+            count: number;
+            /** Has More */
+            has_more: boolean;
+            /** Todos */
+            todos: components["schemas"]["TodoResponse"][];
+        };
         /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
@@ -16752,6 +19153,44 @@ export interface components {
             activity: string;
             /** Content */
             content: string;
+        };
+        /**
+         * TodoCardAction
+         * @description What the todo tool did, which picks the card's heading.
+         * @enum {string}
+         */
+        TodoCardAction: "create" | "list" | "update" | "delete" | "search" | "stats" | "summary";
+        /**
+         * TodoCardData
+         * @description The todo_data card; counts ride with stats, project_completion (percent by project id) with projects.
+         */
+        TodoCardData: {
+            action: components["schemas"]["TodoCardAction"];
+            /** @default null */
+            counts: components["schemas"]["TodoCounts"] | null;
+            /** Message */
+            message: string;
+            /**
+             * Project Completion
+             * @default null
+             */
+            project_completion: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Projects
+             * @default null
+             */
+            projects: components["schemas"]["ProjectResponse"][] | null;
+            /** @default null */
+            stats: components["schemas"]["TodoStats"] | null;
+            /** @default null */
+            summary: components["schemas"]["TodosSummary"] | null;
+            /**
+             * Todos
+             * @default null
+             */
+            todos: components["schemas"]["TodoResponse"][] | null;
         };
         /**
          * TodoConversationResponse
@@ -16791,6 +19230,33 @@ export interface components {
              * @default 0
              */
             upcoming: number;
+        };
+        /**
+         * TodoDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        TodoDataCard: {
+            data: components["schemas"]["TodoCardData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "todo_data";
         };
         /**
          * TodoFailedNotification
@@ -16952,6 +19418,65 @@ export interface components {
             todo_id: string;
         };
         /**
+         * TodoProgressCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        TodoProgressCard: {
+            data: {
+                [key: string]: components["schemas"]["TodoProgressSnapshot"];
+            };
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "todo_progress";
+        };
+        /**
+         * TodoProgressItem
+         * @description One step of an agent's plan.
+         */
+        TodoProgressItem: {
+            /** Content */
+            content: string;
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "in_progress" | "completed" | "cancelled";
+        };
+        /**
+         * TodoProgressSnapshot
+         * @description One source agent's plan as it last changed; integration_name is absent when the source has no display name.
+         */
+        TodoProgressSnapshot: {
+            /**
+             * Integration Name
+             * @default null
+             */
+            integration_name?: string | null;
+            /** Source */
+            source: string;
+            /** Todos */
+            todos: components["schemas"]["TodoProgressItem"][];
+        };
+        /**
          * TodoResponse
          * @description Complete todo response with all fields
          */
@@ -17105,6 +19630,23 @@ export interface components {
             /** Trigger Names */
             trigger_names: string[];
         };
+        /**
+         * TodosSummary
+         * @description The get_todos_summary snapshot; by_project is keyed by project name.
+         */
+        TodosSummary: {
+            /** By Project */
+            by_project: {
+                [key: string]: components["schemas"]["ProjectCounts"];
+            };
+            high_priority: components["schemas"]["TodoBucket"];
+            next_deadline: components["schemas"]["TodoResponse"] | null;
+            overdue: components["schemas"]["TodoBucket"];
+            recently_completed: components["schemas"]["RecentlyCompletedBucket"];
+            stats: components["schemas"]["SummaryStats"];
+            today: components["schemas"]["TodoBucket"];
+            upcoming_week: components["schemas"]["TodoBucket"];
+        };
         /** TodoStats */
         TodoStats: {
             /** By Priority */
@@ -17235,9 +19777,9 @@ export interface components {
              * Todo Id
              * @description Set when generation was queued
              */
-            todo_id?: string | null;
+            todo_id: string | null;
             /** @description Set when a generated workflow already existed */
-            workflow?: components["schemas"]["WorkflowWithIntegrations"] | null;
+            workflow: components["schemas"]["WorkflowWithIntegrations"] | null;
         };
         /**
          * TodoWorkflowGenerationStatus
@@ -17260,8 +19802,114 @@ export interface components {
             is_generating: boolean;
             /** Todo Id */
             todo_id: string;
-            workflow?: components["schemas"]["WorkflowWithIntegrations"] | null;
+            workflow: components["schemas"]["WorkflowWithIntegrations"] | null;
             workflow_status: components["schemas"]["TodoWorkflowStatus"];
+        };
+        /**
+         * ToolCallReasoningStep
+         * @description The model's thinking between tool calls, riding the tool-call channel as a step of its own.
+         */
+        ToolCallReasoningStep: {
+            /** Message */
+            message: string;
+            /** Reasoning */
+            reasoning: string;
+            /**
+             * Tool Category
+             * @constant
+             */
+            tool_category: "reasoning";
+            /**
+             * Tool Name
+             * @constant
+             */
+            tool_name: "reasoning";
+        };
+        /**
+         * ToolCallsDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ToolCallsDataCard: {
+            data: components["schemas"]["ToolCallsDataEntryData"] | components["schemas"]["ToolCallReasoningStep"] | (components["schemas"]["ToolCallsDataEntryData"] | components["schemas"]["ToolCallReasoningStep"])[];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "tool_calls_data";
+        };
+        /**
+         * ToolCallsDataEntryData
+         * @description One tool call as its tool_calls_data card shows it; the fold adds its output once the tool returns.
+         */
+        ToolCallsDataEntryData: {
+            /** Icon Url */
+            icon_url: string | null;
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /** Integration Name */
+            integration_name: string | null;
+            /** Message */
+            message: string | null;
+            /**
+             * Output
+             * @default null
+             */
+            output?: string | null;
+            /**
+             * Output Original Length
+             * @default null
+             */
+            output_original_length?: number | null;
+            /** Show Category */
+            show_category: boolean;
+            /** Tool Call Id */
+            tool_call_id: string | null;
+            /** Tool Category */
+            tool_category: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
+         * ToolCardEnvelope
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        ToolCardEnvelope: {
+            /** Data */
+            data: unknown;
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /** Tool Name */
+            tool_name: string;
         };
         /**
          * ToolContract
@@ -17293,30 +19941,12 @@ export interface components {
             tool_name: string;
         };
         /**
-         * ToolDataEntry
          * @description One tool card: stored on messages and log entries, and streamed in frames.
          *
          *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
          *     data is open on purpose: each tool owns the JSON its card reads.
          */
-        ToolDataEntry: {
-            /** Data */
-            data: unknown;
-            /** Mcp Server Url */
-            mcp_server_url?: string | null;
-            /** Mcp Ui */
-            mcp_ui?: {
-                [key: string]: unknown;
-            } | null;
-            /** Subagent Id */
-            subagent_id?: string;
-            /** Timestamp */
-            timestamp?: string | null;
-            /** Tool Category */
-            tool_category?: string;
-            /** Tool Name */
-            tool_name: string;
-        };
+        ToolDataEntry: components["schemas"]["ArtifactDataCard"] | components["schemas"]["ArtifactDoneCard"] | components["schemas"]["ScreenshotDataCard"] | components["schemas"]["BrowserTaskDataCard"] | components["schemas"]["McpAppCard"] | components["schemas"]["ToolCallsDataCard"] | components["schemas"]["ApprovalRequestCard"] | components["schemas"]["SubagentGroupCard"] | components["schemas"]["TodoProgressCard"] | components["schemas"]["BriefingDataCard"] | components["schemas"]["EmailComposeDataCard"] | components["schemas"]["EmailFetchDataCard"] | components["schemas"]["EmailThreadDataCard"] | components["schemas"]["EmailSentDataCard"] | components["schemas"]["ContactsDataCard"] | components["schemas"]["CalendarFetchDataCard"] | components["schemas"]["CalendarListFetchDataCard"] | components["schemas"]["PeopleSearchDataCard"] | components["schemas"]["TodoDataCard"] | components["schemas"]["SearchResultsCard"] | components["schemas"]["WeatherDataCard"] | components["schemas"]["SupportTicketDataCard"] | components["schemas"]["NotificationDataCard"] | components["schemas"]["SendNotificationDataCard"] | components["schemas"]["MemoryDataCard"] | components["schemas"]["RateLimitDataCard"] | components["schemas"]["IntegrationConnectionRequiredCard"] | components["schemas"]["IntegrationListDataCard"] | components["schemas"]["ConnectOptionsCard"] | components["schemas"]["DeviceOnboardingRequiredCard"] | components["schemas"]["DeviceApprovalRequiredCard"] | components["schemas"]["RedditDataCard"] | components["schemas"]["TwitterUserDataCard"] | components["schemas"]["TwitterSearchDataCard"] | components["schemas"]["WorkflowDraftCard"] | components["schemas"]["WorkflowCreatedCard"];
         /**
          * ToolInfo
          * @description Model for individual tool information.
@@ -17618,6 +20248,155 @@ export interface components {
          */
         TriggerType: "manual" | "schedule" | "integration" | "scheduled_todo" | "todo_trigger";
         /**
+         * TwitterSearchCard
+         * @description The twitter_search_data card: a page of matching tweets and the cursor to the next.
+         */
+        TwitterSearchCard: {
+            /** Next Token */
+            next_token: string | null;
+            /** Result Count */
+            result_count: number;
+            /** Tweets */
+            tweets: components["schemas"]["TwitterSearchTweet"][];
+        };
+        /**
+         * TwitterSearchDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        TwitterSearchDataCard: {
+            data: components["schemas"]["TwitterSearchCard"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "twitter_search_data";
+        };
+        /**
+         * TwitterSearchTweet
+         * @description One tweet a search matched.
+         */
+        TwitterSearchTweet: {
+            /** Author */
+            author: components["schemas"]["TwitterTweetAuthor"] | components["schemas"]["TwitterUnknownAuthor"];
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Id */
+            id: string;
+            /** Public Metrics */
+            public_metrics: {
+                [key: string]: number;
+            };
+            /** Text */
+            text: string;
+        };
+        /**
+         * TwitterTweetAuthor
+         * @description A tweet's author, expanded from the page's includes.
+         */
+        TwitterTweetAuthor: {
+            /** Description */
+            description: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Profile Image Url */
+            profile_image_url: string | null;
+            /** Public Metrics */
+            public_metrics: {
+                [key: string]: number;
+            };
+            /** Username */
+            username: string;
+            /** Verified */
+            verified: boolean | null;
+        };
+        /**
+         * TwitterUnknownAuthor
+         * @description The placeholder author of a tweet X expanded no author for.
+         */
+        TwitterUnknownAuthor: {
+            /** Name */
+            name: string;
+            /** Username */
+            username: string;
+        };
+        /**
+         * TwitterUserCard
+         * @description A user as the twitter_user_data profile card shows them.
+         */
+        TwitterUserCard: {
+            /** Created At */
+            created_at: string | null;
+            /** Description */
+            description: string | null;
+            /** Id */
+            id: string;
+            /** Location */
+            location: string | null;
+            /** Name */
+            name: string;
+            /** Profile Image Url */
+            profile_image_url: string | null;
+            /** Public Metrics */
+            public_metrics: {
+                [key: string]: number;
+            };
+            /**
+             * Url
+             * @default null
+             */
+            url: string | null;
+            /** Username */
+            username: string;
+            /** Verified */
+            verified: boolean | null;
+        };
+        /**
+         * TwitterUserDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        TwitterUserDataCard: {
+            data: components["schemas"]["TwitterUserCard"][];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "twitter_user_data";
+        };
+        /**
          * UncomposedItem
          * @description What GAIA read but the composition left out, with the words for where it stands.
          */
@@ -17650,7 +20429,10 @@ export interface components {
              */
             success: boolean;
         };
-        /** UnpublishIntegrationResponse */
+        /**
+         * UnpublishIntegrationResponse
+         * @description A custom integration removed from the marketplace.
+         */
         UnpublishIntegrationResponse: {
             /** Integrationid */
             integrationId: string;
@@ -17953,7 +20735,7 @@ export interface components {
             /** Streak */
             streak: number;
             /** Tier */
-            tier: string | null;
+            tier: ("bronze" | "silver" | "gold" | "diamond") | null;
             /** Total */
             total: number;
             /** Total Tokens */
@@ -18357,6 +21139,101 @@ export interface components {
             serverUrl: string | null;
         };
         /**
+         * WeatherDataCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        WeatherDataCard: {
+            data: components["schemas"]["WeatherReport"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "weather_data";
+        };
+        /**
+         * WeatherLocation
+         * @description The resolved place a weather card is for.
+         */
+        WeatherLocation: {
+            /** City */
+            city: string | null;
+            /** Country */
+            country: string | null;
+            /** Region */
+            region: string | null;
+        };
+        /**
+         * WeatherReport
+         * @description The weather_data card's payload: the current weather plus GAIA's forecast and location.
+         */
+        WeatherReport: {
+            /** @default null */
+            clouds: components["schemas"]["OpenWeatherClouds"] | null;
+            /**
+             * Cod
+             * @default null
+             */
+            cod: number | null;
+            /** @default null */
+            coord: components["schemas"]["OpenWeatherCoord"] | null;
+            /**
+             * Dt
+             * @default null
+             */
+            dt: number | null;
+            /** Forecast */
+            forecast: components["schemas"]["DailyForecast"][];
+            /**
+             * Id
+             * @default null
+             */
+            id: number | null;
+            location: components["schemas"]["WeatherLocation"];
+            /** @default null */
+            main: components["schemas"]["OpenWeatherMain"] | null;
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+            /** @default null */
+            sys: components["schemas"]["OpenWeatherSys"] | null;
+            /**
+             * Timezone
+             * @default null
+             */
+            timezone: number | null;
+            /**
+             * Visibility
+             * @default null
+             */
+            visibility: number | null;
+            /**
+             * Weather
+             * @default null
+             */
+            weather: components["schemas"]["OpenWeatherCurrentCondition"][] | null;
+            /** @default null */
+            wind: components["schemas"]["OpenWeatherWind"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * WebSearchResult
          * @description The wire shape ``perform_search`` returns: results plus the query echoed back.
          */
@@ -18441,6 +21318,65 @@ export interface components {
             workflow_id: string;
         };
         /**
+         * WorkflowCreatedCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        WorkflowCreatedCard: {
+            data: components["schemas"]["WorkflowCreatedData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "workflow_created";
+        };
+        /**
+         * WorkflowCreatedData
+         * @description The workflow_created card: a workflow created directly, with no draft to confirm.
+         */
+        WorkflowCreatedData: {
+            /** Activated */
+            activated: boolean;
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Integration Ids */
+            integration_ids: string[];
+            /** Title */
+            title: string;
+            trigger_config: components["schemas"]["WorkflowCreatedTriggerConfig"];
+        };
+        /**
+         * WorkflowCreatedTriggerConfig
+         * @description The trigger the created workflow runs on.
+         */
+        WorkflowCreatedTriggerConfig: {
+            /** Cron Expression */
+            cron_expression: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Timezone */
+            timezone: string | null;
+            /** Trigger Name */
+            trigger_name: string | null;
+            type: components["schemas"]["TriggerType"];
+        };
+        /**
          * WorkflowCreator
          * @description The public-facing creator card built by ``format_creator``.
          *
@@ -18466,6 +21402,59 @@ export interface components {
          * @enum {string}
          */
         WorkflowDelivery: "now" | "brief" | "silent";
+        /**
+         * WorkflowDraftCard
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
+         *
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
+         */
+        WorkflowDraftCard: {
+            data: components["schemas"]["WorkflowDraftData"];
+            /** Mcp Server Url */
+            mcp_server_url?: string | null;
+            /** Mcp Ui */
+            mcp_ui?: {
+                [key: string]: unknown;
+            } | null;
+            /** Subagent Id */
+            subagent_id?: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Tool Category */
+            tool_category?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            tool_name: "workflow_draft";
+        };
+        /**
+         * WorkflowDraftData
+         * @description The workflow_draft card the user reviews before the workflow is created.
+         */
+        WorkflowDraftData: {
+            /** Cron Expression */
+            cron_expression: string | null;
+            delivery: components["schemas"]["WorkflowDelivery"];
+            /** Direct Create */
+            direct_create: boolean;
+            /** Draft Id */
+            draft_id: string;
+            /** Integration Ids */
+            integration_ids: string[];
+            /** Prompt */
+            prompt: string;
+            /** Runs Only When */
+            runs_only_when: string | null;
+            /** Suggested Description */
+            suggested_description: string;
+            /** Suggested Title */
+            suggested_title: string;
+            /** Trigger Slug */
+            trigger_slug: string | null;
+            trigger_type: components["schemas"]["TriggerType"];
+        };
         /**
          * WorkflowExecution
          * @description A single workflow execution record.
@@ -19110,15 +22099,26 @@ export type ApprovalDescription = components['schemas']['ApprovalDescription'];
 export type ApprovalDetail = components['schemas']['ApprovalDetail'];
 export type ApprovalNotification = components['schemas']['ApprovalNotification'];
 export type ApprovalOutcome = components['schemas']['ApprovalOutcome'];
+export type ApprovalRequestCard = components['schemas']['ApprovalRequestCard'];
 export type ApprovalRequested = components['schemas']['ApprovalRequested'];
 export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];
 export type ApprovalRequestEntryData = components['schemas']['ApprovalRequestEntryData'];
+export type ApprovalRequestGroupCard = components['schemas']['ApprovalRequestGroupCard'];
 export type ApprovalStatus = components['schemas']['ApprovalStatus'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
+export type ArtifactCard = components['schemas']['ArtifactCard'];
+export type ArtifactDataCard = components['schemas']['ArtifactDataCard'];
+export type ArtifactDataGroupCard = components['schemas']['ArtifactDataGroupCard'];
+export type ArtifactDoneCard = components['schemas']['ArtifactDoneCard'];
+export type ArtifactFailureReason = components['schemas']['ArtifactFailureReason'];
+export type ArtifactFileEvent = components['schemas']['ArtifactFileEvent'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactKind = components['schemas']['ArtifactKind'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
+export type ArtifactRemoveEvent = components['schemas']['ArtifactRemoveEvent'];
+export type ArtifactStatus = components['schemas']['ArtifactStatus'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
+export type AttachmentDisplay = components['schemas']['AttachmentDisplay'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
@@ -19165,6 +22165,7 @@ export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow
 export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
 export type BriefEditionNotification = components['schemas']['BriefEditionNotification'];
 export type BriefForm = components['schemas']['BriefForm'];
+export type BriefingDataCard = components['schemas']['BriefingDataCard'];
 export type BriefingEdition = components['schemas']['BriefingEdition'];
 export type BriefingEditions = components['schemas']['BriefingEditions'];
 export type BriefingEditionsUpdate = components['schemas']['BriefingEditionsUpdate'];
@@ -19186,11 +22187,18 @@ export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
 export type BriefNoteNotification = components['schemas']['BriefNoteNotification'];
 export type BriefOutcome = components['schemas']['BriefOutcome'];
 export type BriefPoolItem = components['schemas']['BriefPoolItem'];
+export type BrowserAction = components['schemas']['BrowserAction'];
+export type BrowserHandoffSnapshot = components['schemas']['BrowserHandoffSnapshot'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
+export type BrowserResultSnapshot = components['schemas']['BrowserResultSnapshot'];
+export type BrowserSessionSnapshot = components['schemas']['BrowserSessionSnapshot'];
 export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus'];
+export type BrowserStepSnapshot = components['schemas']['BrowserStepSnapshot'];
 export type BrowserStopOutcome = components['schemas']['BrowserStopOutcome'];
+export type BrowserTaskDataCard = components['schemas']['BrowserTaskDataCard'];
+export type BrowserTaskDataGroupCard = components['schemas']['BrowserTaskDataGroupCard'];
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
 export type BubbleTextDelta = components['schemas']['BubbleTextDelta'];
@@ -19206,10 +22214,14 @@ export type BulkMoveRequest = components['schemas']['BulkMoveRequest'];
 export type BulkOperationResponse = components['schemas']['BulkOperationResponse'];
 export type BulkUpdateRequest = components['schemas']['BulkUpdateRequest'];
 export type CalendarEventCreatedConfig = components['schemas']['CalendarEventCreatedConfig'];
+export type CalendarEventDisplay = components['schemas']['CalendarEventDisplay'];
 export type CalendarEventPageResponse = components['schemas']['CalendarEventPageResponse'];
 export type CalendarEventsQueryRequest = components['schemas']['CalendarEventsQueryRequest'];
 export type CalendarEventsResponse = components['schemas']['CalendarEventsResponse'];
 export type CalendarEventStartingSoonConfig = components['schemas']['CalendarEventStartingSoonConfig'];
+export type CalendarFetchDataCard = components['schemas']['CalendarFetchDataCard'];
+export type CalendarListCard = components['schemas']['CalendarListCard'];
+export type CalendarListFetchDataCard = components['schemas']['CalendarListFetchDataCard'];
 export type CalendarListResponse = components['schemas']['CalendarListResponse'];
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
@@ -19226,6 +22238,7 @@ export type ChannelPriorityList = components['schemas']['ChannelPriorityList'];
 export type ChartBlock = components['schemas']['ChartBlock'];
 export type ChartKind = components['schemas']['ChartKind'];
 export type CheckoutSource = components['schemas']['CheckoutSource'];
+export type CliInstallCommands = components['schemas']['CliInstallCommands'];
 export type CommunityIntegrationCreator = components['schemas']['CommunityIntegrationCreator'];
 export type CommunityIntegrationItem = components['schemas']['CommunityIntegrationItem'];
 export type CommunityListResponse = components['schemas']['CommunityListResponse'];
@@ -19243,6 +22256,13 @@ export type ConditionOperator = components['schemas']['ConditionOperator'];
 export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
+export type ConnectLinkPreviewRequest = components['schemas']['ConnectLinkPreviewRequest'];
+export type ConnectLinkPreviewResponse = components['schemas']['ConnectLinkPreviewResponse'];
+export type ConnectOption = components['schemas']['ConnectOption'];
+export type ConnectOptionsCard = components['schemas']['ConnectOptionsCard'];
+export type ConnectOptionsData = components['schemas']['ConnectOptionsData'];
+export type ContactCard = components['schemas']['ContactCard'];
+export type ContactsDataCard = components['schemas']['ContactsDataCard'];
 export type ContentTokenResponse = components['schemas']['ContentTokenResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
@@ -19274,6 +22294,7 @@ export type CredentialProviderName = components['schemas']['CredentialProviderNa
 export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
+export type DailyForecast = components['schemas']['DailyForecast'];
 export type DataSeries = components['schemas']['DataSeries'];
 export type DeactivationReason = components['schemas']['DeactivationReason'];
 export type DecisionRefusal = components['schemas']['DecisionRefusal'];
@@ -19291,7 +22312,12 @@ export type DesktopReleaseAsset = components['schemas']['DesktopReleaseAsset'];
 export type DesktopReleaseResponse = components['schemas']['DesktopReleaseResponse'];
 export type DesktopToolResultRequest = components['schemas']['DesktopToolResultRequest'];
 export type DesktopToolResultResponse = components['schemas']['DesktopToolResultResponse'];
+export type DeviceApprovalCard = components['schemas']['DeviceApprovalCard'];
+export type DeviceApprovalRequiredCard = components['schemas']['DeviceApprovalRequiredCard'];
+export type DeviceApprovalRequiredGroupCard = components['schemas']['DeviceApprovalRequiredGroupCard'];
 export type DeviceListResponse = components['schemas']['DeviceListResponse'];
+export type DeviceOnboardingCard = components['schemas']['DeviceOnboardingCard'];
+export type DeviceOnboardingRequiredCard = components['schemas']['DeviceOnboardingRequiredCard'];
 export type DevicePairApproveResponse = components['schemas']['DevicePairApproveResponse'];
 export type DeviceResponse = components['schemas']['DeviceResponse'];
 export type DeviceRevokeResponse = components['schemas']['DeviceRevokeResponse'];
@@ -19312,7 +22338,19 @@ export type EditionFamily = components['schemas']['EditionFamily'];
 export type EditionImage = components['schemas']['EditionImage'];
 export type EditionLeftOut = components['schemas']['EditionLeftOut'];
 export type EditionVariant = components['schemas']['EditionVariant'];
+export type EmailComposeCard = components['schemas']['EmailComposeCard'];
+export type EmailComposeDataCard = components['schemas']['EmailComposeDataCard'];
+export type EmailComposeDataGroupCard = components['schemas']['EmailComposeDataGroupCard'];
+export type EmailFetchDataCard = components['schemas']['EmailFetchDataCard'];
+export type EmailFetchDataGroupCard = components['schemas']['EmailFetchDataGroupCard'];
+export type EmailListItem = components['schemas']['EmailListItem'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
+export type EmailSentDataCard = components['schemas']['EmailSentDataCard'];
+export type EmailSentDataGroupCard = components['schemas']['EmailSentDataGroupCard'];
+export type EmailSentDraftCard = components['schemas']['EmailSentDraftCard'];
+export type EmailThreadCard = components['schemas']['EmailThreadCard'];
+export type EmailThreadDataCard = components['schemas']['EmailThreadDataCard'];
+export type EmailThreadItem = components['schemas']['EmailThreadItem'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
 export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
@@ -19348,6 +22386,7 @@ export type GitHubIssueAddedConfig = components['schemas']['GitHubIssueAddedConf
 export type GitHubPrEventConfig = components['schemas']['GitHubPrEventConfig'];
 export type GitHubStarAddedConfig = components['schemas']['GitHubStarAddedConfig'];
 export type GmailEmailSentConfig = components['schemas']['GmailEmailSentConfig'];
+export type GmailMessageContent = components['schemas']['GmailMessageContent'];
 export type GmailMessagesResponse = components['schemas']['GmailMessagesResponse'];
 export type GmailMessageSummary = components['schemas']['GmailMessageSummary'];
 export type GmailNewMessageConfig = components['schemas']['GmailNewMessageConfig'];
@@ -19387,11 +22426,17 @@ export type InstructionsResponse = components['schemas']['InstructionsResponse']
 export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];
 export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
+export type IntegrationConnectionData = components['schemas']['IntegrationConnectionData'];
+export type IntegrationConnectionRequiredCard = components['schemas']['IntegrationConnectionRequiredCard'];
+export type IntegrationConnectionRequiredGroupCard = components['schemas']['IntegrationConnectionRequiredGroupCard'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
 export type IntegrationExpiredNotification = components['schemas']['IntegrationExpiredNotification'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
 export type IntegrationHowItWorksStep = components['schemas']['IntegrationHowItWorksStep'];
 export type IntegrationInfo = components['schemas']['IntegrationInfo'];
+export type IntegrationListCard = components['schemas']['IntegrationListCard'];
+export type IntegrationListDataCard = components['schemas']['IntegrationListDataCard'];
+export type IntegrationListDataGroupCard = components['schemas']['IntegrationListDataGroupCard'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
@@ -19431,6 +22476,8 @@ export type ManagedAt = components['schemas']['ManagedAt'];
 export type MarkAllReadSummary = components['schemas']['MarkAllReadSummary'];
 export type MarketplaceResponse = components['schemas']['MarketplaceResponse'];
 export type MaskedProvider = components['schemas']['MaskedProvider'];
+export type McpAppCard = components['schemas']['McpAppCard'];
+export type McpAppData = components['schemas']['McpAppData'];
 export type MCPConfigDetail = components['schemas']['MCPConfigDetail'];
 export type MCPConnectionTestResponse = components['schemas']['MCPConnectionTestResponse'];
 export type MCPProxyPromptsListRequest = components['schemas']['MCPProxyPromptsListRequest'];
@@ -19445,8 +22492,14 @@ export type MCPProxyToolCallRequest = components['schemas']['MCPProxyToolCallReq
 export type MCPProxyToolCallResponse = components['schemas']['MCPProxyToolCallResponse'];
 export type MemberResponse = components['schemas']['MemberResponse'];
 export type MembersOverviewResponse = components['schemas']['MembersOverviewResponse'];
+export type MemoryAddCard = components['schemas']['MemoryAddCard'];
+export type MemoryAddOutcome = components['schemas']['MemoryAddOutcome'];
+export type MemoryCardDocument = components['schemas']['MemoryCardDocument'];
+export type MemoryDataCard = components['schemas']['MemoryDataCard'];
+export type MemoryDataGroupCard = components['schemas']['MemoryDataGroupCard'];
 export type MemoryDocType = components['schemas']['MemoryDocType'];
 export type MemoryDocument = components['schemas']['MemoryDocument'];
+export type MemoryDocumentCard = components['schemas']['MemoryDocumentCard'];
 export type MemoryDocumentPreview = components['schemas']['MemoryDocumentPreview'];
 export type MemoryDocumentsResponse = components['schemas']['MemoryDocumentsResponse'];
 export type MemoryEntityRef = components['schemas']['MemoryEntityRef'];
@@ -19455,18 +22508,24 @@ export type MemoryEntry = components['schemas']['MemoryEntry'];
 export type MemoryEpisode = components['schemas']['MemoryEpisode'];
 export type MemoryEpisodeEntry = components['schemas']['MemoryEpisodeEntry'];
 export type MemoryEpisodesResponse = components['schemas']['MemoryEpisodesResponse'];
+export type MemoryForgetCard = components['schemas']['MemoryForgetCard'];
 export type MemoryGraphEdge = components['schemas']['MemoryGraphEdge'];
 export type MemoryGraphNode = components['schemas']['MemoryGraphNode'];
 export type MemoryGraphResponse = components['schemas']['MemoryGraphResponse'];
+export type MemoryJournalCard = components['schemas']['MemoryJournalCard'];
+export type MemoryJournalDay = components['schemas']['MemoryJournalDay'];
+export type MemoryJournalLine = components['schemas']['MemoryJournalLine'];
 export type MemoryKind = components['schemas']['MemoryKind'];
 export type MemoryListResponse = components['schemas']['MemoryListResponse'];
 export type MemoryOverviewResponse = components['schemas']['MemoryOverviewResponse'];
 export type MemoryReadyNotification = components['schemas']['MemoryReadyNotification'];
 export type MemoryRelationType = components['schemas']['MemoryRelationType'];
+export type MemorySearchCard = components['schemas']['MemorySearchCard'];
 export type MemorySearchResult = components['schemas']['MemorySearchResult'];
 export type MemorySourceType = components['schemas']['MemorySourceType'];
 export type MemoryTreeNode = components['schemas']['MemoryTreeNode'];
 export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
+export type MemoryUpdateCard = components['schemas']['MemoryUpdateCard'];
 export type MessageAccepted = components['schemas']['MessageAccepted'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
@@ -19490,6 +22549,8 @@ export type NotificationActionView = components['schemas']['NotificationActionVi
 export type NotificationChannelView = components['schemas']['NotificationChannelView'];
 export type NotificationContent = components['schemas']['NotificationContent'];
 export type NotificationContentView = components['schemas']['NotificationContentView'];
+export type NotificationDataCard = components['schemas']['NotificationDataCard'];
+export type NotificationListCard = components['schemas']['NotificationListCard'];
 export type NotificationRecord = components['schemas']['NotificationRecord'];
 export type NotificationRequest = components['schemas']['NotificationRequest'];
 export type NotificationResponse_BulkActionSummary_ = components['schemas']['NotificationResponse_BulkActionSummary_'];
@@ -19517,11 +22578,19 @@ export type OnboardingStatusResponse = components['schemas']['OnboardingStatusRe
 export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type OnboardingUser = components['schemas']['OnboardingUser'];
 export type OpenUIArtifactResponse = components['schemas']['OpenUIArtifactResponse'];
+export type OpenWeatherClouds = components['schemas']['OpenWeatherClouds'];
+export type OpenWeatherCondition = components['schemas']['OpenWeatherCondition'];
+export type OpenWeatherCoord = components['schemas']['OpenWeatherCoord'];
+export type OpenWeatherCurrentCondition = components['schemas']['OpenWeatherCurrentCondition'];
+export type OpenWeatherMain = components['schemas']['OpenWeatherMain'];
+export type OpenWeatherSys = components['schemas']['OpenWeatherSys'];
+export type OpenWeatherWind = components['schemas']['OpenWeatherWind'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PartialReply = components['schemas']['PartialReply'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
+export type PeopleSearchDataCard = components['schemas']['PeopleSearchDataCard'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
 export type PersonalizationResponse = components['schemas']['PersonalizationResponse'];
 export type PersonalizationTodo = components['schemas']['PersonalizationTodo'];
@@ -19546,6 +22615,7 @@ export type PostmarksResponse = components['schemas']['PostmarksResponse'];
 export type Priority = components['schemas']['Priority'];
 export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass'];
 export type ProgressBlock = components['schemas']['ProgressBlock'];
+export type ProjectCounts = components['schemas']['ProjectCounts'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
@@ -19575,13 +22645,30 @@ export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
 export type QuoteBlock = components['schemas']['QuoteBlock'];
 export type QuoteSpan = components['schemas']['QuoteSpan'];
+export type RateLimitCardData = components['schemas']['RateLimitCardData'];
+export type RateLimitDataCard = components['schemas']['RateLimitDataCard'];
+export type RateLimitDataGroupCard = components['schemas']['RateLimitDataGroupCard'];
 export type Reaction = components['schemas']['Reaction'];
 export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
+export type RecentlyCompletedBucket = components['schemas']['RecentlyCompletedBucket'];
+export type ReconnectAccount = components['schemas']['ReconnectAccount'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecordTarget = components['schemas']['RecordTarget'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
+export type RedditCardComment = components['schemas']['RedditCardComment'];
+export type RedditCardCommentCreated = components['schemas']['RedditCardCommentCreated'];
+export type RedditCardPost = components['schemas']['RedditCardPost'];
+export type RedditCardPostCreated = components['schemas']['RedditCardPostCreated'];
+export type RedditCardSearchPost = components['schemas']['RedditCardSearchPost'];
+export type RedditCommentCreatedCard = components['schemas']['RedditCommentCreatedCard'];
+export type RedditCommentsCard = components['schemas']['RedditCommentsCard'];
+export type RedditDataCard = components['schemas']['RedditDataCard'];
+export type RedditDataGroupCard = components['schemas']['RedditDataGroupCard'];
+export type RedditPostCard = components['schemas']['RedditPostCard'];
+export type RedditPostCreatedCard = components['schemas']['RedditPostCreatedCard'];
+export type RedditSearchCard = components['schemas']['RedditSearchCard'];
 export type RedeemLinkCodeRequest = components['schemas']['RedeemLinkCodeRequest'];
 export type RedeemLinkCodeResponse = components['schemas']['RedeemLinkCodeResponse'];
 export type RedirectConfig = components['schemas']['RedirectConfig'];
@@ -19617,11 +22704,17 @@ export type ScoutSkipReason = components['schemas']['ScoutSkipReason'];
 export type ScreenFrame = components['schemas']['ScreenFrame'];
 export type ScreenInsertFrame = components['schemas']['ScreenInsertFrame'];
 export type ScreenPatchFrame = components['schemas']['ScreenPatchFrame'];
+export type ScreenshotCard = components['schemas']['ScreenshotCard'];
+export type ScreenshotDataCard = components['schemas']['ScreenshotDataCard'];
 export type ScreenUpdateFrame = components['schemas']['ScreenUpdateFrame'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
 export type SearchMode = components['schemas']['SearchMode'];
+export type SearchResultCount = components['schemas']['SearchResultCount'];
 export type SearchResultItem = components['schemas']['SearchResultItem'];
+export type SearchResultsCard = components['schemas']['SearchResultsCard'];
+export type SearchResultsData = components['schemas']['SearchResultsData'];
+export type SearchResultsGroupCard = components['schemas']['SearchResultsGroupCard'];
 export type SearchResultsResponse = components['schemas']['SearchResultsResponse'];
 export type SectionBlock = components['schemas']['SectionBlock'];
 export type SelectedCalendarEventData = components['schemas']['SelectedCalendarEventData'];
@@ -19634,6 +22727,9 @@ export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SendMessageRequest = components['schemas']['SendMessageRequest'];
+export type SendNotificationDataCard = components['schemas']['SendNotificationDataCard'];
+export type SensitiveCategory = components['schemas']['SensitiveCategory'];
+export type SentNotificationCard = components['schemas']['SentNotificationCard'];
 export type SeriesPoint = components['schemas']['SeriesPoint'];
 export type SeriesShape = components['schemas']['SeriesShape'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
@@ -19667,6 +22763,8 @@ export type StateFrame = components['schemas']['StateFrame'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
 export type StopSharingResult = components['schemas']['StopSharingResult'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
+export type SubagentGroupCard = components['schemas']['SubagentGroupCard'];
+export type SubagentGroupCardData = components['schemas']['SubagentGroupCardData'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
 export type SubscriptionDocument = components['schemas']['SubscriptionDocument'];
@@ -19676,7 +22774,9 @@ export type SubtaskCreateRequest = components['schemas']['SubtaskCreateRequest']
 export type SubTaskInput = components['schemas']['SubTaskInput'];
 export type SubTaskOutput = components['schemas']['SubTaskOutput'];
 export type SubtaskUpdateRequest = components['schemas']['SubtaskUpdateRequest'];
+export type SuggestedIntegrationCard = components['schemas']['SuggestedIntegrationCard'];
 export type SuggestedTrigger = components['schemas']['SuggestedTrigger'];
+export type SummaryStats = components['schemas']['SummaryStats'];
 export type SupportAttachment = components['schemas']['SupportAttachment'];
 export type SupportRateLimits = components['schemas']['SupportRateLimits'];
 export type SupportRateLimitStatusResponse = components['schemas']['SupportRateLimitStatusResponse'];
@@ -19689,6 +22789,8 @@ export type SupportRequestResponse = components['schemas']['SupportRequestRespon
 export type SupportRequestStatus = components['schemas']['SupportRequestStatus'];
 export type SupportRequestSubmissionResponse = components['schemas']['SupportRequestSubmissionResponse'];
 export type SupportRequestType = components['schemas']['SupportRequestType'];
+export type SupportTicketDataCard = components['schemas']['SupportTicketDataCard'];
+export type SupportTicketDraft = components['schemas']['SupportTicketDraft'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
@@ -19697,17 +22799,26 @@ export type TimelineCard = components['schemas']['TimelineCard'];
 export type TimelineDelta = components['schemas']['TimelineDelta'];
 export type TimelineStep = components['schemas']['TimelineStep'];
 export type TimelineStepKind = components['schemas']['TimelineStepKind'];
+export type TimelineToolCard = components['schemas']['TimelineToolCard'];
+export type TodoBucket = components['schemas']['TodoBucket'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
+export type TodoCardAction = components['schemas']['TodoCardAction'];
+export type TodoCardData = components['schemas']['TodoCardData'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
+export type TodoDataCard = components['schemas']['TodoDataCard'];
 export type TodoFailedNotification = components['schemas']['TodoFailedNotification'];
 export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskCreatedConfig'];
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
 export type TodoNotification = components['schemas']['TodoNotification'];
+export type TodoProgressCard = components['schemas']['TodoProgressCard'];
+export type TodoProgressItem = components['schemas']['TodoProgressItem'];
+export type TodoProgressSnapshot = components['schemas']['TodoProgressSnapshot'];
 export type TodoResponse = components['schemas']['TodoResponse'];
 export type TodoRunWake = components['schemas']['TodoRunWake'];
+export type TodosSummary = components['schemas']['TodosSummary'];
 export type TodoStats = components['schemas']['TodoStats'];
 export type TodoTriggerFiredNotification = components['schemas']['TodoTriggerFiredNotification'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
@@ -19717,6 +22828,10 @@ export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflow
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
 export type TodoWorkflowStatusResponse = components['schemas']['TodoWorkflowStatusResponse'];
+export type ToolCallReasoningStep = components['schemas']['ToolCallReasoningStep'];
+export type ToolCallsDataCard = components['schemas']['ToolCallsDataCard'];
+export type ToolCallsDataEntryData = components['schemas']['ToolCallsDataEntryData'];
+export type ToolCardEnvelope = components['schemas']['ToolCardEnvelope'];
 export type ToolContract = components['schemas']['ToolContract'];
 export type ToolDataEntry = components['schemas']['ToolDataEntry'];
 export type ToolInfo = components['schemas']['ToolInfo'];
@@ -19735,6 +22850,13 @@ export type TriggerOptionsResponse = components['schemas']['TriggerOptionsRespon
 export type TriggerSubscriptionStatus = components['schemas']['TriggerSubscriptionStatus'];
 export type TriggerSubscriptionView = components['schemas']['TriggerSubscriptionView'];
 export type TriggerType = components['schemas']['TriggerType'];
+export type TwitterSearchCard = components['schemas']['TwitterSearchCard'];
+export type TwitterSearchDataCard = components['schemas']['TwitterSearchDataCard'];
+export type TwitterSearchTweet = components['schemas']['TwitterSearchTweet'];
+export type TwitterTweetAuthor = components['schemas']['TwitterTweetAuthor'];
+export type TwitterUnknownAuthor = components['schemas']['TwitterUnknownAuthor'];
+export type TwitterUserCard = components['schemas']['TwitterUserCard'];
+export type TwitterUserDataCard = components['schemas']['TwitterUserDataCard'];
 export type UncomposedItem = components['schemas']['UncomposedItem'];
 export type UnlinkAccountResponse = components['schemas']['UnlinkAccountResponse'];
 export type UnpublishIntegrationResponse = components['schemas']['UnpublishIntegrationResponse'];
@@ -19773,11 +22895,19 @@ export type VoiceListResponse = components['schemas']['VoiceListResponse'];
 export type VoiceOption = components['schemas']['VoiceOption'];
 export type VoiceSelectionResponse = components['schemas']['VoiceSelectionResponse'];
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
+export type WeatherDataCard = components['schemas']['WeatherDataCard'];
+export type WeatherLocation = components['schemas']['WeatherLocation'];
+export type WeatherReport = components['schemas']['WeatherReport'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkCancelled = components['schemas']['WorkCancelled'];
 export type WorkflowCompletedNotification = components['schemas']['WorkflowCompletedNotification'];
+export type WorkflowCreatedCard = components['schemas']['WorkflowCreatedCard'];
+export type WorkflowCreatedData = components['schemas']['WorkflowCreatedData'];
+export type WorkflowCreatedTriggerConfig = components['schemas']['WorkflowCreatedTriggerConfig'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
 export type WorkflowDelivery = components['schemas']['WorkflowDelivery'];
+export type WorkflowDraftCard = components['schemas']['WorkflowDraftCard'];
+export type WorkflowDraftData = components['schemas']['WorkflowDraftData'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
@@ -25460,6 +28590,57 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_connect_link_preview_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectLinkPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectLinkPreviewResponse"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

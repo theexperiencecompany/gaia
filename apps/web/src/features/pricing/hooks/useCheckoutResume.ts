@@ -22,7 +22,7 @@ export const useCheckoutResume = () => {
   const hasFired = useRef(false);
 
   useEffect(() => {
-    if (!user.userId || hasFired.current) return;
+    if (!user?.user_id || hasFired.current) return;
     const planId = readPendingCheckout();
     if (!planId) return;
     hasFired.current = true;
@@ -31,5 +31,5 @@ export const useCheckoutResume = () => {
     }).finally(() => {
       clearPendingCheckout();
     });
-  }, [user.userId, createSubscriptionAndRedirect]);
+  }, [user?.user_id, createSubscriptionAndRedirect]);
 };

@@ -32,7 +32,11 @@ describe("ConnectOptions", () => {
               label: "Connect Gmail",
               href: "/integrations?connect=gmail",
             },
-            { label: "All integrations", href: "/integrations" },
+            {
+              integration_id: null,
+              label: "All integrations",
+              href: "/integrations",
+            },
           ],
         }}
       />,

@@ -30,10 +30,10 @@ export default function SettingsSectionClient({
   // sections redirect out instead of rendering.
   const billingHidden = !useDeployment().bills;
   // Render a role-gated section only once the role allows it; redirect once
-  // the account is known (an empty userId means not yet) and it does not.
-  const { userId, role } = useCurrentUser();
-  const allowed = isSettingsSectionAllowed(section, role);
-  const forbidden = userId !== "" && !allowed;
+  // the account is known and it does not.
+  const user = useCurrentUser();
+  const allowed = isSettingsSectionAllowed(section, user?.role);
+  const forbidden = user !== undefined && !allowed;
 
   // Resolved during render, not an effect, so the blocked section never paints.
   if (billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(section)) {

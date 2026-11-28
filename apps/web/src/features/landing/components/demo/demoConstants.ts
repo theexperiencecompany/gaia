@@ -4,6 +4,7 @@ import {
   MessageMultiple02Icon,
   ZapIcon,
 } from "@icons";
+import type { EmailComposeCard } from "@shared/api/generated";
 import type { DemoPage, UseCase } from "./types";
 
 // ─── Animation helpers ────────────────────────────────────────────────────────
@@ -97,7 +98,7 @@ export const DUMMY_NOTIFICATIONS = [
 ];
 
 // ─── Founder email for EmailComposeCard ───────────────────────────────────────
-export const FOUNDER_EMAIL = {
+export const FOUNDER_EMAIL: EmailComposeCard = {
   to: ["investors@sequoia.com"],
   subject: "Q4 Update from GAIA: 3x MRR, $2.1M ARR, Series A Prep",
   body: `Hi all,
@@ -114,6 +115,11 @@ Heading into Series A. Happy to connect this week.
 Best,
 Aryan`,
   thread_id: "demo-founder",
+  cc: [],
+  bcc: [],
+  is_html: null,
+  attachments: [],
+  draft_id: null,
 };
 
 // ─── Use cases ────────────────────────────────────────────────────────────────

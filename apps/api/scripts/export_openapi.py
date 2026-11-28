@@ -31,13 +31,14 @@ os.environ["ENV"] = "selfhost"
 os.environ["AUTH_MODE"] = "local"
 
 from app.core.app_factory import create_app
+from app.models.tool_card_schema import with_tool_card_schemas
 from scripts.openapi_contract import assert_refs_resolve, with_identifier_component_names
 
 OUTPUT = API_ROOT / "openapi.json"
 
 
 def main() -> None:
-    schema = with_identifier_component_names(create_app().openapi())
+    schema = with_identifier_component_names(with_tool_card_schemas(create_app().openapi()))
     assert_refs_resolve(schema)
     OUTPUT.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
     operations = sum(len(methods) for methods in schema["paths"].values())

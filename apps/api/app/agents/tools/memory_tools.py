@@ -1,38 +1,12 @@
 """LangChain memory tools backed by the GAIA memory engine (plan F4).
 
-Every tool streams one structured event to the frontend via the LangGraph
-stream writer under the single registry key ``memory_data``. The payload is
-discriminated on ``action`` — these exact JSON shapes are the frontend
-contract (the tool cards mirror them):
-
-    add      {"action": "add", "memories": [MemoryEntry], "folder": str,
-              "outcome": "new" | "updated" | "extended" | "duplicate",
-              "message": str}
-    search   {"action": "search", "query": str, "folder": str | null,
-              "memories": [MemoryEntry], "message": str}
-    update   {"action": "update", "memories": [MemoryEntry], "message": str}
-    forget   {"action": "forget", "memory_id": str, "reason": str,
-              "message": str}
-    journal  {"action": "journal", "query": str | null,
-              "episodes": [{"date": "YYYY-MM-DD",
-                            "entries": [{"time": str | null, "text": str,
-                                         "source": str | null}],
-                            "summary": str | null}],
-              "message": str}
-    document {"action": "document",
-              "document": {"doc_type": str, "content": str, "version": int,
-                           "updated_at": str},
-              "updated": bool, "message": str}
-
-``MemoryEntry`` items are serialized exactly as the REST API serializes
-``app.models.memory_models.MemoryEntry`` (``model_dump(mode="json")``,
-snake_case keys), with ``content`` capped at MEMORY_TOOL_CONTENT_MAX_CHARS.
-Document ``content`` is capped at MEMORY_TOOL_DOCUMENT_MAX_CHARS. ``doc_type``
-is a ``MemoryDocType`` value (``user_md`` ... ``people_md``).
+Every tool streams one memory_data card (app.models.memory_card_models), discriminated on
+action. Entry content is capped at MEMORY_TOOL_CONTENT_MAX_CHARS and document content at
+MEMORY_TOOL_DOCUMENT_MAX_CHARS.
 """
 
 from datetime import date as date_type
-from typing import Annotated, Any, Literal, TypeAlias, TypedDict
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -54,8 +28,23 @@ from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
 from app.memory.user_time import local_today
 from app.models.agent_models import current_stream_writer, get_user_id
+from app.models.memory_card_models import (
+    MemoryAddCard,
+    MemoryAddOutcome,
+    MemoryCardData,
+    MemoryCardDocument,
+    MemoryDocumentCard,
+    MemoryForgetCard,
+    MemoryJournalCard,
+    MemoryJournalDay,
+    MemoryJournalLine,
+    MemorySearchCard,
+    MemoryUpdateCard,
+)
 from app.models.memory_models import MemoryDocument, MemoryEntry, MemoryEpisode
 from app.models.payment_models import PlanType
+from app.models.rate_limit_card_models import RateLimitCardData
+from app.models.tool_card_registry import tool_card
 from app.templates.docstrings.memory_tool_docs import (
     ADD_MEMORY,
     FORGET_MEMORY,
@@ -69,113 +58,12 @@ from app.templates.docstrings.memory_tool_docs import (
 from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import MemoryContext, UserContext, log
 
-# The memory_data payload vocabulary from the module docstring, as a union
-# discriminated on action. Plain TypedDicts: built here and handed straight to
-# the stream writer, with nothing to validate or coerce at runtime.
-
-# A ``MemoryEntry``/``MemoryEpisodeEntry`` serialized with ``model_dump(mode="json")``
-# — an arbitrary JSON object by the time it reaches the payload.
-SerializedEntry: TypeAlias = dict[str, Any]
-
-
-class JournalLinePayload(TypedDict):
-    """One journal line inside an ``episodes`` entry."""
-
-    time: str | None
-    text: str
-    source: str | None
-
-
-class EpisodePayload(TypedDict):
-    """One journal day of the ``journal`` payload."""
-
-    date: str
-    entries: list[JournalLinePayload]
-    summary: str | None
-
-
-class DocumentPayload(TypedDict):
-    """The core document carried by the ``document`` payload."""
-
-    doc_type: str
-    content: str
-    version: int
-    updated_at: str
-
-
-AddOutcome: TypeAlias = Literal["new", "updated", "extended", "duplicate"]
-
-
-class AddMemoryPayload(TypedDict):
-    """The memory card data for an add: what was saved, where, and whether it was new."""
-
-    action: Literal["add"]
-    memories: list[SerializedEntry]
-    folder: str
-    outcome: AddOutcome
-    message: str
-
-
-class SearchMemoryPayload(TypedDict):
-    """The memory card data for a search: the query and the memories it found."""
-
-    action: Literal["search"]
-    query: str
-    folder: str | None
-    memories: list[SerializedEntry]
-    message: str
-
-
-class UpdateMemoryPayload(TypedDict):
-    """The memory card data for an update: the memories as they now read."""
-
-    action: Literal["update"]
-    memories: list[SerializedEntry]
-    message: str
-
-
-class ForgetMemoryPayload(TypedDict):
-    """The memory card data for a forget: which memory went, and why."""
-
-    action: Literal["forget"]
-    memory_id: str
-    reason: str
-    message: str
-
-
-class JournalPayload(TypedDict):
-    """The memory card data for a journal read: the episodes that matched."""
-
-    action: Literal["journal"]
-    query: str | None
-    episodes: list[EpisodePayload]
-    message: str
-
-
-class DocumentEventPayload(TypedDict):
-    """The memory card data for a document write, and whether it replaced one."""
-
-    action: Literal["document"]
-    document: DocumentPayload
-    updated: bool
-    message: str
-
-
-MemoryDataPayload: TypeAlias = (
-    AddMemoryPayload
-    | SearchMemoryPayload
-    | UpdateMemoryPayload
-    | ForgetMemoryPayload
-    | JournalPayload
-    | DocumentEventPayload
-)
-
 # How reconciliation resolved an explicit add, as the frontend payload says it.
-_ADD_OUTCOMES: dict[ReconcileOutcome, AddOutcome] = {
-    ReconcileOutcome.NEW: "new",
-    ReconcileOutcome.UPDATES: "updated",
-    ReconcileOutcome.EXTENDS: "extended",
-    ReconcileOutcome.DUPLICATE: "duplicate",
+_ADD_OUTCOMES: dict[ReconcileOutcome, MemoryAddOutcome] = {
+    ReconcileOutcome.NEW: MemoryAddOutcome.NEW,
+    ReconcileOutcome.UPDATES: MemoryAddOutcome.UPDATED,
+    ReconcileOutcome.EXTENDS: MemoryAddOutcome.EXTENDED,
+    ReconcileOutcome.DUPLICATE: MemoryAddOutcome.DUPLICATE,
 }
 
 # Friendly doc names ('user', 'agenda', ...) plus the canonical enum values.
@@ -192,9 +80,9 @@ _DOC_TYPE_CHOICES = ", ".join(
 _DOC_TYPE_ARG_DESCRIPTION = f"Which document: one of {_DOC_TYPE_CHOICES}"
 
 
-def _stream_memory_data(payload: MemoryDataPayload) -> None:
-    """Emit one ``memory_data`` event to the frontend (no-op outside a run)."""
-    current_stream_writer()({"memory_data": payload})
+def _stream_memory_data(card: MemoryCardData) -> None:
+    """Emit one memory_data card to the frontend (no-op outside a run)."""
+    current_stream_writer()(tool_card("memory_data", card))
 
 
 def _stream_memory_limit_card() -> None:
@@ -209,16 +97,18 @@ def _stream_memory_limit_card() -> None:
     """
     current_stream_writer()(
         build_rate_limit_card(
-            feature="memory",
-            plan_required=PlanType.PRO.value,
-            reset_time=None,
-            current_plan=PlanType.FREE.value,
-            message=(
-                f"Your free plan stores up to {FREE_MEMORY_FACT_LIMIT} "
-                "memories and they are all used. Everything already "
-                "saved keeps working. Upgrade to Pro for unlimited "
-                "memories."
-            ),
+            RateLimitCardData(
+                feature="memory",
+                plan_required=PlanType.PRO.value,
+                reset_time=None,
+                current_plan=PlanType.FREE.value,
+                message=(
+                    f"Your free plan stores up to {FREE_MEMORY_FACT_LIMIT} "
+                    "memories and they are all used. Everything already "
+                    "saved keeps working. Upgrade to Pro for unlimited "
+                    "memories."
+                ),
+            )
         )
     )
 
@@ -228,19 +118,16 @@ def _cap(text: str, limit: int) -> str:
     return text if len(text) <= limit else f"{text[: limit - 3]}..."
 
 
-def _entry_payload(entry: MemoryEntry) -> SerializedEntry:
-    """Serialize a MemoryEntry exactly as the API does, with capped content."""
-    data = entry.model_dump(mode="json")
-    data["content"] = _cap(entry.content, MEMORY_TOOL_CONTENT_MAX_CHARS)
-    return data
+def _entry_payload(entry: MemoryEntry) -> MemoryEntry:
+    """The entry as the card shows it, with capped content."""
+    return entry.model_copy(update={"content": _cap(entry.content, MEMORY_TOOL_CONTENT_MAX_CHARS)})
 
 
-def _episode_payload(episode: MemoryEpisode) -> EpisodePayload:
-    """Serialize a journal day for the ``journal`` tool-data payload."""
-    return EpisodePayload(
+def _episode_payload(episode: MemoryEpisode) -> MemoryJournalDay:
+    return MemoryJournalDay(
         date=episode.date,
         entries=[
-            JournalLinePayload(
+            MemoryJournalLine(
                 time=entry.time,
                 text=_cap(entry.text, MEMORY_TOOL_CONTENT_MAX_CHARS),
                 source=entry.source,
@@ -251,20 +138,19 @@ def _episode_payload(episode: MemoryEpisode) -> EpisodePayload:
     )
 
 
-def _document_payload(document: MemoryDocument) -> DocumentPayload:
-    """Serialize a core document for the ``document`` tool-data payload."""
-    return DocumentPayload(
-        doc_type=document.doc_type.value,
+def _document_payload(document: MemoryDocument) -> MemoryCardDocument:
+    return MemoryCardDocument(
+        doc_type=document.doc_type,
         content=_cap(document.content, MEMORY_TOOL_DOCUMENT_MAX_CHARS),
         version=document.version,
         updated_at=document.updated_at.isoformat(),
     )
 
 
-def _hits_to_episode_payloads(hits: list[EpisodeHit]) -> list[EpisodePayload]:
-    """Group journal search hits by day into the shared episodes payload shape."""
+def _hits_to_episode_payloads(hits: list[EpisodeHit]) -> list[MemoryJournalDay]:
+    """Group journal search hits by day."""
     summaries: dict[date_type, str] = {}
-    lines: dict[date_type, list[JournalLinePayload]] = {}
+    lines: dict[date_type, list[MemoryJournalLine]] = {}
     for hit in hits:
         day_lines = lines.setdefault(hit.date, [])
         text = _cap(hit.text, MEMORY_TOOL_CONTENT_MAX_CHARS)
@@ -272,9 +158,9 @@ def _hits_to_episode_payloads(hits: list[EpisodeHit]) -> list[EpisodePayload]:
             # Timeless hits are day-summary matches, not journal lines.
             summaries[hit.date] = text
         else:
-            day_lines.append(JournalLinePayload(time=hit.time, text=text, source=None))
+            day_lines.append(MemoryJournalLine(time=hit.time, text=text, source=None))
     return [
-        EpisodePayload(date=day.isoformat(), entries=lines[day], summary=summaries.get(day))
+        MemoryJournalDay(date=day.isoformat(), entries=lines[day], summary=summaries.get(day))
         for day in sorted(lines, reverse=True)
     ]
 
@@ -350,16 +236,15 @@ async def add_memory(
             content_length=len(content),
         ),
     )
-    messages: dict[AddOutcome, str] = {
-        "new": f"Memory stored under '{entry.category_path}'",
-        "updated": f"Updated an existing memory under '{entry.category_path}'",
-        "extended": f"Stored under '{entry.category_path}', extending a related memory",
-        "duplicate": f"Already known: matched an existing memory under '{entry.category_path}'",
+    messages: dict[MemoryAddOutcome, str] = {
+        MemoryAddOutcome.NEW: f"Memory stored under '{entry.category_path}'",
+        MemoryAddOutcome.UPDATED: f"Updated an existing memory under '{entry.category_path}'",
+        MemoryAddOutcome.EXTENDED: f"Stored under '{entry.category_path}', extending a related memory",
+        MemoryAddOutcome.DUPLICATE: f"Already known: matched an existing memory under '{entry.category_path}'",
     }
     message = messages[outcome]
     _stream_memory_data(
-        AddMemoryPayload(
-            action="add",
+        MemoryAddCard(
             memories=[_entry_payload(entry)],
             folder=entry.category_path,
             outcome=outcome,
@@ -413,8 +298,7 @@ async def search_memory(
         else f"No matching memories{scope}"
     )
     _stream_memory_data(
-        SearchMemoryPayload(
-            action="search",
+        MemorySearchCard(
             query=query,
             folder=folder,
             memories=[_entry_payload(entry) for entry in result.memories],
@@ -458,9 +342,7 @@ async def update_memory(
     )
 
     message = f"Memory corrected (now v{entry.version} under '{entry.category_path}')"
-    _stream_memory_data(
-        UpdateMemoryPayload(action="update", memories=[_entry_payload(entry)], message=message)
-    )
+    _stream_memory_data(MemoryUpdateCard(memories=[_entry_payload(entry)], message=message))
     return f"{message}. New ID: {entry.id}"
 
 
@@ -495,9 +377,7 @@ async def forget_memory(
     )
 
     message = "Memory forgotten"
-    _stream_memory_data(
-        ForgetMemoryPayload(action="forget", memory_id=memory_id, reason=reason, message=message)
-    )
+    _stream_memory_data(MemoryForgetCard(memory_id=memory_id, reason=reason, message=message))
     return f"{message}: {memory_id} ({reason})"
 
 
@@ -532,9 +412,7 @@ async def search_journal(
         ),
     )
     message = f"Found journal activity on {len(episodes)} days" if hits else "No journal matches"
-    _stream_memory_data(
-        JournalPayload(action="journal", query=query, episodes=episodes, message=message)
-    )
+    _stream_memory_data(MemoryJournalCard(query=query, episodes=episodes, message=message))
 
     if not hits:
         return f"No journal entries matching '{query}'."
@@ -633,9 +511,7 @@ async def get_journal(
             ),
         )
         message = f"No journal entries for {date}"
-        _stream_memory_data(
-            JournalPayload(action="journal", query=None, episodes=[], message=message)
-        )
+        _stream_memory_data(MemoryJournalCard(query=None, episodes=[], message=message))
         return f"{message}."
 
     log.set(
@@ -650,8 +526,7 @@ async def get_journal(
     )
     message = f"Journal for {date} ({len(episode.entries)} entries)"
     _stream_memory_data(
-        JournalPayload(
-            action="journal",
+        MemoryJournalCard(
             query=None,
             episodes=[_episode_payload(episode)],
             message=message,
@@ -703,8 +578,7 @@ async def read_memory_document(
         )
 
     _stream_memory_data(
-        DocumentEventPayload(
-            action="document",
+        MemoryDocumentCard(
             document=_document_payload(document),
             updated=False,
             message=f"Read the '{doc_type}' memory document (v{document.version})",
@@ -745,8 +619,7 @@ async def update_memory_document(
     )
     message = f"Rewrote the '{doc_type}' memory document (now v{document.version})"
     _stream_memory_data(
-        DocumentEventPayload(
-            action="document",
+        MemoryDocumentCard(
             document=_document_payload(document),
             updated=True,
             message=message,

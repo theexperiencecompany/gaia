@@ -6,8 +6,6 @@ import type {
   PaginatedNotificationsResponse,
 } from "@/types/features/notificationTypes";
 
-type Page = PaginatedNotificationsResponse | undefined;
-
 /**
  * Apply `update` to every cached notification page.
  *
@@ -21,7 +19,7 @@ function updateAllPages(
     page: PaginatedNotificationsResponse,
   ) => PaginatedNotificationsResponse,
 ): void {
-  queryClient.setQueriesData<Page>(
+  queryClient.setQueriesData<PaginatedNotificationsResponse | undefined>(
     { queryKey: notificationKeys.all },
     (page) => {
       if (!page || !Array.isArray(page.notifications)) return page;
@@ -102,14 +100,18 @@ export function removeNotifications(
  */
 export function snapshotNotificationPages(
   queryClient: QueryClient,
-): [readonly unknown[], Page][] {
-  return queryClient.getQueriesData<Page>({ queryKey: notificationKeys.all });
+): [readonly unknown[], PaginatedNotificationsResponse | undefined][] {
+  return queryClient.getQueriesData<PaginatedNotificationsResponse | undefined>(
+    {
+      queryKey: notificationKeys.all,
+    },
+  );
 }
 
 /** Restore a snapshot taken by `snapshotNotificationPages`. */
 export function restoreNotificationPages(
   queryClient: QueryClient,
-  snapshot: [readonly unknown[], Page][],
+  snapshot: [readonly unknown[], PaginatedNotificationsResponse | undefined][],
 ): void {
   for (const [key, page] of snapshot) {
     queryClient.setQueryData(key, page);

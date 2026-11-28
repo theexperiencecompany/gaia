@@ -1,4 +1,5 @@
 import "../../../styles/marketing.css";
+import type { MultiURLResponse, URLResponse } from "@shared/api/generated";
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
@@ -12,15 +13,6 @@ import {
   siteConfig,
 } from "@/lib/seo";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
-
-interface ToolMetadata {
-  title: string | null;
-  description: string | null;
-  favicon: string | null;
-  website_name: string | null;
-  website_image: string | null;
-  url: string;
-}
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Tools We Love: The Open-Source Projects Behind GAIA",
@@ -39,7 +31,7 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
+async function fetchToolsMetadata(): Promise<Record<string, URLResponse>> {
   const logPrefix = "[Thanks Page]";
 
   try {
@@ -75,11 +67,8 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
       return {};
     }
 
-    const data = (await response.json()) as {
-      results?: Record<string, ToolMetadata>;
-    };
-    const _resultCount = Object.keys(data.results ?? {}).length;
-    return data.results ?? {};
+    const data = (await response.json()) as MultiURLResponse;
+    return data.results;
   } catch (error) {
     console.error(`
 ╔════════════════════════════════════════════════════════════════╗

@@ -18,10 +18,10 @@ from app.constants.chat import (
     BROWSER_TASK_TOOL_NAME,
     GROUPED_TOOL_CARDS,
     SUBAGENT_GROUP_TOOL_NAME,
+    TOOL_CALLS_CARD,
 )
 from app.services.conversation.tool_cards import (
     OUTPUT_ORIGINAL_LENGTH,
-    TOOL_CALLS_CARD,
     merged_thinking,
 )
 from shared.py.conversation_wire import (

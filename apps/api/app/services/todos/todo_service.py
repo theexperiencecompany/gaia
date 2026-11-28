@@ -10,6 +10,7 @@ import uuid
 
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
+    NO_INBOX_PROJECT_ID,
     REOPENED_IN_THE_APP_DETAIL,
     TodoActivityEvent,
     TodoCompleter,
@@ -33,12 +34,14 @@ from app.models.todo_models import (
     ProjectUpdate,
     SearchMode,
     SubTask,
+    TodoCounts,
     TodoDayWindow,
     TodoDocument,
     TodoListResponse,
     TodoModel,
     TodoResponse,
     TodoSearchParams,
+    TodoStats,
     TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
@@ -1136,3 +1139,22 @@ async def semantic_search_todos(
 
     response = await TodoService.list_todos(user_id, params)
     return response.data
+
+
+async def user_todo_counts(user_id: str, window: TodoDayWindow) -> TodoCounts:
+    """Return the user's dashboard counts on their todo day; inbox counts 0 before an inbox exists."""
+    inbox = await project_repository.get_default_inbox(user_id)
+    return await todo_repository.compute_counts(
+        user_id=user_id,
+        inbox_project_id=inbox.id if inbox else NO_INBOX_PROJECT_ID,
+        window=window,
+    )
+
+
+def project_completion(stats: TodoStats) -> dict[str, int]:
+    """Return each project's completed share of its todos as a whole percent, by project id."""
+    return {
+        project_id: round((total - stats.pending_by_project.get(project_id, 0)) / total * 100)
+        for project_id, total in stats.by_project.items()
+        if total > 0
+    }

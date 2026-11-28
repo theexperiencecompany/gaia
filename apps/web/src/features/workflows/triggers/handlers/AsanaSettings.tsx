@@ -7,6 +7,7 @@
 "use client";
 
 import { Input } from "@heroui/react";
+import type { AsanaTaskTriggerConfig } from "@shared/api/generated";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
@@ -18,10 +19,9 @@ import {
 import type { TriggerSettingsProps } from "../registry";
 import type { TriggerConfigDraft } from "../types";
 
-type AsanaTriggerData = {
+// The draft holds whichever slug the picker set, so trigger_name is any string.
+type AsanaTriggerData = Omit<AsanaTaskTriggerConfig, "trigger_name"> & {
   trigger_name: string;
-  project_gid?: string;
-  workspace_id?: string;
 };
 
 interface AsanaConfig extends TriggerConfigDraft {
@@ -33,13 +33,13 @@ export function AsanaSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
   const config = triggerConfig as AsanaConfig;
   const triggerData = config.trigger_data;
   const integrationId = "asana";
 
-  const isConnected =
-    integrations.find((i) => i.id === integrationId)?.status === "connected";
+  const integration = integrations.find((i) => i.id === integrationId);
+  const isConnected = integration?.status === "connected";
 
   const updateTriggerData = (updates: Partial<AsanaTriggerData>) => {
     const currentTriggerData = triggerData || {
@@ -55,14 +55,7 @@ export function AsanaSettings({
   };
 
   if (!isConnected) {
-    return (
-      <TriggerConnectionPrompt
-        integrationName="Asana"
-        integrationId={integrationId}
-        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
-        onConnect={() => connectIntegration(integrationId)}
-      />
-    );
+    return <TriggerConnectionPrompt integrationId={integrationId} />;
   }
 
   return (

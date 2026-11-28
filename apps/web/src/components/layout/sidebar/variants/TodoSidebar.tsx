@@ -250,7 +250,7 @@ export default function TodoSidebar() {
       items.push({
         label: project.name,
         icon: ProjectIcon,
-        iconColor: project.color,
+        iconColor: project.color ?? undefined,
         href: `/todos/project/${project.id}`,
         view: "project",
         count: project.todo_count,

@@ -2,6 +2,7 @@
 
 import { Chip } from "@heroui/react";
 import { PuzzleIcon } from "@icons";
+import type { ToolCallsDataEntryData } from "@shared/api/generated";
 import type { ApprovalEnd, ApprovalLabels } from "@shared/chat";
 import { approvalLabel } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
@@ -9,7 +10,6 @@ import * as m from "motion/react-m";
 import { useState } from "react";
 import { ChevronDown, ShieldAlertIcon } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
-import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { OutputTruncatedNote } from "./OutputTruncatedNote";
 import {
@@ -88,7 +88,7 @@ function ToolCallIcon({
   call,
   isSkill,
 }: Readonly<{
-  call: ToolCallEntry;
+  call: ToolCallsDataEntryData;
   isSkill: boolean;
 }>) {
   if (isSkill) {
@@ -163,7 +163,7 @@ function ToolCallDetails({
   display,
   expanded,
 }: Readonly<{
-  call: ToolCallEntry;
+  call: ToolCallsDataEntryData;
   display: ToolCallDisplay;
   expanded: boolean;
 }>) {
@@ -209,7 +209,7 @@ export function ToolCallRow({
   awaitingApproval,
   approvalOutcome,
 }: Readonly<{
-  call: ToolCallEntry;
+  call: ToolCallsDataEntryData;
   isLast: boolean;
   awaitingApproval: boolean;
   approvalOutcome?: ApprovalReceipt;

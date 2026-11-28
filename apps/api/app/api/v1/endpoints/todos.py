@@ -13,7 +13,6 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.constants.log_tags import LogTag
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.redis import delete_cache, get_cache, set_cache
-from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.decorators import tiered_rate_limit
 from app.models.todo_models import (
@@ -49,7 +48,12 @@ from app.services.todo_activity import record_field_changes
 from app.services.todos.errors import TrackedTodoWorkflowError
 from app.services.todos.subscription_gate import edit_subscription_gate
 from app.services.todos.todo_conversation import open_todo_conversation
-from app.services.todos.todo_service import ProjectService, TodoService, todo_responses
+from app.services.todos.todo_service import (
+    ProjectService,
+    TodoService,
+    todo_responses,
+    user_todo_counts,
+)
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
@@ -89,12 +93,7 @@ async def get_todo_counts(
     response.headers["Cache-Control"] = "private, max-age=10"
     log.set(user={"id": user_id}, todo={"operation": "counts"})
     try:
-        inbox = await project_repository.get_default_inbox(user_id)
-        inbox_project_id = inbox.id if inbox else "no_inbox_found"
-        counts = await todo_repository.compute_counts(
-            user_id=user_id, inbox_project_id=inbox_project_id, window=window
-        )
-        return counts
+        return await user_todo_counts(user_id, window)
 
     except Exception as e:
         raise HTTPException(

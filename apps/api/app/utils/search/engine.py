@@ -4,8 +4,8 @@ import hashlib
 import time
 from typing import Any
 
+from app.models.web_search_models import SearchResponse
 from app.utils.search.budget import FreeTierBudget
-from app.utils.search.models import SearchResponse
 from app.utils.search.providers import SearchProvider, default_providers
 from shared.py.wide_events import log
 

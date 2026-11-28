@@ -103,7 +103,7 @@ describe("marketing pages", () => {
     const { result } = renderPage();
 
     await waitFor(() =>
-      expect(result.current.userId).toBe(SIGNED_IN_USER.user_id),
+      expect(result.current?.user_id).toBe(SIGNED_IN_USER.user_id),
     );
     expect(fetchUserInfo).toHaveBeenCalledTimes(1);
   });
@@ -157,7 +157,7 @@ describe("marketing pages", () => {
     await settle();
 
     expect(fetchUserInfo).toHaveBeenCalledTimes(1);
-    expect(result.current.userId).toBe("");
+    expect(result.current).toBeUndefined();
     expect(console.error).not.toHaveBeenCalledWith(
       "Error fetching user info:",
       expect.anything(),
@@ -171,7 +171,7 @@ describe("marketing pages", () => {
     await waitFor(() => expect(console.error).toHaveBeenCalled());
     await settle();
 
-    expect(result.current.userId).toBe(SIGNED_IN_USER.user_id);
+    expect(result.current?.user_id).toBe(SIGNED_IN_USER.user_id);
     await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
     expect(fetchUserInfo).toHaveBeenCalledTimes(2);
   });
@@ -204,16 +204,16 @@ describe("app pages", () => {
       gated: false,
       cachedUser: SIGNED_IN_USER,
     });
-    await waitFor(() => expect(result.current.userId).toBe(""));
+    await waitFor(() => expect(result.current).toBeUndefined());
 
     fetchUserInfo.mockResolvedValue(SIGNED_IN_USER);
     await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
     await waitFor(() =>
-      expect(result.current.userId).toBe(SIGNED_IN_USER.user_id),
+      expect(result.current?.user_id).toBe(SIGNED_IN_USER.user_id),
     );
 
     fetchUserInfo.mockRejectedValue(new ApiError("expired", 401));
     await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
-    await waitFor(() => expect(result.current.userId).toBe(""));
+    await waitFor(() => expect(result.current).toBeUndefined());
   });
 });

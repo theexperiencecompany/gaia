@@ -263,7 +263,6 @@ class TestGmailFetchMessages:
                         "id": "m1",
                     }
                 ],
-                "resultSize": 1,
             }
         ], "the inbox card the chat renders never reached the stream"
 

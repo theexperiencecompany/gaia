@@ -27,3 +27,9 @@ def is_email_target(value: str) -> bool:
     """Return True when the string is a bare email address or a mailto: URL."""
     # Exclude web URLs (anything with a scheme) so links never resolve as emails.
     return normalize_email(value) is not None and "://" not in value
+
+
+def mask_email(address: str) -> str:
+    """Show enough of an address to recognise it: ar***@gmail.com."""
+    local, _, domain = address.rpartition("@")
+    return f"{local[:2]}***@{domain}"

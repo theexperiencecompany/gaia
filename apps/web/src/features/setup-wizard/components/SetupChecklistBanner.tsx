@@ -86,7 +86,7 @@ export function SetupChecklistBanner({
   const { data: status } = useSetupStatus();
   const { data: catalog } = useProviderCatalog();
   // Instance setup is the admin's job; nobody else (or an unknown role) sees it.
-  const isAdmin = useCurrentUser().role === "admin";
+  const isAdmin = useCurrentUser()?.role === "admin";
   const dismissedKeys = useSetupChecklistStore((s) => s.dismissedKeys);
   const dismiss = useSetupChecklistStore((s) => s.dismiss);
   const keepPending = useSetupChecklistStore((s) => s.keepPending);

@@ -3,6 +3,7 @@ export type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
 import type {
   EventCreateRequest,
+  GoogleCalendarEventDateTime,
   GoogleCalendarEventResource,
   GoogleCalendarPerson,
   RecurrenceData,
@@ -16,12 +17,6 @@ export interface CalendarCardProps {
   event: GoogleCalendarEvent | CalendarEvent;
   onClick: () => void;
   calendars: CalendarItem[];
-}
-
-export interface GoogleCalendarDateTime {
-  date?: string;
-  dateTime?: string;
-  timeZone?: string;
 }
 
 export interface CalendarChipProps {
@@ -66,8 +61,8 @@ export interface GoogleCalendarEvent {
   description: string;
   creator: GoogleCalendarPerson;
   organizer: GoogleCalendarPerson;
-  start: GoogleCalendarDateTime;
-  end: GoogleCalendarDateTime;
+  start: GoogleCalendarEventDateTime;
+  end: GoogleCalendarEventDateTime;
   recurrence?: string[];
   transparency?: "opaque" | "transparent";
   backgroundColor?: string;
@@ -97,13 +92,6 @@ export interface GoogleCalendarEvent {
     | "wedding";
   calendarId?: string;
   calendarTitle?: string;
-}
-
-export interface GoogleCalendar {
-  id: string;
-  summary: string;
-  backgroundColor: string;
-  primary: boolean;
 }
 
 export interface BaseEvent {
@@ -144,58 +132,9 @@ export type CalendarOptions = EventCreateRequest & {
   background_color?: string;
 };
 
-// Calendar event date/time structure from Google Calendar API
-export type CalendarEventDateTime = {
-  date?: string; // For all-day events (YYYY-MM-DD format)
-  dateTime?: string; // For timed events (RFC3339 format)
-  timeZone?: string; // Timezone identifier
-};
-
-export type CalendarDeleteOptions = {
-  action: "delete";
-  event_id: string;
-  calendar_id: string;
-  calendar_name?: string;
-  background_color?: string;
-  summary: string;
-  description?: string;
-  start?: CalendarEventDateTime;
-  end?: CalendarEventDateTime;
-  original_query: string;
-};
-
-export type CalendarEditOptions = {
-  action: "edit";
-  event_id: string;
-  calendar_id: string;
-  calendar_name?: string;
-  background_color?: string;
-  original_summary: string;
-  original_description?: string;
-  original_start?: CalendarEventDateTime;
-  original_end?: CalendarEventDateTime;
-  original_query: string;
-  // Updated fields (optional)
-  summary?: string;
-  description?: string;
-  start?: string;
-  end?: string;
-  is_all_day?: boolean;
-  timezone?: string;
-};
-
-// Calendar fetch data types for streaming components
-export type CalendarFetchData = {
-  summary: string;
-  start_time: string;
-  end_time: string;
-  calendar_name: string;
-  background_color: string;
-};
-
-export type CalendarListFetchData = {
-  name: string;
-  id: string;
-  description: string;
-  backgroundColor?: string;
-};
+export type {
+  CalendarDeleteOptions,
+  CalendarEditOptions,
+  CalendarFetchData,
+  CalendarListFetchData,
+} from "@shared/chat";

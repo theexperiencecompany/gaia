@@ -19,6 +19,8 @@ describe("UnifiedToolThread with a catalog-enabled Composio toolkit", () => {
     tool_call_id: id,
     icon_url: ATTIO_LOGO,
     integration_name: "Attio",
+    inputs: {},
+    show_category: true,
   });
 
   it("shows the logo the tool call carries", () => {

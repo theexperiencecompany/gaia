@@ -28,11 +28,9 @@ export type VisitorContact = Pick<
   "email" | "name" | "turnstile_token"
 >;
 
-export interface ContactSupportInitialValues {
-  type?: string;
-  title?: string;
-  description?: string;
-}
+export type ContactSupportInitialValues = Partial<
+  Omit<ContactFormData, "attachments">
+>;
 
 function samePreset(
   a: ContactSupportInitialValues | undefined,

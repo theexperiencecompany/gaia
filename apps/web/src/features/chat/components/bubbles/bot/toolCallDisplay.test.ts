@@ -1,12 +1,19 @@
+import type { ToolCallsDataEntryData } from "@shared/api/generated";
 import { describe, expect, it } from "vitest";
-import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { deriveToolCallDisplay } from "./toolCallDisplay";
 
-function entry(overrides: Partial<ToolCallEntry>): ToolCallEntry {
+function entry(
+  overrides: Partial<ToolCallsDataEntryData>,
+): ToolCallsDataEntryData {
   return {
     tool_name: "call_executor",
     tool_category: "executor",
     message: "Working on it",
+    tool_call_id: null,
+    icon_url: null,
+    inputs: {},
+    integration_name: null,
+    show_category: true,
     ...overrides,
   };
 }

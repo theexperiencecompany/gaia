@@ -5,7 +5,8 @@ resolution is the security boundary. These tests probe minting, atomic
 single-use consumption, and rejection of unknown/malformed codes.
 """
 
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
 from pydantic import BaseModel, ValidationError
@@ -13,11 +14,19 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.auth import CONNECT_LINK_TTL_MINUTES
+from app.db.repositories.users import user_repository
+from app.models.user_models import UserDocument
+from app.schemas.integrations.responses import ConnectLinkPreviewResponse
 import app.services.connect_link_service as svc
 from app.services.connect_link_service import (
     ConnectLinkBinding,
     build_connect_link_url,
+    preview_connect_code,
     resolve_and_consume_connect_code,
+)
+from app.services.integrations.integration_resolver import (
+    IntegrationResolver,
+    ResolvedIntegration,
 )
 from tests.helpers import captured_wide_event
 
@@ -43,8 +52,15 @@ def fake_store() -> Generator[dict[str, object], None, None]:
         except ValidationError:
             return None
 
+    async def _get(key: str, model: type[BaseModel] | None = None) -> object | None:
+        value = store.get(key)
+        if value is None or model is None:
+            return value
+        return model.model_validate(value)
+
     with (
         patch.object(svc, "set_cache", AsyncMock(side_effect=_set)),
+        patch.object(svc, "get_cache", AsyncMock(side_effect=_get)),
         patch.object(svc, "get_and_delete_cache", AsyncMock(side_effect=_getdel)),
     ):
         yield store
@@ -110,7 +126,7 @@ class TestConnectLinkCode:
 
     async def test_malformed_binding_rejected(self, fake_store: dict[str, object]) -> None:
         """A stored value missing integration_id must not resolve to a partial."""
-        await svc.set_cache(svc._code_key("partial"), {"user_id": "u"})
+        fake_store[svc._code_key("partial")] = {"user_id": "u"}
         assert await resolve_and_consume_connect_code("partial") is None
 
     async def test_two_mints_have_distinct_codes(self, fake_store: dict[str, object]) -> None:
@@ -127,3 +143,80 @@ class TestConnectLinkCode:
         """A failed write (Redis unavailable) means no link minted; callers degrade to a generic connect prompt."""
         with patch.object(svc, "set_cache", AsyncMock(return_value=False)):
             assert await build_connect_link_url("user1", "notion") is None
+
+
+_OWNER = "owner-id"
+
+
+def _resolved(icon_url: str | None) -> ResolvedIntegration:
+    return ResolvedIntegration(
+        integration_id="dodo",
+        name="Dodo Payments",
+        description="",
+        category="finance",
+        managed_by="mcp",
+        source="custom",
+        requires_auth=True,
+        auth_type="oauth",
+        mcp_config=None,
+        platform_integration=None,
+        custom_doc=None,
+        icon_url=icon_url,
+    )
+
+
+@contextmanager
+def _lookups(resolved: ResolvedIntegration | None, owner: UserDocument | None) -> Iterator[None]:
+    """Resolve the integration, and find a user only under the link owner's id."""
+
+    async def _user(user_id: str) -> UserDocument | None:
+        return owner if user_id == _OWNER else None
+
+    with (
+        patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
+        patch.object(user_repository, "get", AsyncMock(side_effect=_user)),
+    ):
+        yield
+
+
+class TestConnectLinkPreview:
+    async def test_names_the_integration_and_masks_the_owners_email_without_spending(
+        self, fake_store: dict[str, object]
+    ) -> None:
+        code = _code_from_url(await build_connect_link_url(_OWNER, "dodo"))
+        owner = UserDocument(email="aryan@heygaia.io", name="Aryan")
+        with _lookups(_resolved("https://dodo.example/icon.png"), owner):
+            preview = await preview_connect_code(code)
+
+        assert preview == ConnectLinkPreviewResponse(
+            integration_id="dodo",
+            integration_name="Dodo Payments",
+            icon_url="https://dodo.example/icon.png",
+            account_email="ar***@heygaia.io",
+        )
+        assert await resolve_and_consume_connect_code(code) is not None
+
+    async def test_an_owner_with_no_email_previews_without_one(
+        self, fake_store: dict[str, object]
+    ) -> None:
+        code = _code_from_url(await build_connect_link_url(_OWNER, "dodo"))
+        with _lookups(_resolved(None), UserDocument(name="Bot user")):
+            preview = await preview_connect_code(code)
+
+        assert preview is not None
+        assert preview.account_email is None
+
+    async def test_an_integration_that_no_longer_resolves_has_no_preview(
+        self, fake_store: dict[str, object]
+    ) -> None:
+        code = _code_from_url(await build_connect_link_url(_OWNER, "dodo"))
+        with _lookups(None, UserDocument(email="a@b.co")):
+            assert await preview_connect_code(code) is None
+
+    async def test_a_deleted_owner_has_no_preview(self, fake_store: dict[str, object]) -> None:
+        code = _code_from_url(await build_connect_link_url(_OWNER, "dodo"))
+        with _lookups(_resolved(None), None):
+            assert await preview_connect_code(code) is None
+
+    async def test_an_unknown_code_has_no_preview(self, fake_store: dict[str, object]) -> None:
+        assert await preview_connect_code("nope") is None

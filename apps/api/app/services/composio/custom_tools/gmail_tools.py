@@ -55,6 +55,8 @@ from app.models.composio_schemas.gmail import (
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.gmail import GmailThreadData
 from app.models.integrations.gmail_messages import GmailApiMessage, RelayedGmailMessage
+from app.models.mail_card_models import EmailListItem
+from app.models.tool_card_registry import tool_card
 from app.services.composio.custom_tools.fetched_mail_buckets import installed_fetched_mail_bucketer
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
@@ -387,18 +389,20 @@ def _emit_email_card(views: list[GmailMessageView]) -> None:
     """
     if not views:
         return
-    email_fetch_data = [
-        {
-            "from": view.sender,
-            "subject": view.subject,
-            "time": view.time,
-            "thread_id": view.thread_id,
-            "id": view.id,
-        }
-        for view in views
-    ]
     current_stream_writer()(
-        {"email_fetch_data": email_fetch_data, "resultSize": len(email_fetch_data)}
+        tool_card(
+            "email_fetch_data",
+            [
+                EmailListItem(
+                    sender=view.sender,
+                    subject=view.subject,
+                    time=view.time,
+                    thread_id=view.thread_id,
+                    id=view.id,
+                )
+                for view in views
+            ],
+        )
     )
 
 

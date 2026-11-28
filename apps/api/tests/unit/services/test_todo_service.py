@@ -18,7 +18,12 @@ from pydantic import ValidationError
 import pytest
 import time_machine
 
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent, TodoCompleter
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    NO_INBOX_PROJECT_ID,
+    TodoActivityEvent,
+    TodoCompleter,
+)
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.workflows import WorkflowDelivery
@@ -34,6 +39,7 @@ from app.models.todo_models import (
     ProjectDocument,
     ProjectWithCount,
     SearchMode,
+    TodoCounts,
     TodoDayWindow,
     TodoDocument,
     TodoModel,
@@ -74,8 +80,10 @@ from app.services.todos.todo_service import (
     get_all_projects,
     get_all_todos,
     get_todo,
+    project_completion,
     require_project,
     update_project,
+    user_todo_counts,
 )
 from app.services.triggers.subscription_service import SubscriptionError
 from app.utils import auth_utils
@@ -1874,6 +1882,44 @@ class TestProjectService:
             FAKE_USER_ID, FAKE_PROJECT_ID, FAKE_INBOX_ID
         )
         mock_project_repo.delete.assert_awaited_once_with(FAKE_PROJECT_ID, user_id=FAKE_USER_ID)
+
+
+class TestUserTodoCounts:
+    async def test_inbox_counts_come_from_the_users_inbox(
+        self, mock_todo_repo: MagicMock, mock_project_repo: MagicMock
+    ) -> None:
+        mock_todo_repo.compute_counts = AsyncMock(return_value=TodoCounts(inbox=4))
+
+        assert await user_todo_counts(FAKE_USER_ID, _WINDOW) == TodoCounts(inbox=4)
+
+        mock_project_repo.get_default_inbox.assert_awaited_once_with(FAKE_USER_ID)
+        mock_todo_repo.compute_counts.assert_awaited_once_with(
+            user_id=FAKE_USER_ID, inbox_project_id=FAKE_INBOX_ID, window=_WINDOW
+        )
+
+    async def test_a_user_without_an_inbox_counts_against_no_project(
+        self, mock_todo_repo: MagicMock, mock_project_repo: MagicMock
+    ) -> None:
+        mock_project_repo.get_default_inbox = AsyncMock(return_value=None)
+        mock_todo_repo.compute_counts = AsyncMock(return_value=TodoCounts())
+
+        await user_todo_counts(FAKE_USER_ID, _WINDOW)
+
+        mock_todo_repo.compute_counts.assert_awaited_once_with(
+            user_id=FAKE_USER_ID, inbox_project_id=NO_INBOX_PROJECT_ID, window=_WINDOW
+        )
+
+
+class TestProjectCompletion:
+    def test_a_project_with_no_pending_todos_is_complete(self) -> None:
+        stats = TodoStats(by_project={"done": 4, "half": 2}, pending_by_project={"half": 1})
+
+        assert project_completion(stats) == {"done": 100, "half": 50}
+
+    def test_a_single_todo_project_counts_and_an_empty_one_is_skipped(self) -> None:
+        stats = TodoStats(by_project={"one": 1, "empty": 0}, pending_by_project={"one": 1})
+
+        assert project_completion(stats) == {"one": 0}
 
 
 class TestEveryProjectLookupIsTheUsersOwn:

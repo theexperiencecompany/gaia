@@ -9,6 +9,7 @@ Covers:
 - Edge cases: Redis unavailable, exceptions, TTL handling
 """
 
+from collections.abc import Awaitable, Callable
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -477,7 +478,7 @@ class TestRedisCacheGetAndDelete:
         mock_log.error.assert_called_once_with(
             "redis_op_failed",
             op="get_and_delete",
-            key="k",
+            key_namespace="k",
             error_type="ConnectionError",
             error="boom",
         )
@@ -538,7 +539,7 @@ class TestRedisCacheSetIfAbsent:
         mock_log.error.assert_called_once_with(
             "redis_op_failed",
             op="set_if_absent",
-            key="k",
+            key_namespace="k",
             ttl=10,
             error_type="ConnectionError",
             error="boom",
@@ -592,7 +593,7 @@ class TestRedisCacheTtlSeconds:
         mock_log.error.assert_called_once_with(
             "redis_op_failed",
             op="ttl",
-            key="k",
+            key_namespace="k",
             error_type="ConnectionError",
             error="boom",
         )
@@ -895,3 +896,45 @@ class TestVerifyConnection:
         cache.redis = None
 
         await cache.verify_connection()
+
+
+@pytest.mark.unit
+class TestRedisCacheLogsNoKeySecrets:
+    """A key can carry a live credential (a connect-link code), so logs name only its namespace."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("op", "call"),
+        [
+            ("get", lambda cache, key: cache.get(key)),
+            ("get_and_delete", lambda cache, key: cache.get_and_delete(key)),
+            ("set", lambda cache, key: cache.set(key, {"a": 1})),
+            ("delete", lambda cache, key: cache.delete(key)),
+        ],
+    )
+    async def test_a_failed_op_on_a_connect_code_key_does_not_log_the_code(
+        self, op: str, call: Callable[[RedisCache, str], Awaitable[object]]
+    ) -> None:
+        cache = RedisCache.__new__(RedisCache)
+        cache.redis = AsyncMock()
+        for method in ("get", "getdel", "set", "setex", "delete"):
+            getattr(cache.redis, method).side_effect = ConnectionError("down")
+
+        with patch("app.db.redis.log") as mock_log:
+            await call(cache, "connect_link:liveSecretCode")
+
+        logged = str(mock_log.mock_calls)
+        assert "liveSecretCode" not in logged
+        assert "connect_link" in logged
+
+    async def test_the_logged_namespace_is_everything_before_the_first_colon(self) -> None:
+        cache = RedisCache.__new__(RedisCache)
+        cache.redis = AsyncMock()
+        cache.redis.get.side_effect = ConnectionError("down")
+
+        with patch("app.db.redis.log") as mock_log:
+            await cache.get("connect_link:code:with:colons")
+            await cache.get("plainkey")
+
+        namespaces = [c.kwargs["key_namespace"] for c in mock_log.error.call_args_list]
+        assert namespaces == ["connect_link", "plainkey"]

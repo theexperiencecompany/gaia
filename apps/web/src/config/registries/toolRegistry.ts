@@ -1,190 +1,46 @@
 import type {
-  MemoryDocument,
-  MemoryEntry,
-  MemoryEpisode,
+  MemoryDataCard,
+  TimelineToolCard,
   ToolDataEntry,
 } from "@shared/api/generated";
 import type {
-  ApprovalRequestData,
-  ArtifactCardData,
-  RateLimitData as SharedRateLimitData,
-  SubagentGroupData as SharedSubagentGroupData,
-  ToolCallEntry as SharedToolCallEntry,
-} from "@shared/chat";
-import type { BriefCard } from "@/features/briefing";
-import type {
-  DeviceApprovalRequiredData,
-  DeviceOnboardingRequiredData,
-} from "@/features/devices/types";
-import type {
-  ConnectOptionsData,
-  IntegrationConnectionData,
-  IntegrationListStreamData,
-} from "@/features/integrations/types";
-import type { BrowserTaskSnapshot } from "@/types/features/browserTaskTypes";
-import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
-  CalendarFetchData,
-  CalendarListFetchData,
   CalendarOptions,
 } from "@/types/features/calendarTypes";
-import type { ScreenshotData } from "@/types/features/desktopToolTypes";
-import type {
-  ContactData,
-  EmailComposeData,
-  EmailFetchData,
-  EmailSentData,
-  EmailThreadData,
-  PeopleSearchData,
-} from "@/types/features/mailTypes";
-import type {
-  NotificationView,
-  SendNotificationData,
-} from "@/types/features/notificationTypes";
-import type { RedditData } from "@/types/features/redditTypes";
-import type {
-  DeepResearchResults,
-  SearchResults,
-} from "@/types/features/searchTypes";
-import type { SupportTicketData } from "@/types/features/supportTypes";
-import type { TodoProgressData } from "@/types/features/todoProgressTypes";
-import type { TodoToolData } from "@/types/features/todoToolTypes";
-import type {
-  ArtifactData,
-  CodeData,
-  GoogleDocsData,
-  WorkflowCreatedData,
-  WorkflowDraftData,
-} from "@/types/features/toolDataTypes";
-import type {
-  TwitterSearchData,
-  TwitterUserData,
-} from "@/types/features/twitterTypes";
-import type { WeatherData } from "@/types/features/weatherTypes";
+import type { DeepResearchResults } from "@/types/features/searchTypes";
+import type { CodeData, GoogleDocsData } from "@/types/features/toolDataTypes";
 
-// Discriminated union for all memory tool actions (keyed memory_data).
-// Mirrors the backend contract in apps/api/app/agents/tools/memory_tools.py.
-export type MemoryData =
-  | {
-      action: "add";
-      memories: MemoryEntry[];
-      folder: string;
-      outcome: "new" | "updated" | "extended" | "duplicate";
-      message: string;
-    }
-  | {
-      action: "search";
-      query: string;
-      folder: string | null;
-      memories: MemoryEntry[];
-      message: string;
-    }
-  | {
-      action: "update";
-      memories: MemoryEntry[];
-      message: string;
-    }
-  | {
-      action: "forget";
-      memory_id: string;
-      reason: string;
-      message: string;
-    }
-  | {
-      action: "journal";
-      query: string | null;
-      episodes: MemoryEpisode[];
-      message: string;
-    }
-  | {
-      action: "document";
-      document: MemoryDocument;
-      updated: boolean;
-      message: string;
-    };
+/** One memory tool call's card: an add, search, update, forget, journal or document action. */
+export type MemoryData = MemoryDataCard["data"];
 
-export interface MCPAppData {
-  tool_call_id: string;
-  tool_name: string;
-  server_url: string;
-  resource_uri: string;
-  html_content: string;
-  csp?: {
-    connectDomains?: string[];
-    resourceDomains?: string[];
-  };
-  permissions?: string[];
-  tool_result?: unknown;
-  tool_arguments?: Record<string, unknown>;
-}
-
-// Single source of truth for tool names + payload types (ToolName,
-// ToolDataMap, message schemas, UI renderers all derive from this). Values
-// are `null as unknown as T`: zero runtime cost, precise compile-time types without constructing T.
-
-// RateLimitData / ToolCallEntry / SubagentGroupData canonically live in
-// @shared/chat (shared turn accumulator + backend contract); re-exported
-// here so existing web imports keep one source of truth, not a drifting copy.
+// ToolCallEntry / SubagentGroupData canonically live in @shared/chat (shared
+// turn accumulator); re-exported here so web imports keep one source of truth.
 export {
-  type RateLimitData,
   REASONING_TOOL_NAME,
   type SubagentGroupData,
   type ToolCallEntry,
 } from "@shared/chat";
 
-// Not exported: nothing outside this module reads the runtime value — the
-// public surface is the types derived from it below.
-const TOOL_REGISTRY = {
-  search_results: null as unknown as SearchResults,
-  deep_research_results: null as unknown as DeepResearchResults,
-  weather_data: null as unknown as WeatherData,
-  email_thread_data: null as unknown as EmailThreadData,
-  email_fetch_data: null as unknown as EmailFetchData[],
-  email_compose_data: null as unknown as EmailComposeData[],
-  email_sent_data: null as unknown as EmailSentData[],
-  contacts_data: null as unknown as ContactData[],
-  people_search_data: null as unknown as PeopleSearchData[],
-  calendar_options: null as unknown as CalendarOptions[],
-  calendar_delete_options: null as unknown as CalendarDeleteOptions[],
-  calendar_edit_options: null as unknown as CalendarEditOptions[],
-  calendar_fetch_data: null as unknown as CalendarFetchData[],
-  calendar_list_fetch_data: null as unknown as CalendarListFetchData[],
-  support_ticket_data: null as unknown as SupportTicketData[],
-  reddit_data: null as unknown as RedditData,
-  google_docs_data: null as unknown as GoogleDocsData,
-  code_data: null as unknown as CodeData,
-  todo_data: null as unknown as TodoToolData,
-  notification_data: null as unknown as { notifications: NotificationView[] },
-  send_notification_data: null as unknown as SendNotificationData,
-  briefing_data: null as unknown as BriefCard,
-  integration_connection_required: null as unknown as IntegrationConnectionData,
-  connect_options: null as unknown as ConnectOptionsData,
-  integration_list_data: null as unknown as IntegrationListStreamData,
-  device_onboarding_required: null as unknown as DeviceOnboardingRequiredData,
-  device_approval_required: null as unknown as DeviceApprovalRequiredData,
-  tool_calls_data: null as unknown as SharedToolCallEntry[],
-  subagent_group: null as unknown as SharedSubagentGroupData,
-  twitter_search_data: null as unknown as TwitterSearchData,
-  twitter_user_data: null as unknown as TwitterUserData[],
-  workflow_draft: null as unknown as WorkflowDraftData,
-  workflow_created: null as unknown as WorkflowCreatedData,
-  mcp_app: null as unknown as MCPAppData,
-  todo_progress: null as unknown as TodoProgressData,
-  rate_limit_data: null as unknown as SharedRateLimitData,
-  artifact_data: null as unknown as ArtifactData[],
-  artifact_done: null as unknown as ArtifactCardData,
-  screenshot_data: null as unknown as ScreenshotData,
-  browser_task_data: null as unknown as BrowserTaskSnapshot,
-  memory_data: null as unknown as MemoryData,
-  approval_request: null as unknown as ApprovalRequestData,
-} as const;
-
-export type ToolName = keyof typeof TOOL_REGISTRY;
-export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
-
-/** The API's tool-data entry with its tool name and data typed by TOOL_REGISTRY. */
-export type TypedToolDataEntry = Omit<ToolDataEntry, "tool_name" | "data"> & {
-  tool_name: ToolName;
-  data: ToolDataMap[ToolName];
+/** What a renderer receives for each tool the API publishes: its timeline card's data. */
+type PublishedToolDataMap = {
+  [Card in TimelineToolCard as Card["tool_name"]]: Card["data"];
 };
+
+/** Cards no backend produces any more but stored history still holds; their hand types stay. */
+interface UnpublishedToolDataMap {
+  calendar_options: CalendarOptions[];
+  calendar_delete_options: CalendarDeleteOptions[];
+  calendar_edit_options: CalendarEditOptions[];
+  deep_research_results: DeepResearchResults;
+  code_data: CodeData;
+  google_docs_data: GoogleDocsData;
+}
+
+export type ToolDataMap = PublishedToolDataMap & UnpublishedToolDataMap;
+export type ToolName = keyof ToolDataMap;
+
+/** What one tool call carries, before the timeline groups it: its tool-data entry's data. */
+export type ToolPayloadMap = {
+  [Entry in ToolDataEntry as Entry["tool_name"]]: Entry["data"];
+} & UnpublishedToolDataMap;

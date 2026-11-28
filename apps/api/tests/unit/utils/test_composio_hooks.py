@@ -790,7 +790,7 @@ class TestGmailBeforeHooks:
         assert payload["email_compose_data"][0]["subject"] == "Draft Test"
         # No attachments to preserve, so the card stays an editable compose
         # rather than a locked "send this draft verbatim" one.
-        assert "draft_id" not in payload["email_compose_data"][0]
+        assert payload["email_compose_data"][0]["draft_id"] is None
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_sends_email_sent_data(self, mock_writer: MagicMock) -> None:
@@ -1264,7 +1264,18 @@ class TestGmailAfterHooks:
         assert isinstance(result, dict)
         assert result["people"][0]["name"] == "Jane Doe"
         assert result["result_count"] == 1
-        writer.assert_called_once()
+        writer.assert_called_once_with(
+            {
+                "people_search_data": [
+                    {
+                        "name": "Jane Doe",
+                        "email": "jane@example.com",
+                        "phone": "",
+                        "resource_name": "people/c1",
+                    }
+                ]
+            }
+        )
 
 
 # ============================================================================
@@ -2275,7 +2286,7 @@ class TestRedditAfterHooks:
                     "url": "https://reddit.com/r/python/p1",
                     "permalink": "/r/python/p1",
                     "is_self": True,
-                    "link_flair_text": None,
+                    "link_flair_text": "Showcase",
                 }
             }
         )
@@ -2299,7 +2310,7 @@ class TestRedditAfterHooks:
                         "url": "https://reddit.com/r/python/p1",
                         "permalink": "/r/python/p1",
                         "is_self": True,
-                        "link_flair_text": None,
+                        "link_flair_text": "Showcase",
                     },
                 }
             }
@@ -2715,9 +2726,13 @@ class TestGmailAfterHookExceptions:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
 
         mock_writer.side_effect = RuntimeError("no writer")
-        response = _make_response({"response_data": {"connections": []}})
-        result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
-        assert result == {"response_data": {"connections": []}}
+        raw = {
+            "response_data": {
+                "connections": [{"resourceName": "people/c1", "names": [{"displayName": "A"}]}]
+            }
+        }
+        result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", _make_response(raw))
+        assert result == raw
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_search_people_after_hook_error_response(self, mock_writer: MagicMock) -> None:
@@ -2733,9 +2748,15 @@ class TestGmailAfterHookExceptions:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
 
         mock_writer.side_effect = RuntimeError("broken")
-        response = _make_response({"response_data": {"results": []}})
-        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
-        assert result == {"response_data": {"results": []}}
+        raw = {
+            "response_data": {
+                "results": [
+                    {"person": {"resourceName": "people/c1", "names": [{"displayName": "A"}]}}
+                ]
+            }
+        }
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", _make_response(raw))
+        assert result == raw
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_search_people_after_hook_with_phone(self, mock_writer: MagicMock) -> None:

@@ -2,6 +2,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolCallId, tool
+from pydantic import JsonValue
 
 from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
@@ -11,6 +12,10 @@ from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_config import AgentConfigurableView, read_agent_configurable
 from app.models.agent_models import current_stream_writer, get_user_id
+from app.models.notification.notification_card_models import (
+    NotificationListCard,
+    SentNotificationCard,
+)
 from app.models.notification.notification_models import (
     BulkActions,
     ChannelConfig,
@@ -23,6 +28,7 @@ from app.models.notification.notification_models import (
     NotificationView,
     notification_id,
 )
+from app.models.tool_card_registry import tool_card, tool_card_data
 from app.services.analytics_service import capture
 from app.services.delivery.chat_channel import (
     InApp,
@@ -75,19 +81,6 @@ class MarkReadResult(TypedDict):
     error: NotRequired[str]
 
 
-class SentNotificationResult(TypedDict):
-    """``send_notification`` on success — also the ``send_notification_data``
-    stream payload that renders the "notification sent" chat card."""
-
-    success: Literal[True]
-    notification_id: str
-    title: str
-    message: str
-    notification_type: str
-    status: str
-    delivered_channels: list[str]
-
-
 #: Where a run's own reply lands: a chat app's conversation, or the GAIA app.
 ReplyChannel: TypeAlias = ConversationSource | Literal[NotificationChannel.INAPP]
 
@@ -116,6 +109,9 @@ class NotificationPreferencesResult(TypedDict):
     available_channels: NotRequired[list[str]]
     enabled_channels: NotRequired[list[str]]
     error: NotRequired[str]
+
+
+SENT_NOTIFICATION_CARD = "send_notification_data"
 
 
 @tool
@@ -153,9 +149,9 @@ async def get_notifications(
         # views are dumped back to dicts here rather than handed over as models.
         serialized = [n.model_dump(mode="json") for n in notifications]
 
-        # Stream to frontend with notification list UI
-        writer = current_stream_writer()
-        writer({"notification_data": {"notifications": serialized}})
+        current_stream_writer()(
+            tool_card("notification_data", NotificationListCard(notifications=notifications))
+        )
 
         return {"notifications": serialized}
 
@@ -198,11 +194,11 @@ async def search_notifications(
                 matching_notifications.append(notification)
 
         # Apply limit
-        serialized = [n.model_dump(mode="json") for n in matching_notifications[:limit]]
-
-        # Stream to frontend with notification list UI
-        writer = current_stream_writer()
-        writer({"notification_data": {"notifications": serialized}})
+        matched = matching_notifications[:limit]
+        serialized = [n.model_dump(mode="json") for n in matched]
+        current_stream_writer()(
+            tool_card("notification_data", NotificationListCard(notifications=matched))
+        )
 
         return {"notifications": serialized}
 
@@ -322,7 +318,7 @@ async def send_notification(
         NotificationType | None,
         "Notification type: 'info', 'success', 'warning', or 'error'",
     ] = NotificationType.INFO,
-) -> SentNotificationResult | NotificationFoldedIntoReply | SendNotificationFailure:
+) -> JsonValue | NotificationFoldedIntoReply | SendNotificationFailure:
     """Send a notification to the user on their connected channels."""
     user_id = get_user_id(config)
 
@@ -428,21 +424,21 @@ async def send_notification(
             }
         )
 
-        result: SentNotificationResult = {
-            "success": True,
-            "notification_id": record.id,
-            "title": resolved_title,
-            "message": resolved_message,
-            "notification_type": resolved_type.value,
-            "status": record.status.value,
-            "delivered_channels": delivered_channels,
-        }
+        sent = tool_card_data(
+            SENT_NOTIFICATION_CARD,
+            SentNotificationCard(
+                success=True,
+                notification_id=record.id,
+                title=resolved_title,
+                message=resolved_message,
+                notification_type=resolved_type,
+                status=record.status,
+                delivered_channels=delivered_channels,
+            ),
+        )
+        current_stream_writer()({SENT_NOTIFICATION_CARD: sent})
 
-        # Stream to frontend so the chat renders a "notification sent" card
-        writer = current_stream_writer()
-        writer({"send_notification_data": result})
-
-        return result
+        return sent
 
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error sending notification", error_type=type(e).__name__)

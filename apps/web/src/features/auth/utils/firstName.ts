@@ -1,3 +1,5 @@
+import type { UserInfo } from "@/features/auth/api/authApi";
+
 /**
  * The given name of the signed-in user, for copy that addresses them.
  *
@@ -7,11 +9,12 @@
  * the copy must read fine without one.
  */
 export function firstNameOf(
-  name: string | undefined,
-  email: string | undefined,
+  user: Pick<UserInfo, "name" | "email"> | undefined,
 ): string | undefined {
-  const trimmed = name?.trim() ?? "";
-  if (!trimmed || trimmed.includes("@") || trimmed === email) return undefined;
+  const trimmed = user?.name?.trim() ?? "";
+  if (!trimmed || trimmed.includes("@") || trimmed === user?.email) {
+    return undefined;
+  }
   const [first] = trimmed.split(/\s+/);
   return first || undefined;
 }

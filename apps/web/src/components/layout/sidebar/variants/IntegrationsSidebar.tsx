@@ -2,13 +2,13 @@
 
 import { Kbd, ScrollShadow, Tooltip } from "@heroui/react";
 import { InternetIcon, PuzzleIcon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useCallback, useMemo, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import type { Integration } from "@/features/integrations/types";
 import { useIntegrationModalActions } from "@/stores/uiStore";
 
 export default function IntegrationsSidebar() {
@@ -50,12 +50,15 @@ export default function IntegrationsSidebar() {
     [deleteCustomIntegration],
   );
 
-  const handleIntegrationClick = useCallback((integration: Integration) => {
-    setSelectedIntegrationId(integration.id);
-  }, []);
+  const handleIntegrationClick = useCallback(
+    (integration: MyIntegrationItem) => {
+      setSelectedIntegrationId(integration.id);
+    },
+    [],
+  );
 
   const renderIntegrationItem = useCallback(
-    (integration: Integration) => {
+    (integration: MyIntegrationItem) => {
       const isConnected = integration.status === "connected";
       const isCreated = integration.status === "created";
       const isPublic = integration.isPublic === true;

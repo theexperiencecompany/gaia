@@ -16,7 +16,6 @@ from app.agents.tools.notification_tool import (
     NotificationListResult,
     NotificationPreferencesResult,
     SendNotificationFailure,
-    SentNotificationResult,
     get_notification_count,
     get_notification_preferences,
     get_notifications,
@@ -216,9 +215,10 @@ class TestSearchNotifications:
         """Search matches by title."""
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
+        meeting = _make_notification(title="Meeting reminder")
         mock_service.get_user_notifications = AsyncMock(
             return_value=[
-                _make_notification(title="Meeting reminder"),
+                meeting,
                 _make_notification(notification_id="notif-2", title="Shopping list"),
             ]
         )
@@ -231,6 +231,10 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 1
         assert result["notifications"][0]["content"]["title"] == "Meeting reminder"
+        # Only the matches reach the UI's notification card, not the whole scanned page.
+        writer.assert_called_once_with(
+            {"notification_data": {"notifications": [meeting.model_dump(mode="json")]}}
+        )
         # The search scans one page of a hundred under the caller's status filter.
         mock_service.get_user_notifications.assert_awaited_once_with(
             FAKE_USER_ID, filters=NotificationListFilters(status=NotificationStatus.READ, limit=100)
@@ -450,7 +454,7 @@ class TestSendNotificationChannels:
         )
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        result = await tool_coroutine(send_notification, SentNotificationResult)(
+        result = await tool_coroutine(send_notification, dict[str, object])(
             tool_call_id="call-1",
             config=_chat_run_config("web"),
             message="Build done",
@@ -706,7 +710,7 @@ async def test_a_sent_notification_is_streamed_as_the_result_it_returns(
     mock_writer_factory.return_value = writer
     mock_service.notify = AsyncMock(side_effect=deliver)
 
-    result = await tool_coroutine(send_notification, SentNotificationResult)(
+    result = await tool_coroutine(send_notification, dict[str, object])(
         tool_call_id="call-1",
         config=_make_config(),
         message=" Build done ",
@@ -924,7 +928,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        result = await tool_coroutine(send_notification, SentNotificationResult)(
+        result = await tool_coroutine(send_notification, dict[str, object])(
             tool_call_id="call-1",
             config=_chat_run_config("telegram"),
             message="Your flight is booked",

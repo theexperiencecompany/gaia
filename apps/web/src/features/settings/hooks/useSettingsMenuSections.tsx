@@ -65,7 +65,7 @@ export function useSettingsMenuSections({
   const deployment = useDeployment();
   const billingHidden = !deployment.bills;
   const selfHosted = deployment.kind === "selfhost";
-  const { role } = useCurrentUser();
+  const role = useCurrentUser()?.role;
   const { unseen: unseenReleases } = useReleases();
 
   // Entries surfaced directly in this menu; billing-only ones drop out on self-host.

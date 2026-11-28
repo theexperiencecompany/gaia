@@ -1,5 +1,6 @@
 import { Popover, Skeleton } from "@heroui/react";
 import { CircleArrowRight02Icon, NewsIcon } from "@icons";
+import type { SearchResultsData } from "@shared/api/generated";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
@@ -9,12 +10,11 @@ import { useImageDialog } from "@/stores/uiStore";
 import type {
   ImageResult,
   NewsResult,
-  SearchResults,
   WebResult,
 } from "@/types/features/convoTypes";
 
 interface SearchResultsTabsProps {
-  search_results: SearchResults;
+  search_results: Partial<Pick<SearchResultsData, "web" | "images" | "news">>;
 }
 
 export default function SearchResultsTabs({

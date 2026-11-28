@@ -10,8 +10,6 @@ toolkits need zero per-toolkit code — the marker, not the param name, decides 
 swapped. Per-surface hooks (Gmail's compose card) reuse resolve_tool_attachments.
 """
 
-from typing import TypedDict
-
 from composio.types import Tool, ToolExecuteParams
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -22,6 +20,7 @@ from app.constants.email import (
 )
 from app.constants.log_tags import LogTag
 from app.models.integrations.composio_hooks import ComposioToolCall, JsonSchemaNode
+from app.models.mail_card_models import AttachmentDisplay
 from app.models.mail_models import (
     AttachmentReference,
     ComposioAttachment,
@@ -42,13 +41,6 @@ FRIENDLY_UPLOAD_PARAM = "attachments"
 _swapped_upload_params: dict[str, str] = {}
 
 
-class AttachmentDisplay(TypedDict):
-    """Per-file metadata safe for display/logging (never the s3key)."""
-
-    name: str
-    mimetype: str
-
-
 class _UploadedFile(BaseModel):
     """The display half of a resolved upload arg: a ComposioAttachment or an earlier hook's native-param value."""
 
@@ -58,7 +50,7 @@ class _UploadedFile(BaseModel):
     mimetype: str | None = None
 
     def display(self) -> AttachmentDisplay:
-        return {"name": self.name or "", "mimetype": self.mimetype or ""}
+        return AttachmentDisplay(name=self.name or "", mimetype=self.mimetype or "")
 
 
 def _is_file_upload_node(node: JsonSchemaNode) -> bool:

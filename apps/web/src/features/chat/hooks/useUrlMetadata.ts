@@ -94,7 +94,7 @@ const batchUrlRequest = (url: string): Promise<UrlMetadata> => {
 export const useUrlMetadata = (url: string | undefined | null) => {
   const isValidUrl = url && isPreviewable(url);
   // The endpoint needs a session; a signed-out reader of a blog post would get a 401.
-  const { userId } = useCurrentUser();
+  const userId = useCurrentUser()?.user_id;
 
   const result = useQuery<UrlMetadata, Error>({
     enabled: Boolean(isValidUrl && userId),
@@ -140,7 +140,7 @@ export const useUrlMetadata = (url: string | undefined | null) => {
  */
 export const usePrefetchUrlMetadata = () => {
   const queryClient = useQueryClient();
-  const { userId } = useCurrentUser();
+  const userId = useCurrentUser()?.user_id;
 
   return (url: string) => {
     if (!userId || !url || !isPreviewable(url)) return;

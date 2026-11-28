@@ -1,20 +1,15 @@
 import type React from "react";
 
 import { CARD_CLASSES } from "./constants";
+import type { HoloCardDisplayData } from "./types";
 
 interface BackCardContentProps {
-  name: string;
-  personalityPhrase?: string;
-  userBio?: string;
-  accountNumber: string | number;
-  memberSince: string | number;
+  card: Pick<HoloCardDisplayData, "name" | "personality_phrase" | "user_bio">;
   isStatic?: boolean;
 }
 
 export const BackCardContent: React.FC<BackCardContentProps> = ({
-  name,
-  personalityPhrase,
-  userBio,
+  card,
   isStatic = false,
 }) => {
   return (
@@ -27,7 +22,7 @@ export const BackCardContent: React.FC<BackCardContentProps> = ({
               : "mb-0 font-serif text-2xl font-normal text-white"
           }
         >
-          {name}
+          {card.name}
         </div>
         <div
           className={
@@ -36,10 +31,10 @@ export const BackCardContent: React.FC<BackCardContentProps> = ({
               : "mb-2 text-sm font-light text-white/80 italic"
           }
         >
-          {personalityPhrase}
+          {card.personality_phrase}
         </div>
         <p className="scrollbar-faint pointer-events-auto min-h-0 flex-1 overflow-y-auto overscroll-contain text-sm text-white/80">
-          {userBio}
+          {card.user_bio}
         </p>
       </div>
     </div>
@@ -47,14 +42,12 @@ export const BackCardContent: React.FC<BackCardContentProps> = ({
 };
 
 interface BackCardFooterProps {
-  accountNumber: string | number;
-  memberSince: string | number;
+  card: Pick<HoloCardDisplayData, "account_number" | "member_since">;
   isStatic?: boolean;
 }
 
 export const BackCardFooter: React.FC<BackCardFooterProps> = ({
-  accountNumber,
-  memberSince,
+  card,
   isStatic = false,
 }) => {
   return (
@@ -70,7 +63,7 @@ export const BackCardFooter: React.FC<BackCardFooterProps> = ({
           Member Since
         </span>
         <span className="text-sm font-medium text-white/80 font-mono uppercase">
-          {memberSince}
+          {card.member_since}
         </span>
       </div>
       <div className="flex flex-col items-end gap-1">
@@ -84,7 +77,7 @@ export const BackCardFooter: React.FC<BackCardFooterProps> = ({
               : "text-sm font-medium text-white/80"
           }
         >
-          {accountNumber}
+          #{card.account_number}
         </span>
       </div>
     </div>

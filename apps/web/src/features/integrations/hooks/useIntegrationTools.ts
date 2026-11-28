@@ -1,9 +1,9 @@
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { formatToolName, toTitleCase } from "@/features/chat/utils/chatUtils";
 
 import { integrationQueries } from "../api/queries";
-import type { Integration } from "../types";
 import { escapeRegExp } from "../utils/toolMentions";
 
 export interface IntegrationToolEntry {
@@ -27,7 +27,7 @@ export interface UseIntegrationToolsReturn {
  * driving `@` mention autocomplete in custom instructions.
  */
 export const useIntegrationTools = (
-  integration: Integration,
+  integration: MyIntegrationItem,
   categoryPrefix?: string,
 ): UseIntegrationToolsReturn => {
   const { data, isLoading } = useQuery(

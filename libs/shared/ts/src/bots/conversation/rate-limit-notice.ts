@@ -4,7 +4,7 @@
  * with the upgrade link.
  */
 
-import type { ToolTimeline } from "../../api/generated";
+import type { RateLimitCardData, ToolTimeline } from "../../api/generated";
 import { cardData } from "../../conversation/selectors";
 import type { FollowLinks } from "./follower.types";
 
@@ -12,14 +12,11 @@ import type { FollowLinks } from "./follower.types";
 export const RATE_LIMIT_TOOL = "rate_limit_data";
 const TOP_PLAN = "pro";
 
-/** The card's data, as build_rate_limit_card writes it. */
-interface RateLimitCardData {
-  feature: string;
-  current_plan: string;
-  message?: string;
-}
+/** What the notice reads of the card; message is absent on cards stored before it existed. */
+type RateLimitNotice = Pick<RateLimitCardData, "feature" | "current_plan"> &
+  Partial<Pick<RateLimitCardData, "message">>;
 
-const isRateLimitData = (data: unknown): data is RateLimitCardData =>
+const isRateLimitData = (data: unknown): data is RateLimitNotice =>
   typeof data === "object" &&
   data !== null &&
   "feature" in data &&
@@ -27,7 +24,7 @@ const isRateLimitData = (data: unknown): data is RateLimitCardData =>
   "current_plan" in data &&
   typeof data.current_plan === "string";
 
-const noticeLine = (card: RateLimitCardData, pricingUrl: string): string => {
+const noticeLine = (card: RateLimitNotice, pricingUrl: string): string => {
   // The card's own message names the wall that actually bound, as on web.
   const said = card.message
     ? `⏳ ${card.message}`

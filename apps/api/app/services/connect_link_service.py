@@ -21,7 +21,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config.settings import settings
 from app.constants.auth import CONNECT_LINK_CODE_BYTES, CONNECT_LINK_TTL_MINUTES
 from app.constants.cache import CONNECT_LINK_PREFIX
-from app.db.redis import get_and_delete_cache, set_cache
+from app.db.redis import get_and_delete_cache, get_cache, set_cache
+from app.db.repositories.users import user_repository
+from app.schemas.integrations.responses import ConnectLinkPreviewResponse
+from app.services.integrations.integration_resolver import IntegrationResolver
+from app.utils.email_utils import mask_email
 from shared.py.wide_events import log
 
 CONNECT_LINK_FRONTEND_PATH = "/connect"
@@ -76,3 +80,20 @@ async def resolve_and_consume_connect_code(code: str) -> ConnectLinkBinding | No
         return None
     log.set(auth={"user_id": binding.user_id, "provider": binding.integration_id})
     return binding
+
+
+async def preview_connect_code(code: str) -> ConnectLinkPreviewResponse | None:
+    """Describe what a live code connects, without spending it; None for a dead code."""
+    binding = await get_cache(_code_key(code), ConnectLinkBinding)
+    if binding is None:
+        return None
+    resolved = await IntegrationResolver.resolve(binding.integration_id)
+    user = await user_repository.get(binding.user_id)
+    if resolved is None or user is None:
+        return None
+    return ConnectLinkPreviewResponse(
+        integration_id=binding.integration_id,
+        integration_name=resolved.name,
+        icon_url=resolved.icon_url,
+        account_email=mask_email(user.email) if user.email else None,
+    )

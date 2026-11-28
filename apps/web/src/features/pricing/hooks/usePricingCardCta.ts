@@ -57,12 +57,12 @@ export function usePricingCardCta({
   // The server's payment:checkout_started records the plan, from every path into checkout.
   const onGetStarted = async () => {
     if (price === 0) {
-      if (user.userId) router.push("/c");
+      if (user?.user_id) router.push("/c");
       else window.location.assign(signupCtaHref());
       return;
     }
 
-    if (!user.userId) {
+    if (!user?.user_id) {
       // Carry the chosen plan across OAuth signup; useCheckoutResume picks it
       // up once authenticated and goes straight to the Dodo checkout.
       if (planId) writePendingCheckout(planId);

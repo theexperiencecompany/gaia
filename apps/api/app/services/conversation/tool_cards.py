@@ -12,13 +12,13 @@ left with nothing is removed.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
+from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME, TOOL_CALLS_CARD
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
 from app.constants.summarization import (
@@ -38,10 +38,15 @@ from app.models.conversation_frame_models import (
     ToolOutputEvent,
 )
 from app.models.openui_artifact_models import ArtifactCard, ArtifactDelta, ArtifactStatus
-from app.models.stream_events import SubagentEndPayload, SubagentStartPayload, ToolOutputPayload
+from app.models.stream_events import (
+    SubagentEndPayload,
+    SubagentGroupCardData,
+    SubagentStartPayload,
+    ToolOutputPayload,
+)
+from app.models.tool_card_registry import tool_card_data
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 
-TOOL_CALLS_CARD = "tool_calls_data"
 TODO_PROGRESS_CARD = "todo_progress"
 MCP_APP_CARD = "mcp_app"
 #: tool_name and tool_category of a thinking step riding the tool-call channel.
@@ -67,24 +72,6 @@ class _TodoSource(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     source: str | None = None
-
-
-@dataclass(frozen=True)
-class _SubagentGroup:
-    """A subagent_group card's data as its start opens it; its end fills duration, tokens and completion."""
-
-    subagent_id: str
-    subagent: str | None
-    subagent_name: str
-    agent_type: str
-    started_at: str
-    icon_url: str | None
-    tool_category: str | None
-    tool_calls: list[object] = field(default_factory=list)
-    duration_ms: int | None = None
-    token_count: int | None = None
-    completed_at: str | None = None
-    nested_subagents: list[object] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -415,8 +402,9 @@ def _take_reasoning(cards: list[ToolDataEntry], content: str, subagent_id: str |
 
 
 def _take_start(cards: list[ToolDataEntry], start: SubagentStartPayload) -> None:
-    group = asdict(
-        _SubagentGroup(
+    group = tool_card_data(
+        SUBAGENT_GROUP_TOOL_NAME,
+        SubagentGroupCardData(
             subagent_id=start.subagent_id,
             subagent=start.subagent,
             subagent_name=start.subagent_name,
@@ -424,7 +412,7 @@ def _take_start(cards: list[ToolDataEntry], start: SubagentStartPayload) -> None
             started_at=start.started_at,
             icon_url=start.icon_url,
             tool_category=start.tool_category,
-        )
+        ),
     )
     if start.parent_subagent_id:
         _update_group(

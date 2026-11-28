@@ -9,7 +9,7 @@ const ASK_ADMIN = "Ask this instance's admin to set it up.";
 
 /** Stands in for Connect on an integration this instance has no Composio auth config for; the admin gets the fix. */
 export function InstanceSetupNotice() {
-  const { role } = useCurrentUser();
+  const role = useCurrentUser()?.role;
   if (role === "admin") {
     return (
       <Tooltip>
@@ -40,7 +40,7 @@ export function InstanceSetupNotice() {
 
 /** The integration panel's version: why Connect is missing, and the fix, in place of a toast. */
 export function InstanceSetupCallout({ name }: { name: string }) {
-  const { role } = useCurrentUser();
+  const role = useCurrentUser()?.role;
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-zinc-800 p-4">
       <div>

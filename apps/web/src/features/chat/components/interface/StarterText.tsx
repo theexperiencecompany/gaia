@@ -7,7 +7,7 @@ export default function StarterText() {
   const user = useCurrentUser();
 
   const greeting = useMemo(() => {
-    return getCompleteTimeBasedGreeting(user?.name);
+    return getCompleteTimeBasedGreeting(user?.name ?? undefined);
   }, [user?.name]);
 
   return (

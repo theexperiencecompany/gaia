@@ -30,12 +30,8 @@ import {
   clientHeaders,
   requestOriginHeaders,
 } from "@/lib/api/client";
-import {
-  api,
-  binaryField,
-  formDataSerializer,
-  type RequestOrigin,
-} from "@/lib/api/typed";
+import { api, binaryField, formDataSerializer } from "@/lib/api/typed";
+import type { RequestOrigin } from "@/lib/api/typed.types";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 
 /** The events stream refused a conversation the server does not hold yet: its first send has not landed. */

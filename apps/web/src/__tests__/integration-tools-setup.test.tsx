@@ -2,17 +2,14 @@
 /**
  * "Setting up tools" follows the server's tools_setup for a just-connected MCP:
  * it shows while discovery runs and clears when the server reports it ready or
- * failed, saying so on failure. Fidelity: the catalog item goes through the real
- * toIntegration and the real heading; the websocket push that re-reads it is not run.
+ * failed, saying so on failure. Fidelity: the real catalog item drives the real
+ * isSettingUpTools and the real heading; the websocket push that re-reads it is not run.
  */
 import type { MyIntegrationItem } from "@shared/types";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { IntegrationToolsHeading } from "@/components/layout/sidebar/right-variants/integration-sidebar/IntegrationToolsHeading";
-import {
-  isSettingUpTools,
-  toIntegration,
-} from "@/features/integrations/utils/catalog";
+import { isSettingUpTools } from "@/features/integrations/utils/catalog";
 
 function connectedMcp(
   toolsSetup: MyIntegrationItem["toolsSetup"],
@@ -36,7 +33,7 @@ function connectedMcp(
 }
 
 function renderHeading(toolsSetup: MyIntegrationItem["toolsSetup"]) {
-  const integration = toIntegration(connectedMcp(toolsSetup));
+  const integration = connectedMcp(toolsSetup);
   const isSettling = isSettingUpTools(integration);
   return render(
     <IntegrationToolsHeading
@@ -70,6 +67,6 @@ describe("the tools setup indicator", () => {
   });
 
   it("does not wait on an integration no connect reported a discovery for", () => {
-    expect(isSettingUpTools(toIntegration(connectedMcp(null)))).toBe(false);
+    expect(isSettingUpTools(connectedMcp(null))).toBe(false);
   });
 });

@@ -56,7 +56,7 @@ function ContactRequestForm({
       description: initialDescription,
     });
   // Only a sender with a session email goes through the signed-in route; anyone else proves they are human.
-  const isVisitor = !useCurrentUser().email;
+  const isVisitor = !useCurrentUser()?.email;
   const visitor = useVisitorContact();
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {

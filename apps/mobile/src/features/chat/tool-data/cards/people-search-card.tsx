@@ -1,17 +1,11 @@
+import type { PeopleSearchData } from "@gaia/shared";
 import { ScrollView, View } from "react-native";
 import { AppIcon, Call02Icon, Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 import { GmailIcon } from "./gmail-icon";
 
-export interface PeopleSearchData {
-  name?: string;
-  email?: string;
-  phone?: string;
-  organization?: string;
-  role?: string;
-  resource_name?: string;
-}
+export type { PeopleSearchData };
 
 // PersonRow mirrors web's row 1:1 (PeopleSearchCard.tsx): container items-start
 // gap-4 p-3 (no press state); name column w-40 text-sm font-medium text-zinc-300;

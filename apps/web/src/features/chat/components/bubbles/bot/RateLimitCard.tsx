@@ -1,13 +1,13 @@
 import { Chip, Separator } from "@heroui/react";
 import { Clock01Icon, UploadCircle01Icon } from "@icons";
-import type { RateLimitData } from "@shared/chat";
+import type { RateLimitCardData } from "@shared/api/generated";
 import { separatorVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useRateLimitCard } from "@/features/chat/hooks/useRateLimitCard";
 import { DailyLimitBody, UpgradeRequiredBody } from "./RateLimitCardBody";
 
 interface RateLimitCardProps {
-  data: RateLimitData;
+  data: RateLimitCardData;
 }
 
 export default function RateLimitCard({ data }: RateLimitCardProps) {

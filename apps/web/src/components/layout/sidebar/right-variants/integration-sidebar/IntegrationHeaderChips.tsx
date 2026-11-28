@@ -2,13 +2,13 @@
 
 import { Avatar, Chip } from "@heroui/react";
 import { UserCircle02Icon } from "@icons";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import type { Integration } from "@/features/integrations/types";
 
 interface IntegrationHeaderChipsProps {
-  integration: Integration;
+  integration: MyIntegrationItem;
   isConnected: boolean;
   isOwnIntegration: boolean;
   isForkedIntegration: boolean;
@@ -32,8 +32,7 @@ export function IntegrationHeaderChips({
   isOwnIntegration,
   isForkedIntegration,
 }: IntegrationHeaderChipsProps) {
-  const { name: currentUserName, profilePicture: currentUserPicture } =
-    useCurrentUser();
+  const currentUser = useCurrentUser();
 
   return (
     <div className="flex items-center gap-2 flex-row mb-2">
@@ -94,8 +93,10 @@ export function IntegrationHeaderChips({
               })}
             >
               <Avatar size="sm" className="h-4 w-4">
-                <Avatar.Image src={currentUserPicture || undefined} />
-                <Avatar.Fallback>{initialsOf(currentUserName)}</Avatar.Fallback>
+                <Avatar.Image src={currentUser?.picture || undefined} />
+                <Avatar.Fallback>
+                  {initialsOf(currentUser?.name)}
+                </Avatar.Fallback>
               </Avatar>
               <Chip.Label>Created by You</Chip.Label>
             </Chip>

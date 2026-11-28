@@ -16,6 +16,7 @@ from app.agents.tools.execute.unwrap import (
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
 from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import CUSTOM_INT_METADATA_CACHE_PREFIX, CUSTOM_INT_METADATA_TTL
+from app.constants.chat import TOOL_CALLS_CARD
 from app.constants.execute import (
     ACTIVATE_INTEGRATION_TOOL_NAME,
     TICKET_APPROVE_NAME,
@@ -30,9 +31,9 @@ from app.models.stream_events import (
     SubagentAgentType,
     SubagentEndPayload,
     SubagentStartPayload,
-    ToolCallsDataEntry,
     ToolCallsDataEntryData,
 )
+from app.models.tool_card_registry import tool_card_data
 from app.services.browser.captions import describe_action
 from app.services.mcp.mcp_client import get_mcp_client, mcp_tool_owner
 from shared.py.conversation_wire import ToolDataEntry
@@ -234,15 +235,12 @@ async def format_tool_call_entry(
     if tool_name_raw == ACTIVATE_INTEGRATION_TOOL_NAME and integration_name:
         tool_display_name = _ACTIVATE_INTEGRATION_NAMED_LABEL.format(name=integration_name)
 
-    # ToolCallsDataEntry declares exactly the ToolDataEntry keys this variant
-    # carries, in the byte order the frontend parser expects — so its dump IS a
-    # ToolDataEntry by construction (Type Safety item 12).
-    return cast(
-        ToolDataEntry,
-        ToolCallsDataEntry(
-            tool_name="tool_calls_data",
-            tool_category=tool_category or "",
-            data=ToolCallsDataEntryData(
+    return ToolDataEntry(
+        tool_name=TOOL_CALLS_CARD,
+        tool_category=tool_category or "",
+        data=tool_card_data(
+            TOOL_CALLS_CARD,
+            ToolCallsDataEntryData(
                 tool_name=tool_name_raw,
                 tool_category=tool_category or "",
                 message=tool_display_name,
@@ -252,10 +250,10 @@ async def format_tool_call_entry(
                 icon_url=icon_url,
                 integration_name=integration_name,
             ),
-            timestamp=timestamp,
-            mcp_ui=mcp_ui,
-            mcp_server_url=mcp_server_url,
-        ).model_dump(),
+        ),
+        timestamp=timestamp,
+        mcp_ui=mcp_ui,
+        mcp_server_url=mcp_server_url,
     )
 
 
@@ -274,28 +272,26 @@ def format_browser_action_entry(
     format_tool_call_entry. Tagging them with subagent_id is what nests them
     under the run's "Browser" group in the chat thread.
     """
-    return cast(
-        ToolDataEntry,
-        {
-            **ToolCallsDataEntry(
-                tool_name="tool_calls_data",
+    return ToolDataEntry(
+        tool_name=TOOL_CALLS_CARD,
+        tool_category=BROWSER_TOOL_CATEGORY,
+        data=tool_card_data(
+            TOOL_CALLS_CARD,
+            ToolCallsDataEntryData(
+                tool_name=name,
                 tool_category=BROWSER_TOOL_CATEGORY,
-                data=ToolCallsDataEntryData(
-                    tool_name=name,
-                    tool_category=BROWSER_TOOL_CATEGORY,
-                    message=describe_action(name, inputs, target),
-                    show_category=False,
-                    tool_call_id=tool_call_id,
-                    inputs=inputs,
-                    icon_url=None,
-                    integration_name=None,
-                ),
-                timestamp=datetime.now(UTC).isoformat(),
-                mcp_ui=None,
-                mcp_server_url=None,
-            ).model_dump(),
-            "subagent_id": subagent_id,
-        },
+                message=describe_action(name, inputs, target),
+                show_category=False,
+                tool_call_id=tool_call_id,
+                inputs=inputs,
+                icon_url=None,
+                integration_name=None,
+            ),
+        ),
+        timestamp=datetime.now(UTC).isoformat(),
+        mcp_ui=None,
+        mcp_server_url=None,
+        subagent_id=subagent_id,
     )
 
 

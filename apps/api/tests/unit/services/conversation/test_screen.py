@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from hypothesis import given, settings, strategies as st
 import pytest
 
+from app.constants.chat import TOOL_CALLS_CARD
 from app.constants.conversation import REPLY_FAILURE_LINE
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
@@ -45,7 +46,6 @@ from app.models.conversation_send_models import ConversationEvent
 from app.models.hil_models import ApprovalDescription, ApprovalDetail
 from app.services.conversation import screen_patches as screen_patches_module
 from app.services.conversation.screen import (
-    TOOL_CALL_CARD,
     project_screen,
     work_root,
     work_timeline,
@@ -80,7 +80,7 @@ from tests.unit.services.conversation.log_helpers import (
 
 def _handoff(call_id: str) -> ToolDataEntry:
     return {
-        "tool_name": TOOL_CALL_CARD,
+        "tool_name": TOOL_CALLS_CARD,
         "data": {
             "tool_name": CALL_EXECUTOR_NAME,
             "tool_call_id": call_id,
@@ -90,7 +90,7 @@ def _handoff(call_id: str) -> ToolDataEntry:
 
 
 def _card(name: str) -> ToolDataEntry:
-    return {"tool_name": TOOL_CALL_CARD, "data": {"tool_name": name, "tool_call_id": name}}
+    return {"tool_name": TOOL_CALLS_CARD, "data": {"tool_name": name, "tool_call_id": name}}
 
 
 def _ids(screen: list[ScreenItem]) -> list[str]:
@@ -529,7 +529,7 @@ async def test_a_handed_over_tasks_cards_show_on_the_work_item_it_joined() -> No
 
 def _long_call(call_id: str) -> ToolDataEntry:
     data = {"tool_name": "read", "tool_call_id": call_id, "output": "o" * (MAX_OUTPUT_CHARS + 3)}
-    return {"tool_name": TOOL_CALL_CARD, "data": data}
+    return {"tool_name": TOOL_CALLS_CARD, "data": data}
 
 
 @pytest.mark.regression
@@ -839,7 +839,7 @@ def test_the_progress_line_skips_other_cards_and_silent_calls_down_to_the_newest
     None
 ):
     speaks: ToolDataEntry = {
-        "tool_name": TOOL_CALL_CARD,
+        "tool_name": TOOL_CALLS_CARD,
         "data": {
             "tool_name": "gmail_send",
             "message": "Sending the email",
@@ -847,7 +847,7 @@ def test_the_progress_line_skips_other_cards_and_silent_calls_down_to_the_newest
             "show_category": False,
         },
     }
-    silent: ToolDataEntry = {"tool_name": TOOL_CALL_CARD, "data": {"tool_name": "think"}}
+    silent: ToolDataEntry = {"tool_name": TOOL_CALLS_CARD, "data": {"tool_name": "think"}}
     other: ToolDataEntry = {"tool_name": "search", "data": {"message": "not a tool call"}}
     reply = Reply(
         id="r:reply", reply_id="r", attempt_id="1", text="hi", tool_data=(speaks, silent, other)
@@ -877,11 +877,11 @@ def test_work_answering_no_user_message_has_no_retry_target() -> None:
 
 def test_an_items_timeline_states_the_newest_tool_calls_progress_line() -> None:
     first: ToolDataEntry = {
-        "tool_name": TOOL_CALL_CARD,
+        "tool_name": TOOL_CALLS_CARD,
         "data": {"tool_name": "search", "message": "Searching the web", "show_category": False},
     }
     newest: ToolDataEntry = {
-        "tool_name": TOOL_CALL_CARD,
+        "tool_name": TOOL_CALLS_CARD,
         "data": {
             "tool_name": "gmail_send",
             "tool_category": "gmail",

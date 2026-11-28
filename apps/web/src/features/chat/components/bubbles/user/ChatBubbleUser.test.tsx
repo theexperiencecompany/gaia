@@ -6,7 +6,7 @@ import { BASE_MESSAGE_SCHEMA } from "@/config/registries/baseMessageRegistry";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
-  useCurrentUser: () => ({ profilePicture: "" }),
+  useCurrentUser: () => ({ picture: "" }),
 }));
 
 vi.mock("@/features/chat/components/interface/MarkdownRenderer", () => ({

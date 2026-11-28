@@ -14,6 +14,7 @@ from typing import Protocol, assert_never
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
+from app.constants.chat import TOOL_CALLS_CARD
 from app.constants.conversation import REPLY_FAILURE_LINE
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import (
@@ -49,6 +50,7 @@ from app.models.conversation_screen_models import (
     WorkStatus,
 )
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
+from app.models.tool_card_registry import tool_card_data
 from app.services.conversation.reply_files import reply_files
 from app.services.conversation.reply_text import screen_bubbles
 from app.services.conversation.tool_cards import capped_outputs, coalesced_thinking
@@ -63,8 +65,6 @@ from shared.py.conversation_wire import (
     ToolTimeline,
 )
 
-#: The card a tool call streams; a hand-off is one whose call is call_executor.
-TOOL_CALL_CARD = "tool_calls_data"
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
 #: A work item whose cards are still being published.
 LIVE_WORK = frozenset({WorkStatus.RUNNING, WorkStatus.AWAITING_APPROVAL})
@@ -108,14 +108,14 @@ def _card_data(card: ToolDataEntry) -> _CardData:
 
 def handoff_call_id(card: ToolDataEntry) -> str | None:
     """Return the tool call id when card is a comms hand-off to the executor, else None."""
-    if card["tool_name"] != TOOL_CALL_CARD:
+    if card["tool_name"] != TOOL_CALLS_CARD:
         return None
     data = _card_data(card)
     return data.tool_call_id if data.tool_name == CALL_EXECUTOR_NAME else None
 
 
 def _is_handoff(card: ToolDataEntry) -> bool:
-    return card["tool_name"] == TOOL_CALL_CARD and _card_data(card).tool_name == CALL_EXECUTOR_NAME
+    return card["tool_name"] == TOOL_CALLS_CARD and _card_data(card).tool_name == CALL_EXECUTOR_NAME
 
 
 def work_root(started: Mapping[str, WorkStarted], task_id: str) -> str:
@@ -431,7 +431,7 @@ def work_timeline(
             "tool_name": approval.tool_name,
             # Approval cards are grouped: tool_timeline keeps only their data.
             "tool_category": approval.tool_category,  # pragma: no mutate — never read
-            "data": approval.data.model_dump(mode="json"),
+            "data": tool_card_data(APPROVAL_REQUEST_TOOL_NAME, approval.data),
             "timestamp": approval.timestamp,  # pragma: no mutate — never read
         }
         for approval in approvals

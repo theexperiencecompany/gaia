@@ -2,10 +2,10 @@
 
 from datetime import UTC, datetime, timedelta
 import inspect
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, NamedTuple, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import ValidationError
 import pytest
 
@@ -22,8 +22,10 @@ from app.models.todo_models import (
     BulkOperationResponse,
     PaginationMeta,
     Priority,
+    ProjectResponse,
     SearchMode,
     SubTask,
+    TodoCounts,
     TodoDayWindow,
     TodoLabelCount,
     TodoListResponse,
@@ -36,6 +38,7 @@ from app.services.todos.errors import TodoNotFoundError
 from app.services.todos.todo_bulk_service import BulkCompletion
 from app.utils.timezone import Timezone
 from tests.helpers import captured_wide_event
+from tests.tool_helpers import tool_coroutine
 
 # Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
 # @with_rate_limiting doesn't crash iterating usage_info.items().
@@ -81,8 +84,8 @@ def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
 _IST_TODAY_START = datetime(2026, 6, 14, 18, 30, tzinfo=UTC)
 
 
-def _make_todo_response(**overrides: Any) -> MagicMock:
-    """Create a mock TodoResponse with model_dump support."""
+def _make_todo_response(**overrides: Any) -> TodoResponse:
+    """Create a TodoResponse."""
     defaults = {
         "id": "todo-1",
         "user_id": FAKE_USER_ID,
@@ -102,15 +105,11 @@ def _make_todo_response(**overrides: Any) -> MagicMock:
         "updated_at": datetime.now(UTC),
     }
     defaults.update(overrides)
-    mock = MagicMock()
-    for key, val in defaults.items():
-        setattr(mock, key, val)
-    mock.model_dump.return_value = defaults
-    return mock
+    return TodoResponse.model_validate(defaults)
 
 
-def _make_project_response(**overrides: Any) -> MagicMock:
-    """Create a mock ProjectResponse."""
+def _make_project_response(**overrides: Any) -> ProjectResponse:
+    """Create a ProjectResponse."""
     defaults = {
         "id": "proj-1",
         "user_id": FAKE_USER_ID,
@@ -121,11 +120,13 @@ def _make_project_response(**overrides: Any) -> MagicMock:
         "updated_at": datetime.now(UTC).isoformat(),
     }
     defaults.update(overrides)
-    mock = MagicMock()
-    for key, val in defaults.items():
-        setattr(mock, key, val)
-    mock.model_dump.return_value = defaults
-    return mock
+    return ProjectResponse.model_validate(defaults)
+
+
+def _card(**fields: object) -> dict[str, object]:
+    """Return the todo_data card the tool streams: every field it does not set arrives as null."""
+    unset = ("todos", "projects", "project_completion", "stats", "counts", "summary")
+    return {**dict.fromkeys(unset), **fields}
 
 
 def _writer_mock() -> MagicMock:
@@ -315,32 +316,6 @@ class TestCreateTodo:
 
         assert result["error"] is None
         assert result["todo"]["priority"] == Priority.HIGH
-
-    @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
-    async def test_workflow_included_in_response(
-        self,
-        mock_service: AsyncMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        writer = _writer_mock()
-        mock_writer_factory.return_value = writer
-        todo = _make_todo_response(title="Task with workflow")
-        todo_dict = todo.model_dump()
-        todo_dict["workflow"] = {"steps": ["step1"]}
-        todo.model_dump.return_value = todo_dict
-        mock_service.return_value = todo
-
-        from app.agents.tools.todo_tool import create_todo
-
-        result = await create_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
-            config=_make_config(),
-            title="Task with workflow",
-        )
-
-        assert result["error"] is None
-        # Writer should be called with workflow data
-        writer.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -676,14 +651,18 @@ class TestGetTodoStatistics:
 
     @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.user_todo_counts", new_callable=AsyncMock)
     @patch(f"{MODULE}.todo_repository.compute_stats", new_callable=AsyncMock)
     async def test_happy_path(
         self,
         mock_service: AsyncMock,
+        mock_counts: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
         mock_service.return_value = TodoStats(total=10, completed=5, pending=5)
+        mock_counts.return_value = TodoCounts(inbox=1, today=2, upcoming=3, completed=5, overdue=4)
 
         from app.agents.tools.todo_tool import get_todo_statistics
 
@@ -692,6 +671,17 @@ class TestGetTodoStatistics:
         assert result["error"] is None
         assert result["stats"]["total"] == 10
         mock_service.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_IST_WINDOW)
+        mock_counts.assert_awaited_once_with(FAKE_USER_ID, _IST_WINDOW)
+        card = writer.call_args.args[0]["todo_data"]
+        assert (card["action"], card["message"]) == ("stats", "Here's your task overview")
+        assert card["stats"]["total"] == 10
+        assert card["counts"] == {
+            "inbox": 1,
+            "today": 2,
+            "upcoming": 3,
+            "completed": 5,
+            "overdue": 4,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -832,14 +822,20 @@ class TestListProjects:
     """Tests for the list_projects tool."""
 
     @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.todo_repository.compute_stats", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
         mock_service: AsyncMock,
+        mock_stats: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
         mock_service.return_value = [_make_project_response()]
+        mock_stats.return_value = TodoStats(
+            by_project={"proj-1": 4, "proj-2": 3}, pending_by_project={"proj-1": 1, "proj-2": 3}
+        )
 
         from app.agents.tools.todo_tool import list_projects
 
@@ -847,6 +843,9 @@ class TestListProjects:
 
         assert result["error"] is None
         assert result["count"] == 1
+        card = writer.call_args.args[0]["todo_data"]
+        assert card["projects"][0]["id"] == "proj-1"
+        assert card["project_completion"] == {"proj-1": 75, "proj-2": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -1114,7 +1113,7 @@ class TestBulkDeleteTodos:
 
         assert result == {"success": True, "error": None}
         writer.assert_called_once_with(
-            {"todo_data": {"action": "delete", "message": "Deleted 2 tasks"}}
+            {"todo_data": _card(action="delete", message="Deleted 2 tasks")}
         )
 
     @patch(f"{MODULE}.current_stream_writer")
@@ -1171,16 +1170,16 @@ class TestAddChecklistItem:
                 config=_make_config(), todo_id="todo-1", title="Buy milk"
             )
 
-        todo_dict = updated.model_dump.return_value
+        todo_dict = updated.model_dump(mode="json")
         assert result == {"todo": todo_dict, "error": None}
         assert event["tool"] == {"name": "add_checklist_item", "action": "create"}
         writer.assert_called_once_with(
             {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": "Added checklist item 'Buy milk' to Groceries",
-                }
+                "todo_data": _card(
+                    todos=[todo_dict],
+                    action="update",
+                    message="Added checklist item 'Buy milk' to Groceries",
+                )
             }
         )
         todo_id, update_data, user_id = mock_update.await_args.args
@@ -1234,16 +1233,16 @@ class TestUpdateChecklistItem:
                 completed=True,
             )
 
-        todo_dict = updated.model_dump.return_value
+        todo_dict = updated.model_dump(mode="json")
         assert result == {"todo": todo_dict, "error": None}
         assert event["tool"] == {"name": "update_checklist_item", "action": "update"}
         writer.assert_called_once_with(
             {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": "Updated checklist item in Groceries",
-                }
+                "todo_data": _card(
+                    todos=[todo_dict],
+                    action="update",
+                    message="Updated checklist item in Groceries",
+                )
             }
         )
         mock_update.assert_awaited_once_with(
@@ -1312,16 +1311,16 @@ class TestDeleteChecklistItem:
                 config=_make_config(), todo_id="todo-1", item_id="sub-1"
             )
 
-        todo_dict = updated.model_dump.return_value
+        todo_dict = updated.model_dump(mode="json")
         assert result == {"todo": todo_dict, "error": None}
         assert event["tool"] == {"name": "delete_checklist_item", "action": "delete"}
         writer.assert_called_once_with(
             {
-                "todo_data": {
-                    "todos": [todo_dict],
-                    "action": "update",
-                    "message": "Removed checklist item from Groceries",
-                }
+                "todo_data": _card(
+                    todos=[todo_dict],
+                    action="update",
+                    message="Removed checklist item from Groceries",
+                )
             }
         )
         mock_update.assert_awaited_once_with(
@@ -1436,7 +1435,7 @@ class TestGetTodosSummary:
         }
         assert result == {"summary": expected, "error": None}
         writer.assert_called_once_with(
-            {"todo_data": {"summary": expected, "action": "summary", "message": ANY}}
+            {"todo_data": _card(summary=expected, action="summary", message=ANY)}
         )
         assert sorted(pages.served) == ["completed", "high", "overdue", "today", "upcoming"]
         mock_repo.compute_stats.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_IST_WINDOW)
@@ -1547,7 +1546,7 @@ _FAR = "6ae10081d5575101b9faaaaa"
 _NOTE_TAIL = "Copy todo ids exactly as list_todos returns them."
 
 
-def _users_todos() -> list[MagicMock]:
+def _users_todos() -> list[TodoResponse]:
     """Return the run user's todos, the shorter id and the far one listed before every near one."""
     return [
         _make_todo_response(id="todo-1", title="short id"),
@@ -1659,7 +1658,7 @@ class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
         mock_bulk.assert_awaited_once_with([_SIBLING, _MISCOPIED, unrelated], FAKE_USER_ID)
         mock_list.assert_awaited_once_with(FAKE_USER_ID, limit=100)
         writer.assert_called_once_with(
-            {"todo_data": {"action": "delete", "message": "Deleted 1 task"}}
+            {"todo_data": _card(action="delete", message="Deleted 1 task")}
         )
         assert event["tool"] == {"name": "bulk_delete_todos", "action": "bulk_delete"}
         assert event["warnings"] == [
@@ -1669,3 +1668,240 @@ class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
                 "unknown_count": 2,
             }
         ]
+
+
+class _ListToolCase(NamedTuple):
+    tool: BaseTool
+    service: str
+    kwargs: dict[str, object]
+    action: str
+    messages: tuple[str, str]  # for one result, then for two
+
+
+_LIST_TOOL_CASES = [
+    _ListToolCase(
+        todo_tool_module.list_todos,
+        "get_all_todos_service",
+        {},
+        "list",
+        ("Found 1 task", "Found 2 tasks"),
+    ),
+    _ListToolCase(
+        todo_tool_module.search_todos,
+        "search_todos_service",
+        {"query": "milk"},
+        "search",
+        ("Found 1 task matching 'milk'", "Found 2 tasks matching 'milk'"),
+    ),
+    _ListToolCase(
+        todo_tool_module.semantic_search_todos,
+        "semantic_search_todos_service",
+        {"query": "milk"},
+        "search",
+        (
+            "Found 1 task using AI search for 'milk'",
+            "Found 2 tasks using AI search for 'milk'",
+        ),
+    ),
+    _ListToolCase(
+        todo_tool_module.get_today_todos,
+        "get_todos_by_date_range",
+        {},
+        "list",
+        ("Found 1 task due today", "Found 2 tasks due today"),
+    ),
+    _ListToolCase(
+        todo_tool_module.get_upcoming_todos,
+        "get_todos_by_date_range",
+        {"days": 3},
+        "list",
+        (
+            "Found 1 upcoming task in the next 3 days",
+            "Found 2 upcoming tasks in the next 3 days",
+        ),
+    ),
+    _ListToolCase(
+        todo_tool_module.get_todos_by_label,
+        "get_todos_by_label_service",
+        {"label": "home"},
+        "list",
+        ("Found 1 task with label 'home'", "Found 2 tasks with label 'home'"),
+    ),
+    _ListToolCase(
+        todo_tool_module.bulk_move_todos,
+        "bulk_move_service",
+        {"todo_ids": ["todo-0", "todo-1"], "project_id": "proj-2"},
+        "update",
+        ("Moved 1 task to project", "Moved 2 tasks to project"),
+    ),
+]
+
+
+class TestEveryTodoToolStreamsWhatItActedOn:
+    """Each tool's todo_data card carries what it returned, under a count-agreeing heading."""
+
+    @pytest.mark.parametrize("case", _LIST_TOOL_CASES, ids=lambda c: c.tool.name)
+    @pytest.mark.parametrize("count", [1, 2])
+    async def test_a_list_tool_streams_its_results(self, case: _ListToolCase, count: int) -> None:
+        todos = [_make_todo_response(id=f"todo-{i}") for i in range(count)]
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
+            patch(f"{MODULE}.{case.service}", AsyncMock(return_value=todos)),
+        ):
+            await tool_coroutine(case.tool, todo_tool_module.TodoListResult)(
+                config=_make_config(), **case.kwargs
+            )
+
+        writer.assert_called_once_with(
+            {
+                "todo_data": _card(
+                    todos=[t.model_dump(mode="json") for t in todos],
+                    action=case.action,
+                    message=case.messages[count - 1],
+                )
+            }
+        )
+
+    @pytest.mark.parametrize("count", [1, 2])
+    async def test_bulk_complete_streams_the_todos_it_closed(self, count: int) -> None:
+        todos = [_make_todo_response(id=f"todo-{i}", completed=True) for i in range(count)]
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
+            patch(
+                f"{MODULE}.bulk_complete_service",
+                AsyncMock(return_value=BulkCompletion(todos=todos, failed=[])),
+            ),
+        ):
+            await tool_coroutine(
+                todo_tool_module.bulk_complete_todos, todo_tool_module.TodoListResult
+            )(config=_make_config(), todo_ids=[t.id for t in todos])
+
+        writer.assert_called_once_with(
+            {
+                "todo_data": _card(
+                    todos=[t.model_dump(mode="json") for t in todos],
+                    action="update",
+                    message=("Completed 1 task", "Completed 2 tasks")[count - 1],
+                )
+            }
+        )
+
+    async def test_create_todo_streams_the_created_todo(self) -> None:
+        todo = _make_todo_response(title="Buy milk")
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
+            patch(f"{MODULE}.TodoService.create_todo", AsyncMock(return_value=todo)),
+        ):
+            await tool_coroutine(todo_tool_module.create_todo, todo_tool_module.TodoResult)(
+                config=_make_config(), title="Buy milk"
+            )
+
+        writer.assert_called_once_with(
+            {
+                "todo_data": _card(
+                    todos=[todo.model_dump(mode="json")],
+                    action="create",
+                    message="Created task: Buy milk",
+                )
+            }
+        )
+
+    async def test_update_todo_streams_the_updated_todo(self) -> None:
+        todo = _make_todo_response(title="Buy oat milk")
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
+            patch(f"{MODULE}.update_todo_service", AsyncMock(return_value=todo)),
+        ):
+            await tool_coroutine(todo_tool_module.update_todo, todo_tool_module.TodoResult)(
+                config=_make_config(), todo_id="todo-1", title="Buy oat milk"
+            )
+
+        writer.assert_called_once_with(
+            {
+                "todo_data": _card(
+                    todos=[todo.model_dump(mode="json")],
+                    action="update",
+                    message="Updated task: Buy oat milk",
+                )
+            }
+        )
+
+    async def test_create_project_streams_the_created_project(self) -> None:
+        project = _make_project_response(name="Home")
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
+            patch(f"{MODULE}.create_project_service", AsyncMock(return_value=project)),
+        ):
+            await tool_coroutine(todo_tool_module.create_project, todo_tool_module.ProjectResult)(
+                config=_make_config(), name="Home"
+            )
+
+        writer.assert_called_once_with(
+            {
+                "todo_data": _card(
+                    projects=[project.model_dump(mode="json")],
+                    action="create",
+                    message="Created project: Home",
+                )
+            }
+        )
+
+    async def test_update_project_streams_the_updated_project(self) -> None:
+        project = _make_project_response(name="Errands")
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
+            patch(f"{MODULE}.update_project_service", AsyncMock(return_value=project)),
+        ):
+            await tool_coroutine(todo_tool_module.update_project, todo_tool_module.ProjectResult)(
+                config=_make_config(), project_id="proj-1", name="Errands"
+            )
+
+        writer.assert_called_once_with(
+            {
+                "todo_data": _card(
+                    projects=[project.model_dump(mode="json")],
+                    action="update",
+                    message="Updated project: Errands",
+                )
+            }
+        )
+
+    @pytest.mark.parametrize("count", [1, 2])
+    async def test_list_projects_reads_the_run_users_projects_on_their_day(
+        self, count: int
+    ) -> None:
+        projects = [_make_project_response(id=f"proj-{i}") for i in range(count)]
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.datetime", _UTCOnlyDateTime),
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
+            patch(
+                f"{MODULE}.get_all_projects_service", AsyncMock(return_value=projects)
+            ) as get_projects,
+            patch(
+                f"{MODULE}.todo_repository.compute_stats",
+                AsyncMock(return_value=TodoStats(by_project={"proj-0": 2})),
+            ) as compute_stats,
+        ):
+            await tool_coroutine(
+                todo_tool_module.list_projects, todo_tool_module.ProjectListResult
+            )(config=_make_config())
+
+        get_projects.assert_awaited_once_with(FAKE_USER_ID)
+        compute_stats.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_IST_WINDOW)
+        writer.assert_called_once_with(
+            {
+                "todo_data": _card(
+                    projects=[p.model_dump(mode="json") for p in projects],
+                    project_completion={"proj-0": 100},
+                    action="list",
+                    message=("You have 1 project", "You have 2 projects")[count - 1],
+                )
+            }
+        )

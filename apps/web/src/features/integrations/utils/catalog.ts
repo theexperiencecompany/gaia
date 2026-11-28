@@ -1,59 +1,21 @@
-import type { MyIntegrationItem } from "@shared/types";
+import type { MyIntegrationItem } from "@shared/api/generated";
 import {
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
 } from "@shared/utils";
-import type { Integration, IntegrationStatus } from "../types";
+import type { IntegrationStatus } from "../types";
 
 /** Whether a connected integration is still discovering its tools, as the server reports it. */
-export function isSettingUpTools(integration: Integration): boolean {
+export function isSettingUpTools(integration: MyIntegrationItem): boolean {
   return (
     integration.status === "connected" && integration.toolsSetup === "running"
   );
 }
 
-/**
- * One entry of the personalized catalog in the shape the app consumes.
- *
- * `expiredAt` is normalized from `null` to `undefined` so a live connection
- * carries no timestamp at all, rather than a null the row would have to guard.
- */
-export function toIntegration(item: MyIntegrationItem): Integration {
-  return {
-    id: item.id,
-    name: item.name,
-    description: item.description,
-    category: item.category as Integration["category"],
-    status: item.status,
-    expiredAt: item.expiredAt ?? undefined,
-    managedBy: item.managedBy,
-    source: item.source,
-    requiresAuth: item.requiresAuth,
-    authType: item.authType ?? undefined,
-    isFeatured: item.isFeatured,
-    displayPriority: item.displayPriority,
-    available: item.available,
-    instanceSetupRequired: item.instanceSetupRequired,
-    origin: item.origin,
-    toolCount: item.toolCount,
-    toolsSetup: item.toolsSetup ?? undefined,
-    iconUrl: item.iconUrl ?? undefined,
-    isPublic: item.isPublic ?? undefined,
-    createdBy: item.createdBy ?? undefined,
-    creator: item.creator
-      ? {
-          name: item.creator.name ?? null,
-          picture: item.creator.picture ?? null,
-        }
-      : undefined,
-    slug: item.slug ?? "",
-  };
-}
-
 /** Needs-attention first (expired, then created), then connected, then the rest. */
 export function byConnectionStateThenName(
-  a: Integration,
-  b: Integration,
+  a: MyIntegrationItem,
+  b: MyIntegrationItem,
 ): number {
   const priorityA =
     INTEGRATION_STATE_ORDER[integrationConnectionState(a.status)];

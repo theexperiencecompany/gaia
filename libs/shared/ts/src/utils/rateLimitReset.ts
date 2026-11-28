@@ -13,7 +13,7 @@ function availableAt(reset: Date): string {
 
 /** When a limit lifts, worded for its distance: a countdown today, the day itself beyond that. */
 export function rateLimitResetInfo(
-  resetTime?: string,
+  resetTime?: string | null,
 ): RateLimitResetInfo | null {
   if (!resetTime) return null;
   const reset = new Date(resetTime);

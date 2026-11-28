@@ -13,8 +13,8 @@ import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.models.search_models import MessageSearchResult, SearchResultsResponse
+from app.models.web_search_models import SearchResultItem, WebSearchResult
 from app.utils.log_identifiers import user_text_shape
-from app.utils.search.models import SearchResultItem, WebSearchResult
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.search import SearchPerformed
 from tests.conftest import FAKE_USER

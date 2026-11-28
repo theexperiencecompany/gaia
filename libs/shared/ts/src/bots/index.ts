@@ -89,15 +89,11 @@ export type {
 } from "./link-codes.types";
 export { setPlatformConnected } from "./metrics";
 export type {
-  AuthenticatedSettingsResponse,
   AuthStatus,
   BotCommand,
   BotCommandOption,
   BotConfig,
-  BotConversation,
-  BotConversationListResponse,
   BotFileData,
-  BotIntegrationInfo,
   BotSubcommand,
   BotUserContext,
   ChatRequest,
@@ -109,8 +105,6 @@ export type {
   RichMessage,
   RichMessageTarget,
   SentMessage,
-  SettingsResponse,
-  UnauthenticatedSettingsResponse,
 } from "./types";
 export type {
   BotFailureReason,

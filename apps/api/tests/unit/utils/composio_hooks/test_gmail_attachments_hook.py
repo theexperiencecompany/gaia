@@ -26,6 +26,7 @@ from app.utils.composio_hooks.file_upload_hooks import (
     resolve_tool_attachments,
 )
 from app.utils.composio_hooks.gmail_hooks import (
+    _compose_card,
     _compose_recipient_ready,
     _compose_recipients,
     _normalize_compose_body,
@@ -135,7 +136,9 @@ class TestStrictGmailResolution:
         assert params["arguments"]["attachment"] == resolved[0]
         assert "attachments" not in params["arguments"]
         # The stream payload carries name+mimetype only, never the s3key.
-        assert display == [{"name": "y.pdf", "mimetype": "application/pdf"}]
+        assert [d.model_dump() for d in display] == [
+            {"name": "y.pdf", "mimetype": "application/pdf"}
+        ]
 
     def test_multiple_references_become_a_list(self):
         params = {
@@ -260,6 +263,26 @@ class TestNormalizeComposeBody:
         _normalize_compose_body(args)
         assert args["is_html"] is True
         assert "body" not in args
+
+
+class TestComposeCardAddresses:
+    """The card always carries address lists, whatever shape the model sent."""
+
+    @pytest.mark.regression
+    def test_a_single_cc_string_becomes_a_one_address_list(self):
+        card = _compose_card(
+            "GMAIL_SEND_EMAIL",
+            _compose({"recipient_email": "r@x.com", "cc": "c@x.com", "bcc": "b@x.com"}),
+            [],
+        )
+        assert card.cc == ["c@x.com"]
+        assert card.bcc == ["b@x.com"]
+
+    def test_missing_cc_is_an_empty_list(self):
+        card = _compose_card(
+            "GMAIL_SEND_EMAIL", _compose({"recipient_email": "r@x.com", "cc": None}), []
+        )
+        assert card.cc == []
 
 
 class TestComposeRecipients:
@@ -411,7 +434,7 @@ class TestCreateDraftAfterHook:
         with patch(f"{HOOKS}.current_stream_writer", return_value=writer):
             _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {}})
-        assert "draft_id" not in sent[0]["email_compose_data"][0]
+        assert sent[0]["email_compose_data"][0]["draft_id"] is None
 
     def test_card_with_attachments_and_no_draft_id_is_not_streamed(self):
         # Every send path open to such a card recomposes the mail from its
@@ -433,14 +456,14 @@ class TestCreateDraftAfterHook:
             gmail_create_draft_after_hook(
                 "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "d-1"}}
             )
-        assert "draft_id" not in sent[0]["email_compose_data"][0]
+        assert sent[0]["email_compose_data"][0]["draft_id"] is None
 
     def test_non_dict_data_is_survived(self):
         sent, writer = self._capture()
         with patch(f"{HOOKS}.current_stream_writer", return_value=writer):
             _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": "oops"})
-        assert "draft_id" not in sent[0]["email_compose_data"][0]
+        assert sent[0]["email_compose_data"][0]["draft_id"] is None
 
     def test_no_writer_does_not_raise(self):
         _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
@@ -574,6 +597,7 @@ class TestComposePreviewDefaults:
             "cc": [],
             "is_html": False,
             "attachments": [],
+            "draft_id": None,
         }
 
     def test_recipients_default_to_empty_recipient_and_no_extras(self):
@@ -828,8 +852,6 @@ class TestGetContactsAfterHook:
                         "resource_name": "people/c1",
                     }
                 ],
-                "total_count": 7,
-                "next_page_token": "tok2",
             }
         ]
         assert result == {

@@ -24,10 +24,10 @@ import pytest
 from app.api.v1.endpoints import mcp as mcp_endpoint
 from app.models.conversation_models import ConversationDescriptionHit, ConversationMessageHit
 from app.models.integration_models import Integration
+from app.models.web_search_models import SearchResponse, SearchResultItem
 from app.services.integrations import marketplace
 from app.services.search_service import search_messages
 from app.utils.search.engine import SearchEngine
-from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
 from tests.conftest import FAKE_USER
 from tests.factories import make_reply_item

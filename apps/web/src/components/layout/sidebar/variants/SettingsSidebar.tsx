@@ -21,7 +21,7 @@ export default function SettingsSidebar() {
 
   // Self-host instances have no billing — the entries make no sense there.
   const billingHidden = !useDeployment().bills;
-  const { role } = useCurrentUser();
+  const role = useCurrentUser()?.role;
 
   const visibleItems = settingsPageItems.filter(
     (item) =>

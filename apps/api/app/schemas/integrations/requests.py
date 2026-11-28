@@ -83,3 +83,9 @@ class ConnectIntegrationRequest(BaseModel):
         None,
         description="An expired account to sign back in, in place, instead of adding one",
     )
+
+
+class ConnectLinkPreviewRequest(BaseModel):
+    """A connect link's code, to preview without spending it."""
+
+    code: str = Field(min_length=1)

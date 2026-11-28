@@ -65,7 +65,7 @@ function TwitterUserCard({
         <div className="flex items-start gap-3">
           <Avatar className="h-12 w-12 shrink-0 rounded-full overflow-hidden">
             <AvatarImage
-              src={user.profile_image_url}
+              src={user.profile_image_url ?? undefined}
               alt={user.name}
               className="h-full w-full object-cover"
             />

@@ -1,4 +1,5 @@
 import { toErrorEnvelope } from "@shared/api";
+import type { RateLimitCardData } from "@shared/api/generated";
 import type { SubscriptionRequiredDetail } from "@shared/types/subscription";
 import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import type { AxiosError } from "axios";
@@ -152,13 +153,7 @@ export const handleRateLimitError = (errorData: unknown): boolean => {
     return false;
   }
 
-  const rateLimit = errorData as {
-    feature?: string;
-    plan_required?: string;
-    reset_time?: string;
-    message?: string;
-    current_plan?: string;
-  };
+  const rateLimit = errorData as Partial<RateLimitCardData>;
 
   const { feature, plan_required, reset_time, message, current_plan } =
     rateLimit;
@@ -172,8 +167,8 @@ export const handleRateLimitError = (errorData: unknown): boolean => {
     if (message) {
       showRateLimitToast({
         message,
-        planRequired: plan_required,
-        resetTime: reset_time,
+        plan_required,
+        reset_time,
         feature,
         showUpgradeButton: true,
       });
@@ -184,12 +179,12 @@ export const handleRateLimitError = (errorData: unknown): boolean => {
       );
     }
   } else if (feature?.includes("token")) {
-    showTokenLimitToast(feature, plan_required);
+    showTokenLimitToast(feature, plan_required ?? undefined);
   } else {
     showRateLimitToast({
       title: "Usage limit reached",
       message: message || undefined,
-      resetTime: reset_time,
+      reset_time,
       feature,
       showUpgradeButton: !isPro,
     });

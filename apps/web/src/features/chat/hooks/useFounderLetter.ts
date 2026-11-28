@@ -30,7 +30,7 @@ export function useFounderLetter(hidden: boolean) {
   // offering it rather than sending readers into a 500.
   const [offerWindowOpen, setOfferWindowOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const userName = useCurrentUser().name;
+  const userName = useCurrentUser()?.name;
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   const reduceMotion = useReducedMotion();
 
@@ -40,7 +40,7 @@ export function useFounderLetter(hidden: boolean) {
   // No configured code means the letter carries no offer at all.
   const liveOfferCode = offerWindowOpen ? discountCode : null;
 
-  const firstName = userName.trim().split(" ")[0] || SALUTATION_FALLBACK;
+  const firstName = userName?.trim().split(" ")[0] || SALUTATION_FALLBACK;
 
   // Whether the envelope appeared on this load, decided at mount: a reader who
   // dismisses it before the code arrives was still shown it.

@@ -1,8 +1,7 @@
 "use client";
 
+import type { MyIntegrationItem } from "@shared/api/generated";
 import { useCallback, useEffect, useRef } from "react";
-
-import type { Integration } from "../types";
 
 /**
  * Integration opened from a deep link / marketplace add before its catalog
@@ -11,7 +10,7 @@ import type { Integration } from "../types";
  * state, nothing renders from it — until a refreshed catalog contains it.
  */
 export function usePendingDeepLink(
-  integrations: Integration[],
+  integrations: MyIntegrationItem[],
   onOpen: (integrationId: string) => void,
 ) {
   const pendingDeepLinkId = useRef<string | null>(null);

@@ -8,7 +8,6 @@ import { cardData } from "@shared/conversation";
 import * as m from "motion/react-m";
 import React, { useId } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,
@@ -24,7 +23,7 @@ import { StoppedNote } from "../StoppedNote";
 import type { ApprovalReceipt } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread, { type TimelineItem } from "../UnifiedToolThread";
-import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
+import { getTypedData, renderTool } from "./ToolRenderers";
 import { useToolRenderAudit } from "./useToolRenderAudit";
 
 const REPLY_QUOTE_MAX_LENGTH = 40;
@@ -400,11 +399,10 @@ export default function TextBubble({
       )}
 
       {cards.map(({ key: entryKey, card }, index) => {
-        const entry = card as TypedToolDataEntry;
-        const toolName = entry.tool_name;
+        const toolName = card.tool_name;
 
         if (toolName === "todo_progress") {
-          const data = getTypedData(entry as ToolDataUnion, "todo_progress");
+          const data = getTypedData(card, "todo_progress");
           return data ? (
             <ChatItemBoundary
               key={`${baseId}-tool-${entryKey}`}
@@ -417,7 +415,7 @@ export default function TextBubble({
           ) : null;
         }
 
-        const typedData = getTypedData(entry as ToolDataUnion, toolName);
+        const typedData = getTypedData(card, toolName);
         if (!typedData) return null;
 
         return (

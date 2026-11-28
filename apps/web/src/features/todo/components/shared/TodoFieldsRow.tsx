@@ -1,5 +1,6 @@
 "use client";
 
+import type { TodoModel } from "@shared/api/generated";
 import DateFieldChip from "@/features/todo/components/fields/DateFieldChip";
 import LabelsFieldChip from "@/features/todo/components/fields/LabelsFieldChip";
 import PriorityFieldChip from "@/features/todo/components/fields/PriorityFieldChip";
@@ -11,12 +12,8 @@ import {
 } from "@/types/features/todoTypes";
 
 interface TodoFieldsRowProps {
-  priority: PriorityType;
-  projectId?: string;
+  todo: Pick<TodoModel, "priority" | "project_id" | "due_date" | "labels">;
   projects: Project[];
-  dueDate?: string;
-  dueDateTimezone?: string;
-  labels: string[];
   onPriorityChange: (priority: PriorityType) => void;
   onProjectChange: (projectId: string) => void;
   onDateChange: (date?: string, timezone?: string) => void;
@@ -26,12 +23,8 @@ interface TodoFieldsRowProps {
 }
 
 export default function TodoFieldsRow({
-  priority,
-  projectId,
+  todo,
   projects,
-  dueDate,
-  dueDateTimezone: _dueDateTimezone,
-  labels,
   onPriorityChange,
   onProjectChange,
   onDateChange,
@@ -39,10 +32,11 @@ export default function TodoFieldsRow({
   className,
   userTimezone,
 }: TodoFieldsRowProps) {
+  const priority = todo.priority ?? Priority.NONE;
   return (
     <div className={`flex flex-wrap gap-2 ${className || ""}`}>
       <ProjectFieldChip
-        value={projectId}
+        value={todo.project_id ?? undefined}
         projects={projects}
         onChange={onProjectChange}
       />
@@ -52,11 +46,11 @@ export default function TodoFieldsRow({
         className={`${priority === Priority.HIGH ? "text-red-400 bg-red-400/20" : priority === Priority.MEDIUM ? "text-yellow-400 bg-yellow-400/20" : priority === Priority.LOW ? "text-blue-400 bg-blue-400/20" : "text-zinc-500"}`}
       />
       <DateFieldChip
-        value={dueDate}
+        value={todo.due_date ?? undefined}
         onChange={onDateChange}
         timezone={userTimezone}
       />
-      <LabelsFieldChip value={labels} onChange={onLabelsChange} />
+      <LabelsFieldChip value={todo.labels ?? []} onChange={onLabelsChange} />
     </div>
   );
 }

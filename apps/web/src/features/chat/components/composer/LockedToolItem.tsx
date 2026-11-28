@@ -1,12 +1,11 @@
 import { SquareLock01Icon } from "@icons";
 import type React from "react";
+import type { ToolInfo } from "@/features/chat/api/toolsApi";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 
-import type { EnhancedToolInfo } from "../../types/enhancedTools";
-
 interface LockedToolItemProps {
-  tool: EnhancedToolInfo;
+  tool: Pick<ToolInfo, "name" | "category" | "display_name" | "icon_url">;
   onConnect?: () => void;
 }
 
@@ -17,7 +16,7 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
   return (
     <button
       type="button"
-      aria-label={`Connect ${tool.displayName} to use ${formatToolName(tool.name)}`}
+      aria-label={`Connect ${tool.display_name} to use ${formatToolName(tool.name)}`}
       className="group relative mx-2 mb-1 block w-[calc(100%_-_1rem)] cursor-pointer text-left"
       onClick={onConnect}
     >
@@ -31,7 +30,7 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
           <div className="flex-shrink-0 blur-[2px] brightness-50 transition group-hover:blur-[0px] group-hover:brightness-100">
             <IntegrationIcon
               integrationId={tool.category}
-              iconUrl={tool.iconUrl}
+              iconUrl={tool.icon_url}
               size={20}
               showBackground
             />
@@ -51,7 +50,7 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
                   className="text-zinc-500"
                 />
                 <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
-                  {tool.displayName}
+                  {tool.display_name}
                 </span>
               </div>
             </div>

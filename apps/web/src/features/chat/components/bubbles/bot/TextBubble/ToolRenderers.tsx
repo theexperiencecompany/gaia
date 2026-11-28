@@ -1,12 +1,16 @@
-import { type ApprovalRequestData, ArtifactCardDataSchema } from "@shared/chat";
+import type {
+  RedditCardComment,
+  RedditCardCommentCreated,
+  RedditCardPost,
+  RedditCardPostCreated,
+  RedditCardSearchPost,
+  SearchResultsData,
+  SuggestedIntegrationCard,
+} from "@shared/api/generated";
+import { ArtifactCardDataSchema } from "@shared/chat";
 import dynamic from "next/dynamic";
 import type React from "react";
-import type {
-  MemoryData,
-  RateLimitData,
-  ToolDataMap,
-  ToolName,
-} from "@/config/registries/toolRegistry";
+import type { ToolDataMap, ToolName } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import { ArtifactCard } from "@/features/chat/components/artifacts/ArtifactCard";
 import ConnectOptions from "@/features/chat/components/bubbles/bot/ConnectOptions";
@@ -17,32 +21,11 @@ import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadC
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import { MCPAppLoading } from "@/features/chat/components/tools/MCPAppLoading";
-import type { DeviceApprovalRequiredData } from "@/features/devices/types";
 import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
-import type {
-  IntegrationConnectionData,
-  IntegrationListStreamData,
-  SuggestedIntegration,
-} from "@/features/integrations/types";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import WorkflowCreatedCard from "@/features/workflows/components/WorkflowCreatedCard";
 import WorkflowDraftCard from "@/features/workflows/components/WorkflowDraftCard";
-import type {
-  EmailComposeData,
-  EmailFetchData,
-  EmailSentData,
-} from "@/types/features/mailTypes";
-import type { NotificationView } from "@/types/features/notificationTypes";
-import type {
-  RedditCommentCreatedData,
-  RedditCommentData,
-  RedditData,
-  RedditPostCreatedData,
-  RedditPostData,
-  RedditSearchData,
-} from "@/types/features/redditTypes";
-import type { SearchResults } from "@/types/features/searchTypes";
 import ApprovalRequestGroup from "../ApprovalRequestGroup";
 import { BriefMessageCard } from "../BriefMessageCard";
 import BrowserTaskSection from "../BrowserTaskSection";
@@ -120,23 +103,28 @@ function dedupePush<T>(
 // When the search_results tool was grouped (LLM emitted it multiple times in one
 // turn), merge the batches into a single result set, deduping by URL across web /
 // images / news.
-function mergeSearchResults(items: readonly SearchResults[]): SearchResults {
+function mergeSearchResults(
+  items: readonly SearchResultsData[],
+): Pick<SearchResultsData, "web" | "images" | "news"> {
   const seenUrls = new Set<string>();
-  const merged: SearchResults = { web: [], images: [], news: [] };
+  const merged: Pick<SearchResultsData, "web" | "images" | "news"> = {
+    web: [],
+    images: [],
+    news: [],
+  };
   for (const item of items) {
-    dedupePush(item.web ?? [], seenUrls, (r) => r.url, merged.web!);
-    dedupePush(item.images ?? [], seenUrls, (img) => img, merged.images!);
-    dedupePush(item.news ?? [], seenUrls, (n) => n.url, merged.news!);
+    dedupePush(item.web ?? [], seenUrls, (r) => r.url, merged.web);
+    dedupePush(item.images ?? [], seenUrls, (img) => img, merged.images);
+    dedupePush(item.news ?? [], seenUrls, (n) => n.url, merged.news);
   }
   return merged;
 }
 
 const TOOL_RENDERERS: Partial<RendererMap> = {
   // Search
-  search_results: (data) => {
-    const items = (Array.isArray(data) ? data : [data]) as SearchResults[];
-    return <SearchResultsTabs search_results={mergeSearchResults(items)} />;
-  },
+  search_results: (data) => (
+    <SearchResultsTabs search_results={mergeSearchResults(data)} />
+  ),
   deep_research_results: (data) => (
     <DeepResearchResultsTabs deep_research_results={data} />
   ),
@@ -152,34 +140,15 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // Email
   email_thread_data: (data) => <EmailThreadCard emailThreadData={data} />,
-  email_fetch_data: (data) => {
-    // When grouped, data is EmailFetchData[][] — flatten batches into one list
-    const emails = Array.isArray(data[0])
-      ? (data as unknown as EmailFetchData[][]).flat()
-      : data;
-    return <EmailListCard emails={emails} />;
-  },
-  email_compose_data: (data) => {
-    // When grouped, data is EmailComposeData[][] — flatten batches
-    const items = Array.isArray(data[0])
-      ? (data as unknown as EmailComposeData[][]).flat()
-      : data;
-    return <EmailComposeSection email_compose_data={items} />;
-  },
-  email_sent_data: (data) => {
-    // When grouped, data is EmailSentData[][] — flatten batches
-    const items = Array.isArray(data[0])
-      ? (data as unknown as EmailSentData[][]).flat()
-      : data;
-    return <EmailSentSection email_sent_data={items} />;
-  },
-  contacts_data: (data) => (
-    <ContactListSection contacts_data={Array.isArray(data) ? data : [data]} />
+  // Grouped: one batch per call, flattened into one list.
+  email_fetch_data: (data) => <EmailListCard emails={data.flat()} />,
+  email_compose_data: (data) => (
+    <EmailComposeSection email_compose_data={data.flat()} />
   ),
+  email_sent_data: (data) => <EmailSentSection email_sent_data={data.flat()} />,
+  contacts_data: (data) => <ContactListSection contacts_data={data} />,
   people_search_data: (data) => (
-    <PeopleSearchSection
-      people_search_data={Array.isArray(data) ? data : [data]}
-    />
+    <PeopleSearchSection people_search_data={data} />
   ),
 
   // Calendar
@@ -192,11 +161,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   calendar_edit_options: (data) => (
     <CalendarEditSection calendar_edit_options={data} />
   ),
-  calendar_fetch_data: (data) => (
-    <CalendarListCard events={Array.isArray(data) ? data : [data]} />
-  ),
+  calendar_fetch_data: (data) => <CalendarListCard events={data} />,
   calendar_list_fetch_data: (data) => (
-    <CalendarListFetchSection calendars={Array.isArray(data) ? data : [data]} />
+    <CalendarListFetchSection calendars={data} />
   ),
 
   // Support ticket
@@ -212,21 +179,10 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     <ArtifactCard card={ArtifactCardDataSchema.parse(data)} />
   ),
 
-  todo_data: (data) => (
-    <TodoSection
-      todos={data.todos}
-      projects={data.projects}
-      stats={data.stats}
-      action={data.action}
-      message={data.message}
-    />
-  ),
+  todo_data: (data) => <TodoSection card={data} />,
   notification_data: (data) => (
     <NotificationListSection
-      notifications={
-        (data as { notifications: unknown[] })
-          .notifications as NotificationView[]
-      }
+      notifications={data.notifications}
       title="Your Notifications"
     />
   ),
@@ -236,13 +192,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   briefing_data: (data) => <BriefMessageCard data={data} />,
   connect_options: (data) => <ConnectOptions connect_options={data} />,
   integration_connection_required: (data) => {
-    // Data can be a single item or an array (when grouped)
-    const items = (
-      Array.isArray(data) ? data : [data]
-    ) as IntegrationConnectionData[];
-    // De-duplicate by integration_id
+    // Grouped: de-duplicate by integration_id
     const seen = new Set<string>();
-    const uniqueItems = items.filter((item) => {
+    const uniqueItems = data.filter((item) => {
       if (seen.has(item.integration_id)) return false;
       seen.add(item.integration_id);
       return true;
@@ -268,12 +220,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   device_approval_required: (data) => {
     // Grouped: a resumed stream can replay the same waiting-device frame, so
-    // normalize single-or-array and de-duplicate by pairing code.
-    const items = (
-      Array.isArray(data) ? data : [data]
-    ) as DeviceApprovalRequiredData[];
+    // de-duplicate by pairing code.
     const seen = new Set<string>();
-    const uniqueItems = items.filter((item) => {
+    const uniqueItems = data.filter((item) => {
       if (seen.has(item.code)) return false;
       seen.add(item.code);
       return true;
@@ -291,15 +240,10 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   },
 
   integration_list_data: (data) => {
-    // Handle grouped data (array of IntegrationListStreamData)
-    const items = (
-      Array.isArray(data) ? data : [data]
-    ) as IntegrationListStreamData[];
-
-    // Merge all suggested integrations and de-duplicate by id in one pass
+    // Grouped: merge all suggested integrations and de-duplicate by id in one pass
     const seen = new Set<string>();
-    const mergedSuggested: SuggestedIntegration[] = [];
-    for (const item of items) {
+    const mergedSuggested: SuggestedIntegrationCard[] = [];
+    for (const item of data) {
       dedupePush(item.suggested ?? [], seen, (s) => s.id, mergedSuggested);
     }
 
@@ -310,23 +254,18 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   twitter_search_data: (data) => (
     <TwitterSearchSection twitter_search_data={data} />
   ),
-  twitter_user_data: (data) => (
-    <TwitterUserSection
-      twitter_user_data={Array.isArray(data) ? data : [data]}
-    />
-  ),
+  twitter_user_data: (data) => <TwitterUserSection twitter_user_data={data} />,
 
   // tool_calls_data and subagent_group are handled together by UnifiedToolThread
   // (see processedTools logic below) — they are NOT rendered through TOOL_RENDERERS.
 
   reddit_data: (data) => {
-    const items = (Array.isArray(data) ? data : [data]) as RedditData[];
     const groups: {
-      search: RedditSearchData[];
-      post: RedditPostData[];
-      comments: RedditCommentData[];
-      post_created: RedditPostCreatedData[];
-      comment_created: RedditCommentCreatedData[];
+      search: RedditCardSearchPost[];
+      post: RedditCardPost[];
+      comments: RedditCardComment[];
+      post_created: RedditCardPostCreated[];
+      comment_created: RedditCardCommentCreated[];
     } = {
       search: [],
       post: [],
@@ -335,7 +274,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       comment_created: [],
     };
 
-    items.forEach((d) => {
+    data.forEach((d) => {
       if (d.type === "search") groups.search.push(...d.posts);
       else if (d.type === "post") groups.post.push(d.post);
       else if (d.type === "comments") groups.comments.push(...d.comments);
@@ -373,10 +312,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   mcp_app: (data) => <MCPAppRenderer data={data} />,
 
   rate_limit_data: (data) => {
-    // When grouped, data is RateLimitData[] — deduplicate by feature
-    const items = (Array.isArray(data) ? data : [data]) as RateLimitData[];
+    // Grouped: deduplicate by feature
     const seen = new Set<string>();
-    const unique = items.filter((item) => {
+    const unique = data.filter((item) => {
       const key = item.feature || "unknown";
       if (seen.has(key)) return false;
       seen.add(key);
@@ -393,20 +331,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // Memory — multiple calls in one turn (e.g. several add_memory or a search
   // followed by an add) are grouped into one card with stacked action rows.
-  memory_data: (data) => {
-    const items = (Array.isArray(data) ? data : [data]) as MemoryData[];
-    return <MemoryCard items={items} />;
-  },
+  memory_data: (data) => <MemoryCard items={data} />,
 
   // HIL approval — grouped so many decisions don't stack a full card each:
   // pending show side by side, settled are removed (reply reflects them).
   // The screen draws exactly one card per approval, from its log entries.
-  approval_request: (data) => {
-    const items = (
-      Array.isArray(data) ? data : [data]
-    ) as ApprovalRequestData[];
-    return <ApprovalRequestGroup items={items} />;
-  },
+  approval_request: (data) => <ApprovalRequestGroup items={data} />,
 };
 
 /** Whether a card's tool has a renderer registered at all. A missing one is a

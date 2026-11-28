@@ -51,9 +51,10 @@ disagree.
 
 from typing import Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, JsonValue
+from pydantic import AwareDatetime, BaseModel, Field, JsonValue
 
 from app.models.hil_models import ApprovalDescription
+from app.schemas.common import ResponseModel
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome, ApprovalStatus
 
 # ---------------------------------------------------------------------------
@@ -61,33 +62,37 @@ from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome, 
 # ---------------------------------------------------------------------------
 
 
-class ToolCallsDataEntryData(BaseModel):
-    """Inner ``data`` object of a ``tool_calls_data`` entry."""
+class ToolCallsDataEntryData(ResponseModel):
+    """One tool call as its tool_calls_data card shows it; the fold adds its output once the tool returns."""
 
     tool_name: str
     tool_category: str
     message: str | None
     show_category: bool
     tool_call_id: str | None
-    inputs: dict[str, Any]
+    inputs: dict[str, object]
     icon_url: str | None
     integration_name: str | None
+    output: str | None = Field(default=None, exclude_if=lambda output: output is None)
+    #: Set when the output was cut: how many characters the tool returned.
+    output_original_length: int | None = Field(
+        default=None, exclude_if=lambda length: length is None
+    )
 
 
-class ToolCallsDataEntry(BaseModel):
-    """The ``tool_calls_data`` tool_data entry built by ``format_tool_call_entry``.
+class ToolCallReasoningStep(ResponseModel):
+    """The model's thinking between tool calls, riding the tool-call channel as a step of its own."""
 
-    Emitted (wrapped in a ``tool_data`` envelope) when a tool call's args are
-    complete. Other tool_data variants (``mcp_app``, ``todo_progress``) ride the
-    same envelope but are assembled at their own sites.
-    """
+    tool_name: Literal["reasoning"]
+    tool_category: Literal["reasoning"]
+    message: str
+    reasoning: str
 
-    tool_name: str
-    tool_category: str
-    data: ToolCallsDataEntryData
-    timestamp: str
-    mcp_ui: dict[str, Any] | None
-    mcp_server_url: str | None
+
+#: A step a tool_calls_data card or a subagent group shows: a tool call, or the thinking around it.
+ToolCallStep = ToolCallsDataEntryData | ToolCallReasoningStep
+#: A tool_calls_data card's data: one step, or a run of thinking steps the fold keeps on one card.
+ToolCallsCardData = ToolCallStep | list[ToolCallStep]
 
 
 class ApprovalRequestEntryData(BaseModel):
@@ -169,6 +174,23 @@ class SubagentEndPayload(BaseModel):
     subagent_id: str
     duration_ms: int
     token_count: int | None = None
+
+
+class SubagentGroupCardData(ResponseModel):
+    """A subagent_group card's data as its start opens it; its end fills duration, tokens and completion."""
+
+    subagent_id: str
+    subagent: str | None
+    subagent_name: str
+    agent_type: SubagentAgentType
+    started_at: str
+    icon_url: str | None
+    tool_category: str | None
+    tool_calls: list[ToolCallStep] = Field(default_factory=list)
+    duration_ms: int | None = None
+    token_count: int | None = None
+    completed_at: str | None = None
+    nested_subagents: list["SubagentGroupCardData"] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

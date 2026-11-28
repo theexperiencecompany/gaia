@@ -288,7 +288,7 @@ export default function TodoListPage({ filters }: TodoListPageProps) {
           onRefresh={refresh}
           onPrefetchWorkflow={handlePrefetchWorkflow}
           scrollElement={scrollElement}
-          timezone={user?.timezone}
+          timezone={user?.timezone ?? undefined}
         />
       </div>
     </div>

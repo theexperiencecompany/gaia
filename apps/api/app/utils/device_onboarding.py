@@ -21,6 +21,12 @@ from app.models.agent_models import (
     read_agent_configurable,
 )
 from app.models.chat_models import SourceCategory
+from app.models.device_card_models import (
+    CliInstallCommands,
+    DeviceApprovalCard,
+    DeviceOnboardingCard,
+)
+from app.models.tool_card_registry import tool_card
 from app.services.device.device_service import build_device_approve_url
 
 
@@ -34,18 +40,19 @@ def request_device_onboarding() -> str:
     source_category = _current_source_category()
     if source_category is not None:
         current_stream_writer()(
-            {
-                "device_onboarding_required": {
-                    "install_commands": CLI_INSTALL_COMMANDS,
-                    "docs_url": DEVICE_BRIDGE_DOCS_URL,
-                    "pair_command": DEVICE_PAIR_COMMAND,
-                    "up_command": DEVICE_UP_COMMAND,
-                    "message": (
+            tool_card(
+                "device_onboarding_required",
+                DeviceOnboardingCard(
+                    install_commands=CliInstallCommands.model_validate(CLI_INSTALL_COMMANDS),
+                    docs_url=DEVICE_BRIDGE_DOCS_URL,
+                    pair_command=DEVICE_PAIR_COMMAND,
+                    up_command=DEVICE_UP_COMMAND,
+                    message=(
                         "Connect a computer so I can run commands and reach local "
                         "servers on it. Follow the steps below."
                     ),
-                }
-            }
+                ),
+            )
         )
     if source_category == SourceCategory.UI.value:
         return (
@@ -73,13 +80,14 @@ def request_device_approval(user_code: str) -> str:
     source_category = _current_source_category()
     if source_category is not None:
         current_stream_writer()(
-            {
-                "device_approval_required": {
-                    "approve_url": approve_url,
-                    "code": code,
-                    "message": "Review and approve linking this device to your account.",
-                }
-            }
+            tool_card(
+                "device_approval_required",
+                DeviceApprovalCard(
+                    approve_url=approve_url,
+                    code=code,
+                    message="Review and approve linking this device to your account.",
+                ),
+            )
         )
     if source_category == SourceCategory.UI.value:
         return (

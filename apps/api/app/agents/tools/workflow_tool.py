@@ -35,6 +35,7 @@ from app.models.agent_models import (
     get_user_id,
     read_agent_configurable,
 )
+from app.models.tool_card_registry import tool_card
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.models.workflow_tool_models import (
     JsonObject,
@@ -206,7 +207,7 @@ async def create_workflow(
                     draft_id,
                     result.draft.title,
                 )
-            writer(result.draft.to_stream_payload(delivery, draft_id))
+            writer(tool_card("workflow_draft", result.draft.to_card(delivery, draft_id)))
             log.info(
                 f"{LogTag.TOOL} create_workflow: streamed draft", draft_title=result.draft.title
             )

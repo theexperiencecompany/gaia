@@ -4,7 +4,8 @@ import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.utils.search.models import SearchResultItem, WebSearchResult
+from app.models.web_search_models import SearchResultItem, WebSearchResult
+from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,7 +47,7 @@ class TestFetchWebpages:
 
         from app.agents.tools.webpage_tool import fetch_webpages
 
-        result = await fetch_webpages.coroutine(
+        result = await tool_coroutine(fetch_webpages, dict[str, Any])(
             config=_make_config(),
             urls=["https://example.com"],
         )
@@ -69,7 +70,7 @@ class TestFetchWebpages:
 
         from app.agents.tools.webpage_tool import fetch_webpages
 
-        result = await fetch_webpages.coroutine(
+        result = await tool_coroutine(fetch_webpages, dict[str, Any])(
             config=_make_config(),
             urls=["https://a.com", "https://b.com"],
         )
@@ -92,7 +93,7 @@ class TestFetchWebpages:
 
         from app.agents.tools.webpage_tool import fetch_webpages
 
-        result = await fetch_webpages.coroutine(
+        result = await tool_coroutine(fetch_webpages, dict[str, Any])(
             config=_make_config(),
             urls=["https://evil.test"],
         )
@@ -119,7 +120,7 @@ class TestFetchWebpages:
 
         from app.agents.tools.webpage_tool import fetch_webpages
 
-        result = await fetch_webpages.coroutine(
+        result = await tool_coroutine(fetch_webpages, dict[str, Any])(
             config=_make_config(),
             urls=[],
         )
@@ -141,7 +142,7 @@ class TestFetchWebpages:
 
         from app.agents.tools.webpage_tool import fetch_webpages
 
-        result = await fetch_webpages.coroutine(
+        result = await tool_coroutine(fetch_webpages, dict[str, Any])(
             config=_make_config(),
             urls=["example.com"],
         )
@@ -165,7 +166,7 @@ class TestFetchWebpages:
 
         from app.agents.tools.webpage_tool import fetch_webpages
 
-        result = await fetch_webpages.coroutine(
+        result = await tool_coroutine(fetch_webpages, dict[str, Any])(
             config=_make_config(),
             urls=["https://bad.com", "https://good.com"],
         )
@@ -187,7 +188,7 @@ class TestFetchWebpages:
 
         from app.agents.tools.webpage_tool import fetch_webpages
 
-        await fetch_webpages.coroutine(
+        await tool_coroutine(fetch_webpages, dict[str, Any])(
             config=_make_config(),
             urls=["https://example.com"],
         )
@@ -223,7 +224,7 @@ class TestWebSearchTool:
 
         from app.agents.tools.webpage_tool import web_search_tool
 
-        result = await web_search_tool.coroutine(
+        result = await tool_coroutine(web_search_tool, dict[str, Any])(
             query_text="test query",
             config=_make_config(),
         )
@@ -258,7 +259,7 @@ class TestWebSearchTool:
 
         from app.agents.tools.webpage_tool import web_search_tool
 
-        result = await web_search_tool.coroutine(
+        result = await tool_coroutine(web_search_tool, dict[str, Any])(
             query_text="test",
             config=_make_config(),
         )
@@ -279,7 +280,7 @@ class TestWebSearchTool:
 
         from app.agents.tools.webpage_tool import web_search_tool
 
-        result = await web_search_tool.coroutine(
+        result = await tool_coroutine(web_search_tool, dict[str, Any])(
             query_text="",
             config=_make_config(),
         )
@@ -300,7 +301,7 @@ class TestWebSearchTool:
 
         from app.agents.tools.webpage_tool import web_search_tool
 
-        result = await web_search_tool.coroutine(
+        result = await tool_coroutine(web_search_tool, dict[str, Any])(
             query_text="test",
             config=_make_config(),
         )
@@ -327,7 +328,7 @@ class TestWebSearchTool:
 
         from app.agents.tools.webpage_tool import web_search_tool
 
-        await web_search_tool.coroutine(
+        await tool_coroutine(web_search_tool, dict[str, Any])(
             query_text="hello",
             config=_make_config(),
         )
@@ -336,6 +337,15 @@ class TestWebSearchTool:
         search_calls = [c for c in writer.call_args_list if "search_results" in c[0][0]]
         assert len(search_calls) == 1
         payload = search_calls[0][0][0]["search_results"]
-        assert payload["query"] == "hello"
-        assert payload["result_count"]["web"] == 1
-        assert payload["result_count"]["images"] == 1
+        assert payload == {
+            "web": [SearchResultItem(title="R1", url="https://r1.com").model_dump()],
+            "news": [],
+            "images": ["img.png"],
+            "videos": [],
+            "query": "hello",
+            "elapsed_time": payload["elapsed_time"],
+            "answer": "",
+            "response_time": 0,
+            "request_id": "",
+            "result_count": {"web": 1, "images": 1, "videos": 0},
+        }

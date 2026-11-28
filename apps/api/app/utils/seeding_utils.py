@@ -1,4 +1,3 @@
-from typing import cast
 from uuid import uuid4
 
 from app.constants.chat import ConversationSource
@@ -10,7 +9,7 @@ from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation_service import create_conversation_service
 from app.services.onboarding.first_conversation import FirstConversation
-from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ToolDataEntry
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from shared.py.wide_events import log
 
 _HOLO_CARD_CONVERSATION_DESCRIPTION = "Your holo card is ready"
@@ -93,7 +92,7 @@ async def seed_first_conversation(user_id: str, composed: FirstConversation) -> 
                 id=_SEEDED,
                 text="",
                 origin=_SEEDED,
-                tool_data=(cast(ToolDataEntry, composed.connect_tool_data()),),
+                tool_data=(composed.connect_tool_data(),),
             ),
             Notice(
                 id=_SEEDED,
