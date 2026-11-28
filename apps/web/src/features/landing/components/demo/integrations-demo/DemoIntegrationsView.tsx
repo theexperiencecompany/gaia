@@ -206,7 +206,7 @@ function DemoIntegrationSidebar({
                 isIconOnly={useIconOnly}
                 className="w-full"
                 aria-label="Disconnect"
-                variant="danger"
+                variant="danger-soft"
               >
                 <Unlink04Icon width={18} height={18} />
                 {!useIconOnly && "Disconnect"}
@@ -216,7 +216,7 @@ function DemoIntegrationSidebar({
                   isIconOnly={useIconOnly}
                   className="w-full"
                   aria-label="View on Marketplace"
-                  variant="primary"
+                  variant="accent-soft"
                 >
                   <InternetIcon width={18} height={18} />
                   {!useIconOnly && "View"}
@@ -227,7 +227,7 @@ function DemoIntegrationSidebar({
                   isIconOnly={useIconOnly}
                   className="w-full"
                   aria-label="Publish"
-                  variant="primary"
+                  variant="accent-soft"
                 >
                   <GlobalIcon width={18} height={18} />
                   {!useIconOnly && "Publish"}
@@ -235,7 +235,7 @@ function DemoIntegrationSidebar({
               )}
               {isPublic && (
                 <GaiaButton
-                  variant="default-solid"
+                  variant="default-soft"
                   isIconOnly={useIconOnly}
                   className="w-full"
                   aria-label="Share"

@@ -346,7 +346,7 @@ export function MissingIntegrationsAlert({
       ) : (
         <ButtonGroup size="sm">
           <GaiaButton
-            variant="default-solid"
+            variant="warning-soft"
             isPending={!!connectingId}
             isDisabled={!!connectingId}
             onPress={() => setIsDropdownOpen((o) => !o)}
@@ -356,7 +356,7 @@ export function MissingIntegrationsAlert({
           <Dropdown isOpen={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
             <GaiaButton
               aria-label="More options"
-              variant="default-solid"
+              variant="warning-soft"
               isIconOnly
               isDisabled={!!connectingId}
             >

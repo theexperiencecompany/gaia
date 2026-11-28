@@ -6,7 +6,8 @@
   "scripts": {
     "inventory": "node inventory.mjs",
     "report": "node report.mjs",
-    "review": "bash review/run.sh"
+    "review": "bash review/run.sh",
+    "test": "node --test __tests__/*.test.mjs"
   },
   "devDependencies": {
     "jscodeshift": "^0.15.2"
