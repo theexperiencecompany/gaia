@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
-import { EffectNotificationsPage } from "@/components/effect/pages/EffectNotificationsPage";
+import { EffectNotificationsBranch } from "@/components/effect/EffectNotificationsBranch";
 import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
@@ -116,7 +116,7 @@ function NotificationsListPage({ effect }: { effect: boolean }) {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         {effect ? (
-          <EffectNotificationsPage
+          <EffectNotificationsBranch
             apiBaseUrl={API_BASE_URL}
             embedded
             tab={selectedTab === "all" ? "all" : "unread"}

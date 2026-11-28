@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { EffectPinsPage } from "@/components/effect/pages/EffectPinsPage";
+import { EffectPinsBranch } from "@/components/effect/EffectPinsBranch";
 import Pins from "@/features/pins/components/PinsPage";
 import { EFFECT_UI_ENABLED } from "@/config/effectUi";
 
@@ -19,7 +19,7 @@ export default async function Page({
   const { effect } = await searchParams;
 
   if (effect === "1" && EFFECT_UI_ENABLED) {
-    return <EffectPinsPage apiBaseUrl={API_BASE_URL} />;
+    return <EffectPinsBranch apiBaseUrl={API_BASE_URL} />;
   }
 
   return <Pins />;

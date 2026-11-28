@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { EffectSettingsAccountPage } from "@/components/effect/pages/EffectSettingsAccountPage";
+import { EffectSettingsAccountBranch } from "@/components/effect/EffectSettingsAccountBranch";
 import type { SettingsSection } from "@/features/settings/config/sectionKeys";
 import {
   DEFAULT_SECTION,
@@ -29,7 +29,7 @@ export default async function SettingsSectionPage({
 
   // The Account section is ported to Effect UI; `?effect=1` swaps it in.
   if (effect === "1" && section === "account" && EFFECT_UI_ENABLED) {
-    return <EffectSettingsAccountPage apiBaseUrl={API_BASE_URL} />;
+    return <EffectSettingsAccountBranch apiBaseUrl={API_BASE_URL} />;
   }
 
   return <SettingsSectionClient section={section as SettingsSection} />;

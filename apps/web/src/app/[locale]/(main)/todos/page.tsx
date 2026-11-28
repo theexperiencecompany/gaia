@@ -1,4 +1,4 @@
-import { EffectTodosPage } from "@/components/effect/pages/EffectTodosPage";
+import { EffectTodosBranch } from "@/components/effect/EffectTodosBranch";
 import TodoListPage from "@/features/todo/components/TodoListPage";
 import { Priority, type TodoFilters } from "@/types/features/todoTypes";
 import { EFFECT_UI_ENABLED } from "@/config/effectUi";
@@ -21,7 +21,7 @@ export default async function TodosPage({
   const { project, priority, completed, effect } = await searchParams;
 
   if (effect === "1" && EFFECT_UI_ENABLED) {
-    return <EffectTodosPage apiBaseUrl={API_BASE_URL} />;
+    return <EffectTodosBranch apiBaseUrl={API_BASE_URL} />;
   }
 
   const filters: TodoFilters = {};

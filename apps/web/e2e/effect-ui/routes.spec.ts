@@ -94,8 +94,8 @@ test.describe("effect ui route coverage", () => {
         // The host div exists before Effect mounts into it, and the page's own
         // "Loading …" placeholder is transient. Scanning either would pass on
         // an empty node or flag text the user never gets to read.
-        await expect(root).not.toBeEmpty();
-        await expect(root).not.toContainText(/Loading/i);
+        await expect(root).not.toBeEmpty({ timeout: 30_000 });
+        await expect(root).not.toContainText(/Loading/i, { timeout: 30_000 });
 
         const accessibility = await new AxeBuilder({ page })
           .include("[data-effect-ui-root]")
