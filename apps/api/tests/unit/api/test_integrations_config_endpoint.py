@@ -220,6 +220,7 @@ def _error_body(integration_id: str, name: str, error: str) -> dict:
         "toolsCount": None,
         "redirectUrl": None,
         "error": error,
+        "accountLabel": None,
     }
 
 
@@ -253,6 +254,7 @@ class TestConnectIntegration:
             "toolsCount": 3,
             "redirectUrl": None,
             "error": None,
+            "accountLabel": None,
         }
         mock_connect.assert_awaited_once_with(
             user_id=_VALID_UID,
@@ -355,6 +357,7 @@ class TestConnectIntegration:
             "toolsCount": None,
             "redirectUrl": "https://oauth.example.com",
             "error": None,
+            "accountLabel": None,
         }
         mock_connect.assert_awaited_once_with(
             user_id=_VALID_UID,
