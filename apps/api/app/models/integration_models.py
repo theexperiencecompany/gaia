@@ -183,7 +183,7 @@ class Integration(MongoDocument):
     mcp_config: MCPConfig | None = None
     composio_config: ComposioConfigDoc | None = None
     connector_config: ConnectorSpec | None = None
-    # When a verify call last proved this connector's spec works; cleared when its hosts or packages change.
+    # When a verify call last proved this connector's spec works; cleared when its spec changes (trust_fingerprint).
     connector_verified_at: datetime | None = None
 
     # Legacy top-level auth mirror: mcp_config is authoritative, these duplicate

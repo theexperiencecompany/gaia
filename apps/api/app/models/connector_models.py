@@ -5,8 +5,10 @@ holds the credential for that one call (see app/services/connectors/).
 """
 
 from enum import StrEnum
+import hashlib
 import re
 from typing import Self
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
@@ -14,6 +16,8 @@ from pydantic.alias_generators import to_camel
 from app.constants.connectors import (
     CONNECTOR_GUIDANCE_MAX_CHARS,
     CONNECTOR_SECRET_PLACEHOLDER,
+    CREDENTIAL_DENIED_DIRS,
+    CREDENTIAL_HOME_FILES,
     MAX_CONNECTOR_HOSTS,
     MAX_CONNECTOR_PACKAGES,
 )
@@ -23,6 +27,23 @@ _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
 _PINNED_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
 _COMMAND_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_WILDCARD = "*."
+# Fields only the connect card or the model reads; changing them moves no key and runs nothing new.
+_COSMETIC_FIELDS: dict[str, bool | set[str]] = {
+    "capability": True,
+    "usage": True,
+    "credential": {"label", "token_url"},
+}
+
+
+def host_allowed(host: str, allowed_hosts: list[str]) -> bool:
+    """Say whether a host is listed; "*.x.com" covers subdomains only, as E2B's allowlist does."""
+    return any(
+        host.endswith(pattern.removeprefix("*"))
+        if pattern.startswith(_WILDCARD)
+        else host == pattern
+        for pattern in allowed_hosts
+    )
 
 
 class ConnectorKind(StrEnum):
@@ -114,9 +135,20 @@ class CredentialFile(BaseModel):
 
     @field_validator("path")
     @classmethod
-    def _no_traversal(cls, value: str) -> str:
-        if ".." in value.split("/"):
+    def _config_location(cls, value: str) -> str:
+        parts = value.removeprefix("~/").split("/")
+        if ".." in parts:
             raise ValueError("path may not contain ..")
+        if len(parts) == 1:
+            if parts[0] not in CREDENTIAL_HOME_FILES:
+                raise ValueError(
+                    f"a home file must be one of {sorted(CREDENTIAL_HOME_FILES)}; "
+                    "put other config in its tool's dot-directory, e.g. ~/.config/<tool>/"
+                )
+        elif not parts[0].startswith(".") or parts[0] in CREDENTIAL_DENIED_DIRS:
+            raise ValueError(
+                f"path must be in a tool's dot-directory other than {sorted(CREDENTIAL_DENIED_DIRS)}"
+            )
         return value
 
 
@@ -280,6 +312,9 @@ class ConnectorSpec(BaseModel):
                     raise ValueError("a rest connector takes rest and nothing else")
                 if self.credential.env or self.credential.files:
                     raise ValueError("a rest connector's key goes in rest.auth_*, not env/files")
+                base_host = urlsplit(self.rest.base_url).hostname or ""
+                if not host_allowed(base_host, self.allowed_hosts):
+                    raise ValueError(f"rest.base_url's host {base_host!r} must be in allowed_hosts")
             case ConnectorKind.SDK:
                 if self.sdk_runtime is None or self.command or self.rest:
                     raise ValueError("an sdk connector takes sdk_runtime and nothing else")
@@ -299,10 +334,10 @@ class ConnectorSpec(BaseModel):
             and not host.removeprefix("*.").endswith(f".{domain}")
         ]
 
-    def reach_fingerprint(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        """What a published connector's verification vouches for: its hosts and its packages."""
-        packages = tuple(f"{p.manager}:{p.name}@{p.version}:{p.sha256 or ''}" for p in self.install)
-        return tuple(self.allowed_hosts), packages
+    def trust_fingerprint(self) -> str:
+        """Hash everything a user's approval covers: what runs with the key and where it goes."""
+        canonical = self.model_dump_json(exclude=_COSMETIC_FIELDS)
+        return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 class ConnectorCardInfo(BaseModel):

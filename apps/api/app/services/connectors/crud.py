@@ -23,18 +23,20 @@ from shared.py.analytics.catalog.integrations import IntegrationConnectorDefined
 from shared.py.wide_events import log
 
 _CONNECTOR_CATEGORY = "developer"
-# Why another user's connection stops when the creator changes where the key can go.
-REACH_CHANGED_REASON = "The connector's hosts or packages changed; reconnect to approve them"
+# Why a connection stops when the connector's spec changes what runs with the key or where it goes.
+REACH_CHANGED_REASON = (
+    "The connector changed what it runs or where it sends your key; reconnect to approve it"
+)
 
 
 def _tools(spec: ConnectorSpec) -> list[StoredIntegrationTool]:
     return [StoredIntegrationTool(name=RUN_CONNECTOR_TOOL, description=spec.capability)]
 
 
-async def _expire_other_users(doc: Integration, owner_id: str) -> None:
-    """Make every other user of a published connector re-approve it before their key travels further."""
+async def _expire_connected_users(doc: Integration) -> None:
+    """Make every connected user, the owner included, see the new spec on the card before their key is used."""
     for user_id in await user_integration_repository.user_ids_with_integration(doc.integration_id):
-        if user_id != owner_id:
+        if await user_integration_repository.is_connected(user_id, doc.integration_id):
             await update_user_integration_status(
                 user_id,
                 doc.integration_id,
@@ -51,10 +53,10 @@ class DefinedConnector:
 
 
 async def _update_existing(
-    existing: Integration, user_id: str, name: str, description: str, spec: ConnectorSpec
+    existing: Integration, name: str, description: str, spec: ConnectorSpec
 ) -> DefinedConnector:
     old_spec = existing.connector_config
-    reach_changed = old_spec is None or old_spec.reach_fingerprint() != spec.reach_fingerprint()
+    reach_changed = old_spec is None or old_spec.trust_fingerprint() != spec.trust_fingerprint()
     update = IntegrationUpdate(
         name=name,
         description=description,
@@ -66,8 +68,8 @@ async def _update_existing(
     if updated is None:
         raise LookupError(f"connector {existing.integration_id} vanished during update")
     await integration_repository.store_tools(existing.integration_id, _tools(spec))
-    if reach_changed and existing.is_public:
-        await _expire_other_users(existing, user_id)
+    if reach_changed:
+        await _expire_connected_users(existing)
     log.set_ns(
         "connector", id=existing.integration_id, action="update", reach_changed=reach_changed
     )
@@ -80,7 +82,7 @@ async def define_connector(
     """Upsert the user's private connector for the spec's provider and add it to their workspace."""
     existing = await integration_repository.find_custom_connector(user_id, spec.provider_domain)
     if existing is not None:
-        defined = await _update_existing(existing, user_id, name, description, spec)
+        defined = await _update_existing(existing, name, description, spec)
     else:
         defined = await _create(user_id, name, description, spec)
     capture(
