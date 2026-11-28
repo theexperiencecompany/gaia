@@ -39,7 +39,7 @@ def _call(args: list[str]):
         name=EXECUTE_TOOL_NAME,
         args={
             "tool_name": RUN_CONNECTOR_TOOL,
-            "data": {"connector_id": CONNECTOR_ID, "args": args},
+            "data": {"connector_id": CONNECTOR_ID, "argv": args},
         },
     )
 

@@ -66,7 +66,7 @@ def failure_copy(name: str, spec: ConnectorSpec, failure: CallFailure) -> str:
     match failure:
         case CallFailure.AUTH:
             return (
-                f"{name} refused this {spec.credential.label.lower()}. Copy the whole key{where} "
+                f"{name} refused this {spec.credential.label}. Copy the whole key{where} "
                 "and check it hasn't expired or been revoked."
             )
         case CallFailure.INSTALL:

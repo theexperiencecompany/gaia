@@ -75,7 +75,7 @@ async def _expire_if_revoked(
 @with_doc(RUN_CONNECTOR)
 async def run_connector(
     connector_id: Annotated[str, "The connector's integration id."],
-    args: Annotated[
+    argv: Annotated[
         list[str], "The call's arguments, one item per argument; never a shell string."
     ],
     config: RunnableConfig,
@@ -91,7 +91,7 @@ async def run_connector(
     if secret is None or not connected:
         return await request_integration_connection(connector_id, doc.name, user_id)
     try:
-        result = await run_with_secret(spec, args, secret)
+        result = await run_with_secret(spec, argv, secret)
     except InvalidConnectorCallError as e:
         return f"Invalid call: {e}"
     except ConnectorRunnerUnavailableError as e:

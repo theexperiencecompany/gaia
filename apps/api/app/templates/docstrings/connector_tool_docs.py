@@ -33,13 +33,16 @@ Rules:
   "--method", "-f"). Anything else asks the user once per kind of change.
 - credential.token_url is the exact page where the user creates the key.
 - capability is one line the card shows: what you can do with it.
+- usage.guidance holds only service tips (useful endpoints or subcommands,
+  pagination, JSON flags). GAIA documents how to call run_connector itself, so
+  never describe the call shape there.
 """
 
 RUN_CONNECTOR = """
 INTEGRATIONS (CONNECTORS): Run one call against a connected connector.
 
 Activate the connector first (activate_integration) to load its usage notes.
-args are the call's arguments, one list item per argument, exactly as the usage
+argv is the call's arguments, one list item per argument, exactly as the usage
 notes describe; never one shell string. Each call runs in a fresh sandbox that
 holds the user's key for that call only and reaches only the connector's
 hosts. The result is JSON with ok, exit_code, stdout and stderr; the key is

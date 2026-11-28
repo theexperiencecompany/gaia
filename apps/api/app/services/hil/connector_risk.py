@@ -26,7 +26,7 @@ async def connector_call_risk(
     if tool_name != RUN_CONNECTOR_TOOL or not args:
         return None
     connector_id = args.get("connector_id")
-    call_args = args.get("args")
+    call_args = args.get("argv")
     if not isinstance(connector_id, str) or not isinstance(call_args, list):
         return None
     if not all(isinstance(arg, str) for arg in call_args):
