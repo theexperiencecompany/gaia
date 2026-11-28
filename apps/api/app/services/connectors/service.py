@@ -48,6 +48,7 @@ _AUTH_FAILURE_RE = re.compile(
     r"|bad credentials|invalid (auth |access )?(api[ _-]?)?(key|token)|AuthenticationError"
     r"|invalid credentials|\bunauthorized\b|must be authenticated|token provided .{0,60}is not valid"
     r"|only supports using a secret or restricted key|api key not valid|authentication error"
+    r"|token in (the )?\S+ (env var|environment variable) is invalid"
     r"|(token|key) (is |has )?(invalid|expired|been revoked|revoked)"
     r"|authentication (failed|required)|not logged in|unauthenticated|incorrect api key"
     r"|InvalidClientTokenId|security token included in the request is invalid"

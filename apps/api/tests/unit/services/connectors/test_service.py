@@ -196,6 +196,8 @@ async def test_huge_output_is_scrubbed_before_it_is_truncated() -> None:
                 "'message': 'API key not valid. Please pass a valid API key.'",
                 "assemblyai.types.AssemblyAIError: failed to retrieve transcripts: "
                 "Authentication error, API token missing/invalid",
+                "Error: token in TURSO_API_TOKEN env var is invalid. Update the env var",
+                "The token in the HF_TOKEN environment variable is invalid.",
             )
         ),
         # Cloudflare on a key that is not even token-shaped, seen live.
