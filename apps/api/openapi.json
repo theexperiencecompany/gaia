@@ -13589,6 +13589,16 @@
             "title": "Category",
             "type": "string"
           },
+          "connector": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectorCardInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "title": "Description",
             "type": "string"

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import re
 
+from app.config.oauth_config import all_integrations, get_integration_by_id
 from app.constants.connectors import (
     CONNECTOR_CALL_TIMEOUT_SECONDS,
     CONNECTOR_SECRET_PLACEHOLDER,
@@ -17,6 +18,7 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
 from app.models.connector_models import ConnectorKind, ConnectorSpec
 from app.models.integration_models import Integration
+from app.models.oauth_models import OAuthIntegration
 from app.services.connectors.commands import CallPlan, plan_call
 from app.services.connectors.install import install_hosts
 from app.services.connectors.rest_helper import (
@@ -68,12 +70,54 @@ class ConnectorCallResult:
     duration_ms: int
 
 
-async def load_connector(user_id: str, connector_id: str) -> tuple[Integration, ConnectorSpec]:
-    """Return the connector document and its spec when the user owns it or it is published."""
+def catalog_connector_doc(integration: OAuthIntegration) -> Integration | None:
+    """Project a catalog connector onto the document shape every connector path reads."""
+    if integration.connector_config is None:
+        return None
+    return Integration(
+        integration_id=integration.id,
+        name=integration.name,
+        description=integration.description,
+        category=integration.category,
+        managed_by=MANAGED_BY_CONNECTOR,
+        source="platform",
+        is_public=True,
+        created_by=None,
+        published_at=None,
+        clone_count=0,
+        connector_config=integration.connector_config,
+        requires_auth=True,
+        auth_type="bearer",
+        icon_url=integration.icon_url,
+        display_priority=integration.display_priority,
+        is_featured=integration.is_featured,
+    )
+
+
+def catalog_connectors_for(provider_domain: str) -> list[OAuthIntegration]:
+    """Return the catalog connectors GAIA ships for a provider's domain."""
+    return [
+        i
+        for i in all_integrations()
+        if i.connector_config is not None and i.connector_config.provider_domain == provider_domain
+    ]
+
+
+async def find_connector(connector_id: str) -> Integration | None:
+    """Return the catalog or custom connector with this id, whoever owns it."""
+    if (platform := get_integration_by_id(connector_id)) is not None:
+        return catalog_connector_doc(platform)
     doc = await integration_repository.get_custom(connector_id)
+    if doc is None or doc.managed_by != MANAGED_BY_CONNECTOR or doc.connector_config is None:
+        return None
+    return doc
+
+
+async def load_connector(user_id: str, connector_id: str) -> tuple[Integration, ConnectorSpec]:
+    """Return the connector and its spec when it is in the catalog, the user's own, or published."""
+    doc = await find_connector(connector_id)
     if (
         doc is None
-        or doc.managed_by != MANAGED_BY_CONNECTOR
         or doc.connector_config is None
         or (doc.created_by != user_id and not doc.is_public)
     ):

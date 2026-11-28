@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 from pydantic.alias_generators import to_camel
 from typing_extensions import TypedDict
 
+from app.models.connector_models import ConnectorSpec
 from app.models.mcp_config import (
     AuthType,
     ComposioConfig,
@@ -83,6 +84,7 @@ class OAuthIntegration(BaseModel):
     managed_by: ManagedBy
     composio_config: ComposioConfig | None = None
     mcp_config: MCPConfig | None = None
+    connector_config: ConnectorSpec | None = None
     # Tool names/slugs this integration's HIL gate treats as destructive (e.g.
     # GMAIL_SEND_EMAIL). None = uncurated: the HIL LLM classifier resolves each
     # tool at gate time and fails closed. A list (possibly empty) = reviewed.
@@ -109,6 +111,10 @@ class OAuthIntegration(BaseModel):
             raise ValueError(
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
             )
+        if (self.managed_by == "connector") != (self.connector_config is not None):
+            raise ValueError(
+                f"Integration {self.id!r}: a connector sets connector_config and nothing else does."
+            )
         # Available with an empty auth_config_id would mint Connect Links against
         # an empty Composio config; staged integrations keep available=False. An
         # instance toolkit's auth config lives in the instance store, never here.
@@ -129,7 +135,7 @@ class OAuthIntegration(BaseModel):
         """Whether connecting this integration makes the user authenticate."""
         if self.mcp_config:
             return self.mcp_config.requires_auth
-        return self.composio_config is not None
+        return self.composio_config is not None or self.connector_config is not None
 
     @property
     def auth_type(self) -> AuthType | None:
@@ -138,6 +144,8 @@ class OAuthIntegration(BaseModel):
             return self.mcp_config.auth_type or (
                 "oauth" if self.mcp_config.requires_auth else "none"
             )
+        if self.connector_config:
+            return "bearer"
         return "oauth" if self.composio_config else None
 
 

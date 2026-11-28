@@ -1,5 +1,6 @@
 """The REST helper run as the runner runs it, against a local HTTPS server that records every request."""
 
+import base64
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 import datetime
@@ -151,6 +152,18 @@ def test_a_get_sends_the_key_in_the_auth_header_and_prints_the_body(
     assert json.loads(ran.stdout) == {"path": "/v1/user?per_page=5"}
     assert ran.stderr.strip() == "HTTP 200"
     assert [s.headers["Authorization"] for s in server.seen] == [f"Bearer {_SECRET}"]
+
+
+def test_a_basic_auth_template_sends_the_pasted_user_and_password_base64_encoded(
+    tmp_path: Path, server: _Server
+) -> None:
+    auth = {AUTH_HEADER_ENV: "Authorization", AUTH_TEMPLATE_ENV: "Basic {secret_base64}"}
+
+    ran = _run(tmp_path, server, "GET", "/user", auth=auth)
+
+    assert ran.returncode == 0, ran.stderr
+    expected = base64.b64encode(_SECRET.encode()).decode()
+    assert [s.headers["Authorization"] for s in server.seen] == [f"Basic {expected}"]
 
 
 def test_query_auth_puts_the_key_in_its_parameter_not_a_header(

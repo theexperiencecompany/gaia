@@ -129,7 +129,7 @@ async def _verify_and_store(
         label=identity,
     )
     await save_accounts(user_id, connector_id, [account], account.id)
-    if doc.connector_verified_at is None:
+    if doc.source == "custom" and doc.connector_verified_at is None:
         await integration_repository.update(
             connector_id, IntegrationUpdate(connector_verified_at=datetime.now(UTC))
         )

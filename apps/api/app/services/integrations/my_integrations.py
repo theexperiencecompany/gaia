@@ -170,6 +170,7 @@ def _build_my_integrations_response(
                 origin=cfg.origin,
                 icon_url=cfg.icon_url,
                 tool_count=tool_count,
+                connector=cfg.connector,
             )
         )
 

@@ -90,6 +90,7 @@ from app.agents.prompts.subagent_prompts import (
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
 from app.config.composio_auth_configs import check_auth_config_ids
+from app.config.connector_catalog import CONNECTOR_CATALOG
 from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
@@ -2199,6 +2200,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         ),
         content=POSTHOG_CONTENT,
     ),
+    *CONNECTOR_CATALOG,
 ]
 
 check_auth_config_ids(

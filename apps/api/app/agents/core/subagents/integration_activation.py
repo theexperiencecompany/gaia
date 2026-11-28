@@ -54,6 +54,7 @@ from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.subagent_models import Subagent
+from app.services.connectors.service import find_connector
 from app.services.connectors.usage import render_connector_usage
 from app.services.integrations.integration_accounts import get_account_record
 from app.services.integrations.user_integrations import check_user_has_integration
@@ -242,9 +243,11 @@ async def _has_several_accounts(integration_id: str, user_id: str | None) -> boo
 async def _overview_section(target: Subagent | CustomMcpSubagent) -> str:
     """Return a custom integration's own notes, or a platform integration's reframed operating notes."""
     if isinstance(target, CustomMcpSubagent):
+        if target.managed_by == MANAGED_BY_CONNECTOR:
+            connector = await find_connector(target.id)
+            if connector is not None and connector.connector_config is not None:
+                return render_connector_usage(connector, connector.connector_config)
         doc = await integration_repository.get(target.id)
-        if doc is not None and doc.connector_config is not None:
-            return render_connector_usage(doc, doc.connector_config)
         if not (doc and doc.description):
             return ""
         return f"## {_display_name(target)}: what it is\n{doc.description}"
@@ -388,7 +391,10 @@ async def _activate_connector(
     target: CustomMcpSubagent, user_id: str | None
 ) -> ActivatedTools | str:
     """Gate a connector on the user's stored key, then preload run_connector's schema."""
-    if not user_id or not await check_user_has_integration(user_id, target.id):
+    # A catalog connector is everyone's to connect; a custom one only its owner's or a published one's adopter.
+    if not user_id or (
+        target.source != "platform" and not await check_user_has_integration(user_id, target.id)
+    ):
         return f"Unknown integration '{target.id}'."
     connected = await user_integration_repository.is_connected(
         user_id, target.id
