@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.9.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.8.0...bots-v1.9.0) (2026-11-28)
+
+
+### Features
+
+* **api:** a restarted bot resumes the events stream after what it delivered, and voice reads wire 2 ([#1958](https://github.com/theexperiencecompany/gaia/issues/1958)) ([b83dd4b](https://github.com/theexperiencecompany/gaia/commit/b83dd4bb7659762766ab433af0f6eb5db6883947))
+* **api:** a stream's request event carries its real bytes, and the bots log their git commit ([#1946](https://github.com/theexperiencecompany/gaia/issues/1946)) ([2bc8074](https://github.com/theexperiencecompany/gaia/commit/2bc807406db36877aaaff59d65cc69d6b13caab6))
+* **briefing:** daily and weekly briefs, heygaia.link sharing, and OpenUI artifacts ([#1853](https://github.com/theexperiencecompany/gaia/issues/1853)) ([b0c7d7c](https://github.com/theexperiencecompany/gaia/commit/b0c7d7c38edec5d4d4e7a1b497b792efe5b925ec))
+* **ci:** nx decides what CI runs; stop the self-made flakes and silent passes ([#1569](https://github.com/theexperiencecompany/gaia/issues/1569)) ([c722c9c](https://github.com/theexperiencecompany/gaia/commit/c722c9c021df2a050773dfe34cb2d9040bed2aeb))
+* **conversation:** the conversation-runtime redesign (stack [#1716](https://github.com/theexperiencecompany/gaia/issues/1716)–[#1723](https://github.com/theexperiencecompany/gaia/issues/1723), landed as one) ([#1723](https://github.com/theexperiencecompany/gaia/issues/1723)) ([8ff2293](https://github.com/theexperiencecompany/gaia/commit/8ff2293d14eb97e6fba582ba1b1fdb9dc3a99730))
+* **observability:** every alert rule reaches prod, every user-facing failure has a signal, and alerts name what broke ([#1911](https://github.com/theexperiencecompany/gaia/issues/1911)) ([e8ea875](https://github.com/theexperiencecompany/gaia/commit/e8ea8752ea7eda08d6a0d36681ebf7fb41553e32))
+
+
+### Bug Fixes
+
+* **bots:** a brief's image reaches Telegram as image.jpg, not a download named after its signed URL ([#1966](https://github.com/theexperiencecompany/gaia/issues/1966)) ([e44718d](https://github.com/theexperiencecompany/gaia/commit/e44718dbd363a1a96e1d195ac796f2579bb7c439))
+* **bots:** a brief's image reaches Telegram as image.jpg, not as a download named after its signed URL ([e44718d](https://github.com/theexperiencecompany/gaia/commit/e44718dbd363a1a96e1d195ac796f2579bb7c439))
+* **bots:** a live preview of a long one-line code block no longer re-splits the same text forever ([#1904](https://github.com/theexperiencecompany/gaia/issues/1904)) ([0343bae](https://github.com/theexperiencecompany/gaia/commit/0343bae3619781761bb21e214a5d30e2fd845e21))
+* **bots:** a reaction the bot had not placed is placed once after a restart ([#1962](https://github.com/theexperiencecompany/gaia/issues/1962)) ([cec9faa](https://github.com/theexperiencecompany/gaia/commit/cec9faaeb8dc603df4a0a3725fd07e40c43c9a25))
+* **bots:** images reach Telegram and WhatsApp as photos, the way a person sends them ([#1981](https://github.com/theexperiencecompany/gaia/issues/1981)) ([6f17e14](https://github.com/theexperiencecompany/gaia/commit/6f17e140fb91e644d25cffa3710690ae73612c5d))
+* **bots:** reading one large conversation event no longer rescans it on every network chunk ([#1913](https://github.com/theexperiencecompany/gaia/issues/1913)) ([335aff2](https://github.com/theexperiencecompany/gaia/commit/335aff29d70abcf8eaf458fe89a2b3d313342862))
+* **bots:** ship the identity file in the bot images ([#1677](https://github.com/theexperiencecompany/gaia/issues/1677)) ([c8fbbc9](https://github.com/theexperiencecompany/gaia/commit/c8fbbc91f6629f621f8f4316bdde7f896882dd55))
+* **browser:** serve the live view under /api/v1 so its socket upgrades behind every proxy ([#1578](https://github.com/theexperiencecompany/gaia/issues/1578)) ([35625ca](https://github.com/theexperiencecompany/gaia/commit/35625ca019f70c057165ac0a95d2c26780bacba8))
+* **comms:** one GAIA that reacts instead of replying "on it" and never claims unconfirmed work ([#1669](https://github.com/theexperiencecompany/gaia/issues/1669)) ([254537b](https://github.com/theexperiencecompany/gaia/commit/254537b4982dc1d6b2752516a5a3ba8bfd161407))
+* **deps:** close the open npm Dependabot alerts ([#1630](https://github.com/theexperiencecompany/gaia/issues/1630)) ([7b2c8cd](https://github.com/theexperiencecompany/gaia/commit/7b2c8cdfb6e9b7553ea0d025a139368a46a30b53))
+* **integrations:** connect links show what they connect, Dodo re-registers a forgotten client, and the clients use generated API types ([#1972](https://github.com/theexperiencecompany/gaia/issues/1972)) ([4c4f833](https://github.com/theexperiencecompany/gaia/commit/4c4f8331b6763ffecdb43037115dba0f494ea9bb))
+
+
+### Performance Improvements
+
+* **ci:** web e2e and bot scenarios run in two shards each instead of one 33-minute job ([#1877](https://github.com/theexperiencecompany/gaia/issues/1877)) ([6c5ef98](https://github.com/theexperiencecompany/gaia/commit/6c5ef988fbf187ab671c53f16d1eac1bb248dcc6))
+* **conversation:** the events stream sends each card once, changes as patches, and resumes after a head ([#1945](https://github.com/theexperiencecompany/gaia/issues/1945)) ([d85016a](https://github.com/theexperiencecompany/gaia/commit/d85016a7deaa23ad70eaca7276a02398d03d0dff))
+* cut our latency around the comms model call on web and bots ([#1831](https://github.com/theexperiencecompany/gaia/issues/1831)) ([837d31b](https://github.com/theexperiencecompany/gaia/commit/837d31b994c23dc5c3566ac906f88aa3b35e3e67))
+
 ## [1.8.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.7.0...bots-v1.8.0) (2026-10-26)
 
 

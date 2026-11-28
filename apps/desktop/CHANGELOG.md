@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.8.0...desktop-v0.9.0) (2026-11-28)
+
+
+### Features
+
+* **conversation:** the conversation-runtime redesign (stack [#1716](https://github.com/theexperiencecompany/gaia/issues/1716)–[#1723](https://github.com/theexperiencecompany/gaia/issues/1723), landed as one) ([#1723](https://github.com/theexperiencecompany/gaia/issues/1723)) ([8ff2293](https://github.com/theexperiencecompany/gaia/commit/8ff2293d14eb97e6fba582ba1b1fdb9dc3a99730))
+
+
+### Bug Fixes
+
+* **deps:** close the open npm Dependabot alerts ([#1630](https://github.com/theexperiencecompany/gaia/issues/1630)) ([7b2c8cd](https://github.com/theexperiencecompany/gaia/commit/7b2c8cdfb6e9b7553ea0d025a139368a46a30b53))
+
 ## [0.8.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.7.1...desktop-v0.8.0) (2026-10-26)
 
 

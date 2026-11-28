@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.10.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.9.0...mobile-v0.10.0) (2026-11-28)
+
+
+### Features
+
+* **briefing:** daily and weekly briefs, heygaia.link sharing, and OpenUI artifacts ([#1853](https://github.com/theexperiencecompany/gaia/issues/1853)) ([b0c7d7c](https://github.com/theexperiencecompany/gaia/commit/b0c7d7c38edec5d4d4e7a1b497b792efe5b925ec))
+* **conversation:** the conversation-runtime redesign (stack [#1716](https://github.com/theexperiencecompany/gaia/issues/1716)–[#1723](https://github.com/theexperiencecompany/gaia/issues/1723), landed as one) ([#1723](https://github.com/theexperiencecompany/gaia/issues/1723)) ([8ff2293](https://github.com/theexperiencecompany/gaia/commit/8ff2293d14eb97e6fba582ba1b1fdb9dc3a99730))
+* **delivery:** presence-aware, one-place proactive messaging ([#1523](https://github.com/theexperiencecompany/gaia/issues/1523)) ([39887cf](https://github.com/theexperiencecompany/gaia/commit/39887cfe9e9fe0b6c7a1fe5daa916cf09eac2b2f))
+* **settings:** quiet hours are the user's own, set on a noon-to-noon slider ([#1664](https://github.com/theexperiencecompany/gaia/issues/1664)) ([074b108](https://github.com/theexperiencecompany/gaia/commit/074b1089d6e92d0b64988fbcdbf4b53f13db9939))
+* **todos:** give every tracked todo its own chat, led by what woke each run ([#1561](https://github.com/theexperiencecompany/gaia/issues/1561)) ([7fa8464](https://github.com/theexperiencecompany/gaia/commit/7fa84648be37066f58b4929dc0f8a0c468d8f1f9))
+* **web:** migrate HeroUI v2 → v3 (perf 77→100) ([#1577](https://github.com/theexperiencecompany/gaia/issues/1577)) ([61acd9c](https://github.com/theexperiencecompany/gaia/commit/61acd9c8b6cfacbebb5d161714756addd1dbe991))
+* **web:** see, edit and turn off a job's Runs only when rule ([#1661](https://github.com/theexperiencecompany/gaia/issues/1661)) ([e89213c](https://github.com/theexperiencecompany/gaia/commit/e89213c039dfe86ae238d1d0bdf0cbc8b896243a))
+* **web:** the visible fixes from the heygaia.io audit ([#1539](https://github.com/theexperiencecompany/gaia/issues/1539)) ([fc67d3d](https://github.com/theexperiencecompany/gaia/commit/fc67d3d8301634b4cd807ab6e3a5ee8c18861bc1))
+
+
+### Bug Fixes
+
+* **bots:** point every bot link at one set of handles ([#1672](https://github.com/theexperiencecompany/gaia/issues/1672)) ([68858b3](https://github.com/theexperiencecompany/gaia/commit/68858b3cc47eacf4552a860e09050958500231e1))
+* **comms:** one GAIA that reacts instead of replying "on it" and never claims unconfirmed work ([#1669](https://github.com/theexperiencecompany/gaia/issues/1669)) ([254537b](https://github.com/theexperiencecompany/gaia/commit/254537b4982dc1d6b2752516a5a3ba8bfd161407))
+* **integrations:** connect links show what they connect, Dodo re-registers a forgotten client, and the clients use generated API types ([#1972](https://github.com/theexperiencecompany/gaia/issues/1972)) ([4c4f833](https://github.com/theexperiencecompany/gaia/commit/4c4f8331b6763ffecdb43037115dba0f494ea9bb))
+* **onboarding:** one server event per wizard step, retrying answers save, wait for the bot link, log out ([#1591](https://github.com/theexperiencecompany/gaia/issues/1591)) ([735f860](https://github.com/theexperiencecompany/gaia/commit/735f8606c2cdfcabf67d2ee4470bc7f131d6c23a))
+* usage stops at 100% of the monthly allowance with a clear reset date; visible attachment limits ([#1582](https://github.com/theexperiencecompany/gaia/issues/1582)) ([fcfa685](https://github.com/theexperiencecompany/gaia/commit/fcfa6850cafff3a21fa27d7148b57bcde0f85618))
+* **usage:** budget-wall cards name the wall that bound, and bots relay its message ([#1663](https://github.com/theexperiencecompany/gaia/issues/1663)) ([f97cea1](https://github.com/theexperiencecompany/gaia/commit/f97cea101c56c03adb9ec265dffbc6938f9007f3))
+
 ## [0.9.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.8.1...mobile-v0.9.0) (2026-10-26)
 
 
