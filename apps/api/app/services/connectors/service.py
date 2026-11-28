@@ -47,7 +47,9 @@ _AUTH_FAILURE_RE = re.compile(
     r"\bHTTP 401\b|\b401 Unauthorized\b|\bError code: 401\b|\bstatus(_code)?[ :=]+401\b"
     r"|bad credentials|invalid (api[ _-]?)?(key|token)|AuthenticationError"
     r"|(token|key) (is |has )?(invalid|expired|been revoked|revoked)"
-    r"|authentication (failed|required)|not logged in|unauthenticated|incorrect api key",
+    r"|authentication (failed|required)|not logged in|unauthenticated|incorrect api key"
+    r"|InvalidClientTokenId|security token included in the request is invalid"
+    r"|invalid format for authorization header",
     re.IGNORECASE,
 )
 

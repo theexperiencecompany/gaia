@@ -168,6 +168,29 @@ async def test_huge_output_is_scrubbed_before_it_is_truncated() -> None:
             CallFailure.AUTH,
         ),
         (RunResult(RunOutcome.EXIT_NONZERO, 1, "", "Error: API key is invalid"), CallFailure.AUTH),
+        # boto3 and the AWS CLI on a key AWS never issued, seen live on E2B.
+        (
+            RunResult(
+                RunOutcome.EXIT_NONZERO,
+                1,
+                "",
+                "botocore.exceptions.ClientError: An error occurred (InvalidClientTokenId) when "
+                "calling the GetCallerIdentity operation: The security token included in the "
+                "request is invalid.",
+            ),
+            CallFailure.AUTH,
+        ),
+        # Cloudflare on a key that is not even token-shaped, seen live.
+        (
+            RunResult(
+                RunOutcome.EXIT_NONZERO,
+                22,
+                '{"success":false,"errors":[{"code":6111,"message":"Invalid format for '
+                'Authorization header"}]}',
+                "HTTP 400",
+            ),
+            CallFailure.AUTH,
+        ),
         (RunResult(RunOutcome.EXIT_NONZERO, 1, "", "HTTP 404"), CallFailure.EXIT),
         (
             RunResult(RunOutcome.EXIT_NONZERO, 1, "", "HTTP 403 forbidden: missing scope"),
