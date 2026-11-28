@@ -47,7 +47,7 @@ _AUTH_FAILURE_RE = re.compile(
     r"\bHTTP 401\b|\b401 Unauthorized\b|\bError code: 401\b|\bstatus(_code)?[ :=]+401\b"
     r"|bad credentials|invalid (auth |access )?(api[ _-]?)?(key|token)|AuthenticationError"
     r"|invalid credentials|\bunauthorized\b|must be authenticated|token provided .{0,60}is not valid"
-    r"|only supports using a secret or restricted key"
+    r"|only supports using a secret or restricted key|api key not valid|authentication error"
     r"|(token|key) (is |has )?(invalid|expired|been revoked|revoked)"
     r"|authentication (failed|required)|not logged in|unauthenticated|incorrect api key"
     r"|InvalidClientTokenId|security token included in the request is invalid"

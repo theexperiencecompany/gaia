@@ -8,7 +8,7 @@ calls do.
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.models.connector_models import ConnectorKind, ConnectorSpec, IdentityExtractor
+from app.models.connector_models import ConnectorKind, ConnectorSpec, IdentityExtractor, SdkRuntime
 from app.services.connectors.connect import extract_identity
 from app.services.connectors.runner import ConnectorRunner
 from app.services.connectors.service import (
@@ -72,9 +72,12 @@ async def call(spec: ConnectorSpec, argv: list[str], target: Target) -> CallOutp
     return CallOutput(result.failure, result.stdout, result.stderr)
 
 
-def _import_check(spec: ConnectorSpec) -> list[str]:
-    modules = [p.name.replace("-", "_") for p in spec.install]
-    return ["-c", f"import {', '.join(modules)}; print('imported')"]
+def _installed_check(spec: ConnectorSpec) -> list[str]:
+    names = ", ".join(repr(p.name) for p in spec.install)
+    if spec.sdk_runtime is SdkRuntime.NODE:
+        return ["-e", f"for (const n of [{names}]) require.resolve(n); console.log('installed')"]
+    # By distribution name: a package's import name often differs (google-genai is google.genai).
+    return ["-c", f"import importlib.metadata as m; print([m.version(n) for n in ({names},)])"]
 
 
 async def install_stage(spec: ConnectorSpec, runner: ConnectorRunner) -> StageResult:
@@ -85,7 +88,7 @@ async def install_stage(spec: ConnectorSpec, runner: ConnectorRunner) -> StageRe
         case ConnectorKind.CLI:
             argv = spec.usage.help_args
         case ConnectorKind.SDK:
-            argv = _import_check(spec)
+            argv = _installed_check(spec)
     output = await call(spec, argv, Target(runner, BAD_KEY))
     if output.failure is not None:
         return StageResult(Stage.INSTALL, Outcome.FAIL, _why(output))

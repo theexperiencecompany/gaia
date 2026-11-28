@@ -192,6 +192,10 @@ async def test_huge_output_is_scrubbed_before_it_is_truncated() -> None:
                 "Error: Invalid credentials provided.",
                 "Invalid access token format. Must be like sbp_0102...1920.",
                 "the CLI only supports using a secret or restricted key",
+                # SDKs the benchmark's drafts used, on a key their provider never issued.
+                "'message': 'API key not valid. Please pass a valid API key.'",
+                "assemblyai.types.AssemblyAIError: failed to retrieve transcripts: "
+                "Authentication error, API token missing/invalid",
             )
         ),
         # Cloudflare on a key that is not even token-shaped, seen live.
