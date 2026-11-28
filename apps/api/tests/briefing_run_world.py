@@ -996,7 +996,8 @@ def _install_seams(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
         w.locks.append((key, timing))
         return _InProcessLock(key, w.locks_held)
 
-    monkeypatch.setattr(pipeline, "DistributedLock", run_lock)
+    # raising=False: regression-proof runs this harness against base, whose pipeline has no lock.
+    monkeypatch.setattr(pipeline, "DistributedLock", run_lock, raising=False)
 
 
 def run_world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:

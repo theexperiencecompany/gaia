@@ -34,12 +34,9 @@ from tests.briefing_run_world import (
 from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
+from app.constants import briefing as briefing_constants
 from app.constants.briefing import (
     BRIEF_NOTIFICATION_PRIORITY,
-    BRIEF_RUN_LOCK_LEASE_SECONDS,
-    BRIEF_RUN_LOCK_MAX_HOLD_SECONDS,
-    BRIEF_RUN_LOCK_PREFIX,
-    BRIEF_RUN_LOCK_RENEW_SECONDS,
     IDLE_DORMANT_DAYS,
     BriefForm,
     BriefingBag,
@@ -154,12 +151,12 @@ class TestHowARunEnds:
 
         assert world.locks == [
             (
-                f"{BRIEF_RUN_LOCK_PREFIX}{USER}:{kind}",
+                f"{briefing_constants.BRIEF_RUN_LOCK_PREFIX}{USER}:{kind}",
                 {
-                    "lease_seconds": BRIEF_RUN_LOCK_LEASE_SECONDS,
+                    "lease_seconds": briefing_constants.BRIEF_RUN_LOCK_LEASE_SECONDS,
                     "acquire_timeout_seconds": 0,
-                    "renew_seconds": BRIEF_RUN_LOCK_RENEW_SECONDS,
-                    "max_hold_seconds": BRIEF_RUN_LOCK_MAX_HOLD_SECONDS,
+                    "renew_seconds": briefing_constants.BRIEF_RUN_LOCK_RENEW_SECONDS,
+                    "max_hold_seconds": briefing_constants.BRIEF_RUN_LOCK_MAX_HOLD_SECONDS,
                 },
             )
         ]
