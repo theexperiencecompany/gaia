@@ -236,6 +236,15 @@ describe("IntegrationConnectionPrompt — connector key entry", () => {
     integrations = [connectorIntegration()];
   });
 
+  it("offers Connect, not Retry, on a connector saved but never connected", () => {
+    integrations = [{ ...connectorIntegration(), status: "created" }];
+
+    renderCard("fly");
+
+    expect(screen.getByRole("button", { name: "Connect" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("shows the capability, every host the key reaches and where to get the key", () => {
     renderCard("fly");
 

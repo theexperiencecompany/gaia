@@ -159,10 +159,16 @@ function IntegrationConnectCard({
   const { phase, token, setToken, toolsCount, accountLabel, error, connect } =
     useInlineIntegrationConnect(integration.id, reconnectAccountId);
 
-  const state = connectionPromptState(
+  const promptState = connectionPromptState(
     { expired, add_account: addAccount },
     integration.status,
   );
+  // A connector is "created" until its first key is verified: that is a first
+  // connect, not a stalled one to retry.
+  const state =
+    integration.connector && promptState === "pending"
+      ? "disconnected"
+      : promptState;
   const isConnected = phase === "connected" || state === "connected";
   const isAvailable = integration.source === "custom" || integration.available;
   // Bearer/API-key servers collect their token in-card; the value is POSTed
